@@ -1,0 +1,65 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package
+        run: npm run package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: FeedbackFlow v${{ steps.version.outputs.VERSION }}
+          draft: true
+          prerelease: false
+          files: |
+            dist/*.dmg
+            dist/*.zip
+          body: |
+            ## FeedbackFlow v${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+
+            1. Download the DMG file
+            2. Open the DMG
+            3. Drag FeedbackFlow to Applications
+            4. Open FeedbackFlow from Applications
+
+            ### What's New
+
+            See the [CHANGELOG](https://github.com/eddiesanjuan/feedbackflow/blob/main/CHANGELOG.md) for details.
+
+            ### Checksums
+
+            ```
+            SHA256 checksums will be added here
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
