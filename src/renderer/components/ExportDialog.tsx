@@ -1,0 +1,893 @@
+/**
+ * ExportDialog - Premium Export Experience for FeedbackFlow
+ *
+ * A beautiful modal dialog for selecting export format and options.
+ *
+ * Features:
+ * - Format cards with descriptions and icons
+ * - Live preview panel (Markdown/HTML/JSON)
+ * - Theme toggle for HTML/PDF
+ * - Include images option
+ * - Custom filename input
+ * - Export progress indicator
+ */
+
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import type { Session } from '../../main/output/MarkdownGenerator';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+type ExportFormat = 'markdown' | 'pdf' | 'html' | 'json';
+
+interface ExportDialogProps {
+  session: Session;
+  isOpen: boolean;
+  onClose: () => void;
+  onExport: (options: ExportOptions) => Promise<void>;
+  defaultProjectName?: string;
+}
+
+interface ExportOptions {
+  format: ExportFormat;
+  projectName: string;
+  includeImages: boolean;
+  theme: 'dark' | 'light';
+}
+
+interface FormatCardData {
+  format: ExportFormat;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  extension: string;
+  features: string[];
+}
+
+// ============================================================================
+// Icons
+// ============================================================================
+
+const MarkdownIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="9" y1="15" x2="15" y2="15" />
+    <line x1="9" y1="11" x2="15" y2="11" />
+  </svg>
+);
+
+const PdfIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <path d="M9 15v-2a1 1 0 011-1h1a1 1 0 011 1v0a1 1 0 01-1 1h-1" />
+    <path d="M14 15v-4h1.5a1.5 1.5 0 010 3H14" />
+  </svg>
+);
+
+const HtmlIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+    <line x1="12" y1="2" x2="12" y2="22" strokeDasharray="2 2" />
+  </svg>
+);
+
+const JsonIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M8 3H7a2 2 0 00-2 2v5a2 2 0 01-2 2 2 2 0 012 2v5a2 2 0 002 2h1" />
+    <path d="M16 21h1a2 2 0 002-2v-5a2 2 0 012-2 2 2 0 01-2-2V5a2 2 0 00-2-2h-1" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const SpinnerIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+  </svg>
+);
+
+// ============================================================================
+// Format Data
+// ============================================================================
+
+const FORMAT_DATA: FormatCardData[] = [
+  {
+    format: 'markdown',
+    name: 'Markdown',
+    description: 'AI-ready format for Claude, ChatGPT, and other assistants',
+    icon: <MarkdownIcon />,
+    extension: '.md',
+    features: ['Structured headings', 'Image references', 'Summary table'],
+  },
+  {
+    format: 'pdf',
+    name: 'PDF',
+    description: 'Beautiful document for sharing and printing',
+    icon: <PdfIcon />,
+    extension: '.pdf',
+    features: ['Embedded images', 'Print-ready', 'Professional layout'],
+  },
+  {
+    format: 'html',
+    name: 'HTML',
+    description: 'Standalone web page with no dependencies',
+    icon: <HtmlIcon />,
+    extension: '.html',
+    features: ['Self-contained', 'Dark/Light themes', 'Mobile responsive'],
+  },
+  {
+    format: 'json',
+    name: 'JSON',
+    description: 'Machine-readable for integrations and APIs',
+    icon: <JsonIcon />,
+    extension: '.json',
+    features: ['Structured data', 'API-friendly', 'Full metadata'],
+  },
+];
+
+// ============================================================================
+// Sub-Components
+// ============================================================================
+
+interface FormatCardProps {
+  data: FormatCardData;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+const FormatCard: React.FC<FormatCardProps> = ({ data, isSelected, onSelect }) => {
+  return (
+    <button
+      onClick={onSelect}
+      style={{
+        ...styles.formatCard,
+        borderColor: isSelected ? 'rgba(59, 130, 246, 0.7)' : 'rgba(51, 65, 85, 0.5)',
+        backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'rgba(31, 41, 55, 0.5)',
+        boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : 'none',
+      }}
+    >
+      <div style={styles.formatIcon}>{data.icon}</div>
+      <div style={styles.formatInfo}>
+        <div style={styles.formatHeader}>
+          <span style={styles.formatName}>{data.name}</span>
+          <span style={styles.formatExtension}>{data.extension}</span>
+        </div>
+        <p style={styles.formatDescription}>{data.description}</p>
+        <div style={styles.formatFeatures}>
+          {data.features.map((feature) => (
+            <span key={feature} style={styles.featureTag}>
+              {feature}
+            </span>
+          ))}
+        </div>
+      </div>
+      {isSelected && (
+        <div style={styles.selectedBadge}>
+          <CheckIcon />
+        </div>
+      )}
+    </button>
+  );
+};
+
+interface PreviewPanelProps {
+  session: Session;
+  format: ExportFormat;
+  projectName: string;
+}
+
+const PreviewPanel: React.FC<PreviewPanelProps> = ({ session, format, projectName }) => {
+  const preview = useMemo(() => {
+    const items = session.feedbackItems.slice(0, 3); // Show first 3 items
+
+    switch (format) {
+      case 'markdown': {
+        let md = `# ${projectName} Feedback Report\n\n`;
+        md += `## Feedback Items\n\n`;
+        items.forEach((item, i) => {
+          md += `### FB-${(i + 1).toString().padStart(3, '0')}: ${item.transcription.slice(0, 40)}...\n`;
+          md += `**Type:** ${item.category || 'General'}\n\n`;
+          md += `> ${item.transcription.slice(0, 100)}...\n\n`;
+        });
+        if (session.feedbackItems.length > 3) {
+          md += `\n*...and ${session.feedbackItems.length - 3} more items*`;
+        }
+        return md;
+      }
+
+      case 'html':
+        return `<!DOCTYPE html>
+<html>
+<head>
+  <title>${projectName} - Feedback</title>
+</head>
+<body>
+  <h1>${projectName} Feedback Report</h1>
+  <p>${session.feedbackItems.length} items</p>
+  <!-- Full content in exported file -->
+</body>
+</html>`;
+
+      case 'json':
+        return JSON.stringify(
+          {
+            version: '1.0',
+            session: {
+              id: session.id,
+              items: items.map((item, i) => ({
+                id: `FB-${(i + 1).toString().padStart(3, '0')}`,
+                transcription: item.transcription.slice(0, 50) + '...',
+                category: item.category,
+              })),
+            },
+            '...': session.feedbackItems.length > 3 ? `${session.feedbackItems.length - 3} more items` : undefined,
+          },
+          null,
+          2
+        );
+
+      case 'pdf':
+        return `[PDF Preview]
+
+${projectName} Feedback Report
+${'='.repeat(40)}
+
+This will generate a beautifully formatted
+PDF document with:
+
+- Embedded screenshots
+- Professional typography
+- Print-ready layout
+- ${session.feedbackItems.length} feedback items
+
+Export to see the full PDF.`;
+
+      default:
+        return '';
+    }
+  }, [session, format, projectName]);
+
+  return (
+    <div style={styles.previewPanel}>
+      <div style={styles.previewHeader}>
+        <span style={styles.previewTitle}>Preview</span>
+        <span style={styles.previewFormat}>{format.toUpperCase()}</span>
+      </div>
+      <pre style={styles.previewContent}>{preview}</pre>
+    </div>
+  );
+};
+
+// ============================================================================
+// Main Component
+// ============================================================================
+
+const ExportDialog: React.FC<ExportDialogProps> = ({
+  session,
+  isOpen,
+  onClose,
+  onExport,
+  defaultProjectName,
+}) => {
+  const [format, setFormat] = useState<ExportFormat>('markdown');
+  const [projectName, setProjectName] = useState(
+    defaultProjectName || session.metadata?.sourceName || 'Feedback Report'
+  );
+  const [includeImages, setIncludeImages] = useState(true);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState(false);
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setExportSuccess(false);
+      setIsExporting(false);
+    }
+  }, [isOpen]);
+
+  // Handle escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isExporting) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isExporting, onClose]);
+
+  const handleExport = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      await onExport({
+        format,
+        projectName,
+        includeImages,
+        theme,
+      });
+      setExportSuccess(true);
+      setTimeout(() => {
+        onClose();
+      }, 1500);
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [format, projectName, includeImages, theme, onExport, onClose]);
+
+  if (!isOpen) return null;
+
+  const selectedFormat = FORMAT_DATA.find((f) => f.format === format)!;
+  const showThemeOption = format === 'html' || format === 'pdf';
+  const showImagesOption = format !== 'json';
+
+  return (
+    <div style={styles.overlay} onClick={onClose}>
+      <style>
+        {`
+          @keyframes export-dialog-enter {
+            from {
+              opacity: 0;
+              transform: scale(0.95) translateY(10px);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1) translateY(0);
+            }
+          }
+
+          @keyframes export-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+
+          @keyframes export-success {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+          }
+        `}
+      </style>
+
+      <div
+        style={styles.dialog}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={styles.header}>
+          <h2 style={styles.title}>Export Feedback</h2>
+          <button onClick={onClose} style={styles.closeButton} disabled={isExporting}>
+            <CloseIcon />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={styles.content}>
+          {/* Left: Format Selection */}
+          <div style={styles.leftPane}>
+            <div style={styles.sectionTitle}>Choose Format</div>
+            <div style={styles.formatGrid}>
+              {FORMAT_DATA.map((data) => (
+                <FormatCard
+                  key={data.format}
+                  data={data}
+                  isSelected={format === data.format}
+                  onSelect={() => setFormat(data.format)}
+                />
+              ))}
+            </div>
+
+            {/* Options */}
+            <div style={styles.optionsSection}>
+              <div style={styles.sectionTitle}>Options</div>
+
+              {/* Project Name */}
+              <div style={styles.optionRow}>
+                <label style={styles.optionLabel}>Project Name</label>
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(e) => setProjectName(e.target.value)}
+                  style={styles.textInput}
+                  placeholder="Enter project name..."
+                />
+              </div>
+
+              {/* Include Images */}
+              {showImagesOption && (
+                <div style={styles.optionRow}>
+                  <label style={styles.optionLabel}>Include Images</label>
+                  <button
+                    onClick={() => setIncludeImages(!includeImages)}
+                    style={{
+                      ...styles.toggleButton,
+                      backgroundColor: includeImages
+                        ? 'rgba(59, 130, 246, 0.8)'
+                        : 'rgba(51, 65, 85, 0.5)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        ...styles.toggleKnob,
+                        transform: includeImages ? 'translateX(16px)' : 'translateX(0)',
+                      }}
+                    />
+                  </button>
+                </div>
+              )}
+
+              {/* Theme Toggle */}
+              {showThemeOption && (
+                <div style={styles.optionRow}>
+                  <label style={styles.optionLabel}>Theme</label>
+                  <div style={styles.themeToggle}>
+                    <button
+                      onClick={() => setTheme('dark')}
+                      style={{
+                        ...styles.themeButton,
+                        backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
+                        color: theme === 'dark' ? '#ffffff' : '#94a3b8',
+                      }}
+                    >
+                      Dark
+                    </button>
+                    <button
+                      onClick={() => setTheme('light')}
+                      style={{
+                        ...styles.themeButton,
+                        backgroundColor: theme === 'light' ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
+                        color: theme === 'light' ? '#ffffff' : '#94a3b8',
+                      }}
+                    >
+                      Light
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right: Preview */}
+          <div style={styles.rightPane}>
+            <PreviewPanel session={session} format={format} projectName={projectName} />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={styles.footer}>
+          <div style={styles.footerInfo}>
+            <span style={styles.footerItemCount}>
+              {session.feedbackItems.length} items
+            </span>
+            <span style={styles.footerDot}>*</span>
+            <span style={styles.footerFormat}>
+              {selectedFormat.name} ({selectedFormat.extension})
+            </span>
+          </div>
+
+          <div style={styles.footerActions}>
+            <button onClick={onClose} style={styles.cancelButton} disabled={isExporting}>
+              Cancel
+            </button>
+            <button
+              onClick={handleExport}
+              style={{
+                ...styles.exportButton,
+                opacity: isExporting ? 0.7 : 1,
+              }}
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <>
+                  <span style={{ animation: 'export-spin 1s linear infinite', display: 'inline-flex' }}>
+                    <SpinnerIcon />
+                  </span>
+                  <span>Exporting...</span>
+                </>
+              ) : exportSuccess ? (
+                <>
+                  <span style={{ animation: 'export-success 0.3s ease-out' }}>
+                    <CheckIcon />
+                  </span>
+                  <span>Exported!</span>
+                </>
+              ) : (
+                <>
+                  <span>Export as {selectedFormat.name}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// Styles
+// ============================================================================
+
+const styles: Record<string, React.CSSProperties> = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    backdropFilter: 'blur(4px)',
+  },
+
+  dialog: {
+    width: '90%',
+    maxWidth: 900,
+    maxHeight: '85vh',
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    border: '1px solid rgba(51, 65, 85, 0.5)',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+    animation: 'export-dialog-enter 0.2s ease-out',
+  },
+
+  // Header
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '16px 20px',
+    borderBottom: '1px solid rgba(51, 65, 85, 0.5)',
+  },
+
+  title: {
+    fontSize: 18,
+    fontWeight: 600,
+    color: '#ffffff',
+    margin: 0,
+  },
+
+  closeButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 32,
+    height: 32,
+    padding: 0,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 8,
+    color: '#94a3b8',
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+
+  // Content
+  content: {
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden',
+  },
+
+  leftPane: {
+    width: '55%',
+    padding: 20,
+    overflowY: 'auto',
+    borderRight: '1px solid rgba(51, 65, 85, 0.5)',
+  },
+
+  rightPane: {
+    width: '45%',
+    padding: 20,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: 12,
+  },
+
+  // Format Grid
+  formatGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: 12,
+    marginBottom: 24,
+  },
+
+  formatCard: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    border: '1px solid',
+    cursor: 'pointer',
+    textAlign: 'left',
+    transition: 'all 0.15s ease',
+    position: 'relative',
+  },
+
+  formatIcon: {
+    flexShrink: 0,
+    width: 40,
+    height: 40,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderRadius: 10,
+    color: '#60a5fa',
+  },
+
+  formatInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  formatHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+
+  formatName: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#ffffff',
+  },
+
+  formatExtension: {
+    fontSize: 11,
+    color: '#64748b',
+    fontFamily: 'ui-monospace, monospace',
+  },
+
+  formatDescription: {
+    fontSize: 12,
+    color: '#94a3b8',
+    margin: 0,
+    lineHeight: 1.4,
+    marginBottom: 8,
+  },
+
+  formatFeatures: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+
+  featureTag: {
+    fontSize: 10,
+    color: '#64748b',
+    backgroundColor: 'rgba(51, 65, 85, 0.5)',
+    padding: '2px 6px',
+    borderRadius: 4,
+  },
+
+  selectedBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3b82f6',
+    borderRadius: '50%',
+    color: '#ffffff',
+  },
+
+  // Options
+  optionsSection: {
+    marginTop: 8,
+  },
+
+  optionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 0',
+    borderBottom: '1px solid rgba(51, 65, 85, 0.3)',
+  },
+
+  optionLabel: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: '#e2e8f0',
+  },
+
+  textInput: {
+    width: 200,
+    padding: '8px 12px',
+    backgroundColor: 'rgba(31, 41, 55, 0.5)',
+    border: '1px solid rgba(51, 65, 85, 0.5)',
+    borderRadius: 8,
+    color: '#f1f5f9',
+    fontSize: 13,
+    outline: 'none',
+    transition: 'border-color 0.15s ease',
+  },
+
+  toggleButton: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    border: 'none',
+    cursor: 'pointer',
+    position: 'relative',
+    transition: 'background-color 0.2s ease',
+    padding: 2,
+  },
+
+  toggleKnob: {
+    width: 20,
+    height: 20,
+    backgroundColor: '#ffffff',
+    borderRadius: '50%',
+    transition: 'transform 0.2s ease',
+    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+  },
+
+  themeToggle: {
+    display: 'flex',
+    backgroundColor: 'rgba(31, 41, 55, 0.5)',
+    borderRadius: 8,
+    padding: 2,
+  },
+
+  themeButton: {
+    padding: '6px 12px',
+    borderRadius: 6,
+    border: 'none',
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+
+  // Preview
+  previewPanel: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    backgroundColor: 'rgba(31, 41, 55, 0.3)',
+    borderRadius: 12,
+    border: '1px solid rgba(51, 65, 85, 0.5)',
+    overflow: 'hidden',
+  },
+
+  previewHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 14px',
+    borderBottom: '1px solid rgba(51, 65, 85, 0.5)',
+  },
+
+  previewTitle: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+  },
+
+  previewFormat: {
+    fontSize: 10,
+    fontWeight: 600,
+    color: '#3b82f6',
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    padding: '2px 8px',
+    borderRadius: 4,
+  },
+
+  previewContent: {
+    flex: 1,
+    padding: 14,
+    margin: 0,
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: '#94a3b8',
+    fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+    whiteSpace: 'pre-wrap',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    wordBreak: 'break-word',
+  },
+
+  // Footer
+  footer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '14px 20px',
+    borderTop: '1px solid rgba(51, 65, 85, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+  },
+
+  footerInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 12,
+    color: '#64748b',
+  },
+
+  footerItemCount: {
+    fontWeight: 500,
+  },
+
+  footerDot: {
+    opacity: 0.5,
+  },
+
+  footerFormat: {
+    color: '#94a3b8',
+  },
+
+  footerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  cancelButton: {
+    padding: '10px 16px',
+    backgroundColor: 'transparent',
+    border: '1px solid rgba(51, 65, 85, 0.5)',
+    borderRadius: 8,
+    color: '#94a3b8',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+
+  exportButton: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 20px',
+    backgroundColor: '#3b82f6',
+    border: 'none',
+    borderRadius: 8,
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+  },
+};
+
+export { ExportDialog };
+export type { ExportDialogProps, ExportOptions, ExportFormat };

@@ -6,11 +6,19 @@
  * - Screenshot embedding (base64)
  * - Timestamp formatting
  * - Clipboard integration
+ * - File output management
  */
 
 import type { FeedbackSession, OutputDocument, Screenshot, TranscriptionSegment } from '../../shared/types';
+import { clipboardService, type ClipboardService, type SummaryOptions } from './ClipboardService';
+import type { Session } from '../SessionController';
 
 export class OutputManager {
+  private clipboard: ClipboardService;
+
+  constructor() {
+    this.clipboard = clipboardService;
+  }
   /**
    * Generate a Markdown document from a feedback session
    */
@@ -92,6 +100,87 @@ export class OutputManager {
       second: '2-digit',
     });
   }
+
+  /**
+   * Copy a summary of the session to clipboard with notification
+   */
+  async copySessionSummary(
+    session: Session,
+    reportPath?: string
+  ): Promise<boolean> {
+    const summary = this.clipboard.generateClipboardSummary(session, {
+      mode: 'compact',
+      maxLength: 1500,
+      includeReportPath: !!reportPath,
+      reportPath,
+    });
+
+    return this.clipboard.copyWithNotification(
+      summary,
+      'Feedback Captured!'
+    );
+  }
+
+  /**
+   * Copy custom content to clipboard with notification
+   */
+  async copyToClipboard(content: string, title?: string): Promise<boolean> {
+    return this.clipboard.copyWithNotification(content, title);
+  }
+
+  /**
+   * Get the clipboard service for direct access
+   */
+  getClipboardService(): ClipboardService {
+    return this.clipboard;
+  }
 }
 
+// Singleton instance
+export const outputManager = new OutputManager();
+
 export default OutputManager;
+
+// Re-export clipboard service types and instance
+export { clipboardService, type ClipboardService, type SummaryOptions } from './ClipboardService';
+
+// Re-export file manager types and instance
+export { FileManager, fileManager, type SaveResult, type MarkdownDocument } from './FileManager';
+
+// Re-export new llms.txt-inspired markdown generator
+export {
+  markdownGenerator,
+  MarkdownGenerator,
+  adaptFeedbackSession,
+  type IMarkdownGenerator,
+  type Session as MarkdownSession,
+  type FeedbackItem,
+  type FeedbackCategory,
+  type FeedbackSeverity,
+  type GenerateOptions,
+  type MarkdownDocument as EnhancedMarkdownDocument,
+  type SessionMetadata,
+} from './MarkdownGenerator';
+
+// Re-export session adapter for type conversion
+export {
+  adaptSessionForMarkdown,
+  generateDocumentForFileManager,
+  generateClipboardSummary,
+} from './sessionAdapter';
+
+// Re-export export service for multi-format export
+export {
+  exportService,
+  ExportService,
+  generateHtmlDocument,
+  type ExportFormat,
+  type ExportOptions,
+  type ExportResult,
+  type PdfOptions,
+  type HtmlOptions,
+  type JsonOptions,
+  type MarkdownOptions,
+  type JsonExportSchema,
+  type HtmlExportOptions,
+} from './ExportService';

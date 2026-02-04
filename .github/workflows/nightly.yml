@@ -1,0 +1,288 @@
+# =============================================================================
+# FeedbackFlow Nightly Builds
+# =============================================================================
+# Runs every day at 2am UTC
+# Builds beta versions for testing
+# Uploads to a separate "nightly" release
+# =============================================================================
+
+name: Nightly
+
+on:
+  schedule:
+    # Run at 2am UTC every day
+    - cron: '0 2 * * *'
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      force-build:
+        description: 'Force build even if no changes'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ===========================================================================
+  # Check for Changes
+  # ===========================================================================
+  check-changes:
+    name: Check for Changes
+    runs-on: ubuntu-latest
+    outputs:
+      should-build: ${{ steps.check.outputs.should-build }}
+      nightly-version: ${{ steps.version.outputs.nightly-version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes in last 24 hours
+        id: check
+        run: |
+          # Check if there are commits in the last 24 hours
+          COMMITS=$(git log --since="24 hours ago" --oneline | wc -l)
+
+          if [ "$COMMITS" -gt 0 ] || [ "${{ github.event.inputs.force-build }}" = "true" ]; then
+            echo "should-build=true" >> $GITHUB_OUTPUT
+            echo "Found $COMMITS commits in last 24 hours, building nightly"
+          else
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            echo "No commits in last 24 hours, skipping nightly build"
+          fi
+
+      - name: Generate nightly version
+        id: version
+        if: steps.check.outputs.should-build == 'true'
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          DATE=$(date +%Y%m%d)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${DATE}.${SHORT_SHA}"
+
+          echo "nightly-version=$NIGHTLY_VERSION" >> $GITHUB_OUTPUT
+          echo "Nightly version: $NIGHTLY_VERSION"
+
+  # ===========================================================================
+  # Build macOS Nightly
+  # ===========================================================================
+  build-macos:
+    name: Build macOS Nightly
+    runs-on: macos-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.should-build == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version for nightly
+        run: |
+          npm version ${{ needs.check-changes.outputs.nightly-version }} --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      # Build unsigned for nightly (no code signing)
+      - name: Package macOS (unsigned)
+        run: npm run package:mac:unsigned
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Rename artifacts with nightly suffix
+        run: |
+          cd release
+          for f in *.dmg *.zip; do
+            if [ -f "$f" ]; then
+              mv "$f" "${f%.*}-nightly.${f##*.}"
+            fi
+          done
+          ls -la
+
+      - name: Upload macOS nightly artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-macos
+          path: |
+            release/*-nightly.dmg
+            release/*-nightly.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # ===========================================================================
+  # Build Windows Nightly
+  # ===========================================================================
+  build-windows:
+    name: Build Windows Nightly
+    runs-on: windows-latest
+    needs: check-changes
+    if: needs.check-changes.outputs.should-build == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Update version for nightly
+        run: |
+          npm version ${{ needs.check-changes.outputs.nightly-version }} --no-git-tag-version
+
+      - name: Build application
+        run: npm run build
+
+      # Build unsigned for nightly
+      - name: Package Windows (unsigned)
+        run: npm run package:win
+        env:
+          WIN_CSC_LINK: ''
+
+      - name: Rename artifacts with nightly suffix
+        shell: pwsh
+        run: |
+          cd release
+          Get-ChildItem -Filter "*.exe" | ForEach-Object {
+            $newName = $_.BaseName + "-nightly" + $_.Extension
+            Rename-Item $_.FullName $newName
+          }
+          Get-ChildItem
+
+      - name: Upload Windows nightly artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-windows
+          path: |
+            release/*-nightly.exe
+            release/*-nightly.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # ===========================================================================
+  # Create/Update Nightly Release
+  # ===========================================================================
+  publish-nightly:
+    name: Publish Nightly Release
+    runs-on: ubuntu-latest
+    needs: [check-changes, build-macos, build-windows]
+    if: needs.check-changes.outputs.should-build == 'true'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display artifact structure
+        run: find artifacts -type f
+
+      - name: Generate nightly release notes
+        run: |
+          cat > NIGHTLY_NOTES.md << 'EOF'
+          ## Nightly Build
+
+          **Version:** ${{ needs.check-changes.outputs.nightly-version }}
+          **Built:** $(date -u +"%Y-%m-%d %H:%M UTC")
+          **Commit:** ${{ github.sha }}
+
+          > **Warning**: Nightly builds are automatically generated from the latest code and may be unstable. Use at your own risk.
+
+          ### Recent Changes
+
+          EOF
+
+          git log --since="24 hours ago" --pretty=format:"- %s (%h)" >> NIGHTLY_NOTES.md || echo "- No changes in last 24 hours" >> NIGHTLY_NOTES.md
+
+          cat >> NIGHTLY_NOTES.md << 'EOF'
+
+          ### Downloads
+
+          | Platform | Download |
+          |----------|----------|
+          | macOS | See assets below |
+          | Windows | See assets below |
+
+          ### Checksums
+
+          ```
+          EOF
+
+          find artifacts -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) -exec sha256sum {} \; >> NIGHTLY_NOTES.md
+
+          echo '```' >> NIGHTLY_NOTES.md
+
+          cat NIGHTLY_NOTES.md
+
+      # Delete existing nightly release if it exists
+      - name: Delete existing nightly release
+        uses: dev-drprasad/delete-tag-and-release@v1.1
+        with:
+          tag_name: nightly
+          delete_release: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Create nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: FeedbackFlow Nightly (${{ needs.check-changes.outputs.nightly-version }})
+          body_path: NIGHTLY_NOTES.md
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/nightly-macos/*
+            artifacts/nightly-windows/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Nightly Summary
+        run: |
+          echo "## Nightly Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.check-changes.outputs.nightly-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts Published" >> $GITHUB_STEP_SUMMARY
+          find artifacts -type f \( -name "*.dmg" -o -name "*.exe" -o -name "*.zip" \) | while read f; do
+            echo "- $(basename $f)" >> $GITHUB_STEP_SUMMARY
+          done
+
+  # ===========================================================================
+  # Notify on Failure
+  # ===========================================================================
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [build-macos, build-windows, publish-nightly]
+    if: failure()
+    steps:
+      - name: Create failure summary
+        run: |
+          echo "## Nightly Build Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The nightly build failed. Please check the logs for details." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY

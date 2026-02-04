@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Recording state - red dot indicator -->
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Screenshot frame -->
+  <rect x="2" y="4" width="12" height="10" rx="1.5" stroke="black" stroke-width="1.5" fill="none"/>
+
+  <!-- Code lines -->
+  <line x1="4" y1="7" x2="9" y2="7" stroke="black" stroke-width="1" stroke-linecap="round"/>
+  <line x1="4" y1="10" x2="11" y2="10" stroke="black" stroke-width="1" stroke-linecap="round"/>
+
+  <!-- Microphone circle with filled state -->
+  <circle cx="16" cy="13" r="4" fill="black"/>
+
+  <!-- Mic element (white on dark) -->
+  <rect x="14.75" y="11" width="2.5" height="3" rx="1.25" fill="white"/>
+
+  <!-- Recording indicator dot (red) -->
+  <circle cx="18" cy="5" r="3" fill="#EF4444"/>
+</svg>

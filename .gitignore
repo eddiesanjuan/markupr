@@ -31,8 +31,12 @@ Thumbs.db
 # Testing
 coverage/
 
-# Certificates
+# Certificates and signing
 *.pem
+*.p12
+*.cer
+*.provisionprofile
+certificate-base64.txt
 
 # Electron builder
 /app-builds/

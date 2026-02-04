@@ -1,0 +1,516 @@
+/**
+ * FeedbackFlow Global Styles
+ *
+ * Premium, Apple/Linear quality design system.
+ * Uses CSS custom properties for runtime theme switching.
+ */
+
+/* ============================================================================
+   Font Imports
+   ============================================================================ */
+
+/* Inter - Primary UI font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* JetBrains Mono - Monospace font (optional, for code) */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ============================================================================
+   CSS Reset & Base
+   ============================================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  /* Prevent font size inflation on mobile */
+  -moz-text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+
+  /* Smooth scrolling */
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+
+  /* Theme colors via CSS custom properties */
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+
+  /* Smooth theme transitions */
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Remove default button styling */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* Remove default input styling */
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Remove list styles */
+ul,
+ol {
+  list-style: none;
+}
+
+/* Remove anchor styling */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Images */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Inherit fonts for form elements */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+}
+
+/* Avoid text overflows */
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+/* ============================================================================
+   Typography Utilities
+   ============================================================================ */
+
+.text-2xs { font-size: 0.625rem; }
+.text-xs { font-size: 0.75rem; }
+.text-sm { font-size: 0.875rem; }
+.text-base { font-size: 1rem; }
+.text-lg { font-size: 1.125rem; }
+.text-xl { font-size: 1.25rem; }
+.text-2xl { font-size: 1.5rem; }
+.text-3xl { font-size: 1.875rem; }
+.text-4xl { font-size: 2.25rem; }
+.text-5xl { font-size: 3rem; }
+
+.font-normal { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+.leading-none { line-height: 1; }
+.leading-tight { line-height: 1.25; }
+.leading-snug { line-height: 1.375; }
+.leading-normal { line-height: 1.5; }
+.leading-relaxed { line-height: 1.625; }
+
+.tracking-tighter { letter-spacing: -0.05em; }
+.tracking-tight { letter-spacing: -0.025em; }
+.tracking-normal { letter-spacing: 0; }
+.tracking-wide { letter-spacing: 0.025em; }
+.tracking-wider { letter-spacing: 0.05em; }
+
+.font-mono {
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, monospace;
+}
+
+/* ============================================================================
+   Color Utilities
+   ============================================================================ */
+
+/* Text colors */
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+.text-inverse { color: var(--text-inverse); }
+.text-link { color: var(--text-link); }
+.text-accent { color: var(--accent-default); }
+
+/* Background colors */
+.bg-primary { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-tertiary { background-color: var(--bg-tertiary); }
+.bg-elevated { background-color: var(--bg-elevated); }
+.bg-subtle { background-color: var(--bg-subtle); }
+.bg-accent { background-color: var(--accent-default); }
+.bg-accent-subtle { background-color: var(--accent-subtle); }
+
+/* Border colors */
+.border-default { border-color: var(--border-default); }
+.border-subtle { border-color: var(--border-subtle); }
+.border-strong { border-color: var(--border-strong); }
+.border-focus { border-color: var(--border-focus); }
+.border-accent { border-color: var(--accent-default); }
+
+/* Status colors */
+.text-success { color: var(--status-success); }
+.text-warning { color: var(--status-warning); }
+.text-error { color: var(--status-error); }
+.text-info { color: var(--status-info); }
+
+.bg-success { background-color: var(--status-success); }
+.bg-success-subtle { background-color: var(--status-success-subtle); }
+.bg-warning { background-color: var(--status-warning); }
+.bg-warning-subtle { background-color: var(--status-warning-subtle); }
+.bg-error { background-color: var(--status-error); }
+.bg-error-subtle { background-color: var(--status-error-subtle); }
+.bg-info { background-color: var(--status-info); }
+.bg-info-subtle { background-color: var(--status-info-subtle); }
+
+/* ============================================================================
+   Glass Morphism
+   ============================================================================ */
+
+.glass {
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--surface-glass-border);
+}
+
+.glass-subtle {
+  background: var(--surface-glass);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--surface-glass-border);
+}
+
+.glass-strong {
+  background: var(--surface-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--surface-glass-border);
+}
+
+/* ============================================================================
+   Focus States
+   ============================================================================ */
+
+/* Default focus outline - remove for mouse users */
+:focus {
+  outline: none;
+}
+
+/* Focus visible - show for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--accent-default);
+  outline-offset: 2px;
+}
+
+/* Custom focus ring class */
+.focus-ring:focus-visible {
+  box-shadow: 0 0 0 3px var(--border-focus);
+}
+
+/* ============================================================================
+   Interactive States
+   ============================================================================ */
+
+/* Hover background */
+.hover-bg:hover {
+  background-color: var(--bg-subtle);
+}
+
+/* Active state */
+.active-scale:active {
+  transform: scale(0.98);
+}
+
+/* Disabled state */
+.disabled,
+[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Scrollbar Styling
+   ============================================================================ */
+
+/* Thin scrollbar for all scrollable elements */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-default) transparent;
+}
+
+/* Webkit scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============================================================================
+   Selection
+   ============================================================================ */
+
+::selection {
+  background-color: var(--accent-muted);
+  color: var(--text-primary);
+}
+
+/* ============================================================================
+   Premium Elevation (Box Shadows)
+   ============================================================================ */
+
+.shadow-xs {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.shadow-sm {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-md {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-lg {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-xl {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+.shadow-2xl {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.shadow-inner {
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Accent glow */
+.shadow-glow {
+  box-shadow: 0 0 20px var(--accent-muted);
+}
+
+.shadow-glow-lg {
+  box-shadow: 0 0 40px var(--accent-muted);
+}
+
+/* ============================================================================
+   Border Radius
+   ============================================================================ */
+
+.rounded-none { border-radius: 0; }
+.rounded-sm { border-radius: 0.25rem; }
+.rounded { border-radius: 0.375rem; }
+.rounded-md { border-radius: 0.5rem; }
+.rounded-lg { border-radius: 0.75rem; }
+.rounded-xl { border-radius: 1rem; }
+.rounded-2xl { border-radius: 1.5rem; }
+.rounded-3xl { border-radius: 2rem; }
+.rounded-full { border-radius: 9999px; }
+
+/* ============================================================================
+   Transitions
+   ============================================================================ */
+
+.transition-none { transition: none; }
+.transition-all { transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+.transition-colors {
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+.transition-opacity { transition: opacity 200ms ease; }
+.transition-transform { transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1); }
+.transition-shadow { transition: box-shadow 200ms ease; }
+
+/* Durations */
+.duration-75 { transition-duration: 75ms; }
+.duration-100 { transition-duration: 100ms; }
+.duration-150 { transition-duration: 150ms; }
+.duration-200 { transition-duration: 200ms; }
+.duration-300 { transition-duration: 300ms; }
+.duration-500 { transition-duration: 500ms; }
+
+/* Easings */
+.ease-linear { transition-timing-function: linear; }
+.ease-in { transition-timing-function: ease-in; }
+.ease-out { transition-timing-function: ease-out; }
+.ease-in-out { transition-timing-function: ease-in-out; }
+.ease-spring { transition-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.ease-bounce { transition-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55); }
+
+/* ============================================================================
+   Z-Index Scale
+   ============================================================================ */
+
+.z-behind { z-index: -1; }
+.z-base { z-index: 0; }
+.z-dropdown { z-index: 10; }
+.z-sticky { z-index: 20; }
+.z-fixed { z-index: 30; }
+.z-overlay { z-index: 40; }
+.z-modal { z-index: 50; }
+.z-popover { z-index: 60; }
+.z-tooltip { z-index: 70; }
+.z-toast { z-index: 80; }
+.z-max { z-index: 9999; }
+
+/* ============================================================================
+   Common Components
+   ============================================================================ */
+
+/* Card */
+.card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.card-elevated {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.badge-accent {
+  background-color: var(--accent-subtle);
+  color: var(--accent-default);
+}
+
+.badge-success {
+  background-color: var(--status-success-subtle);
+  color: var(--status-success);
+}
+
+.badge-warning {
+  background-color: var(--status-warning-subtle);
+  color: var(--status-warning);
+}
+
+.badge-error {
+  background-color: var(--status-error-subtle);
+  color: var(--status-error);
+}
+
+/* Divider */
+.divider {
+  height: 1px;
+  background-color: var(--border-default);
+  margin: 1rem 0;
+}
+
+.divider-vertical {
+  width: 1px;
+  height: 100%;
+  background-color: var(--border-default);
+  margin: 0 0.5rem;
+}
+
+/* ============================================================================
+   Electron-Specific Styles
+   ============================================================================ */
+
+/* Drag region for title bar */
+.drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* Prevent text selection in UI */
+.select-none {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Allow text selection */
+.select-text {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ============================================================================
+   Reduced Motion
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

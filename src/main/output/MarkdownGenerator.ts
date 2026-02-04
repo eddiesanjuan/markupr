@@ -1,0 +1,484 @@
+/**
+ * MarkdownGenerator - AI-Ready Output Generator for FeedbackFlow
+ *
+ * Generates structured Markdown documents following llms.txt-inspired format.
+ * Designed to be easily parsed by AI coding assistants like Claude Code.
+ *
+ * Features:
+ * - Full document with all feedback items, screenshots, and metadata
+ * - Clipboard summary (<1500 chars) for quick sharing
+ * - File references for images (no base64 bloat)
+ * - Consistent FB-XXX item numbering
+ */
+
+import type { FeedbackSession, Screenshot, TranscriptionSegment } from '../../shared/types';
+
+// ============================================================================
+// Types for Enhanced Output Generation
+// ============================================================================
+
+/**
+ * Category types for feedback items
+ */
+export type FeedbackCategory = 'Bug' | 'UX Issue' | 'Suggestion' | 'Question' | 'General';
+
+/**
+ * Severity levels for prioritization
+ */
+export type FeedbackSeverity = 'Critical' | 'High' | 'Medium' | 'Low';
+
+/**
+ * A single feedback item with transcription and associated screenshots
+ */
+export interface FeedbackItem {
+  id: string;
+  transcription: string;
+  timestamp: number;
+  screenshots: Screenshot[];
+  category?: FeedbackCategory;
+  severity?: FeedbackSeverity;
+}
+
+/**
+ * Session metadata for context
+ */
+export interface SessionMetadata {
+  os?: string;
+  sourceName?: string;
+  sourceType?: 'screen' | 'window';
+}
+
+/**
+ * Enhanced session structure for markdown generation
+ */
+export interface Session {
+  id: string;
+  startTime: number;
+  endTime?: number;
+  feedbackItems: FeedbackItem[];
+  metadata?: SessionMetadata;
+}
+
+/**
+ * Options for generating the full markdown document
+ */
+export interface GenerateOptions {
+  projectName: string;
+  screenshotDir: string; // Relative path for image references
+}
+
+/**
+ * The generated markdown document with metadata
+ */
+export interface MarkdownDocument {
+  content: string;
+  filename: string;
+  metadata: {
+    itemCount: number;
+    screenshotCount: number;
+    duration: number;
+    types: Record<string, number>;
+  };
+}
+
+/**
+ * Interface for the MarkdownGenerator
+ */
+export interface IMarkdownGenerator {
+  generateFullDocument(session: Session, options: GenerateOptions): MarkdownDocument;
+  generateClipboardSummary(session: Session, projectName?: string): string;
+  generateFeedbackItemId(index: number): string;
+}
+
+// ============================================================================
+// Adapter: Convert FeedbackSession to Session
+// ============================================================================
+
+/**
+ * Convert the existing FeedbackSession type to the enhanced Session type.
+ * Groups transcription segments with their associated screenshots.
+ */
+export function adaptFeedbackSession(
+  feedbackSession: FeedbackSession,
+  options?: { pauseThresholdMs?: number }
+): Session {
+  const pauseThreshold = options?.pauseThresholdMs ?? 1500;
+  const { id, startedAt, endedAt, screenshots, transcription } = feedbackSession;
+
+  // Group transcription segments into feedback items
+  // A new item starts when there's a significant pause between segments
+  const feedbackItems: FeedbackItem[] = [];
+  let currentItem: FeedbackItem | null = null;
+
+  const sortedTranscription = [...transcription].sort((a, b) => a.startTime - b.startTime);
+  const sortedScreenshots = [...screenshots].sort((a, b) => a.timestamp - b.timestamp);
+
+  for (const segment of sortedTranscription) {
+    const shouldStartNewItem =
+      !currentItem ||
+      (segment.startTime - (currentItem.timestamp + getPreviousSegmentDuration(currentItem, sortedTranscription))) > pauseThreshold;
+
+    if (shouldStartNewItem) {
+      // Save previous item
+      if (currentItem) {
+        feedbackItems.push(currentItem);
+      }
+
+      // Start new item
+      currentItem = {
+        id: `item-${feedbackItems.length + 1}`,
+        transcription: segment.text,
+        timestamp: segment.startTime,
+        screenshots: [],
+        category: inferCategory(segment.text),
+      };
+    } else if (currentItem) {
+      // Continue current item
+      currentItem.transcription += ' ' + segment.text;
+    }
+  }
+
+  // Don't forget the last item
+  if (currentItem) {
+    feedbackItems.push(currentItem);
+  }
+
+  // Associate screenshots with feedback items
+  for (const screenshot of sortedScreenshots) {
+    // Find the feedback item that this screenshot belongs to
+    // (screenshot timestamp falls within or just after the item's timeframe)
+    const matchingItem = findMatchingItem(feedbackItems, screenshot.timestamp, pauseThreshold);
+    if (matchingItem) {
+      matchingItem.screenshots.push(screenshot);
+    } else if (feedbackItems.length > 0) {
+      // Associate with the last item if no match found
+      feedbackItems[feedbackItems.length - 1].screenshots.push(screenshot);
+    }
+  }
+
+  return {
+    id,
+    startTime: startedAt,
+    endTime: endedAt,
+    feedbackItems,
+    metadata: {
+      os: process?.platform || 'Unknown',
+      sourceName: 'FeedbackFlow Session',
+      sourceType: 'screen',
+    },
+  };
+}
+
+function getPreviousSegmentDuration(item: FeedbackItem, _allSegments: TranscriptionSegment[]): number {
+  // Estimate duration based on transcription length (rough: 150 words/min)
+  const words = item.transcription.split(/\s+/).length;
+  return (words / 150) * 60 * 1000; // ms
+}
+
+function findMatchingItem(
+  items: FeedbackItem[],
+  timestamp: number,
+  threshold: number
+): FeedbackItem | undefined {
+  // Find item where screenshot timestamp is within item timeframe + threshold
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    const estimatedDuration = (item.transcription.split(/\s+/).length / 150) * 60 * 1000;
+    const itemEnd = item.timestamp + estimatedDuration + threshold;
+
+    if (timestamp >= item.timestamp && timestamp <= itemEnd) {
+      return item;
+    }
+  }
+  return undefined;
+}
+
+function inferCategory(text: string): FeedbackCategory {
+  const lowerText = text.toLowerCase();
+
+  if (lowerText.includes('bug') || lowerText.includes('broken') || lowerText.includes('error') ||
+      lowerText.includes('crash') || lowerText.includes('doesn\'t work') || lowerText.includes('not working')) {
+    return 'Bug';
+  }
+
+  if (lowerText.includes('confusing') || lowerText.includes('hard to') || lowerText.includes('unclear') ||
+      lowerText.includes('ux') || lowerText.includes('user experience') || lowerText.includes('usability')) {
+    return 'UX Issue';
+  }
+
+  if (lowerText.includes('should') || lowerText.includes('could') || lowerText.includes('would be nice') ||
+      lowerText.includes('suggestion') || lowerText.includes('feature') || lowerText.includes('add')) {
+    return 'Suggestion';
+  }
+
+  if (lowerText.includes('?') || lowerText.includes('how') || lowerText.includes('why') ||
+      lowerText.includes('what') || lowerText.includes('question')) {
+    return 'Question';
+  }
+
+  return 'General';
+}
+
+// ============================================================================
+// MarkdownGenerator Implementation
+// ============================================================================
+
+class MarkdownGeneratorImpl implements IMarkdownGenerator {
+  /**
+   * Generate a full markdown document with all feedback items and metadata.
+   * Follows llms.txt-inspired format for AI readability.
+   */
+  generateFullDocument(session: Session, options: GenerateOptions): MarkdownDocument {
+    const { projectName, screenshotDir } = options;
+    const items = session.feedbackItems;
+    const duration = session.endTime
+      ? this.formatDuration(session.endTime - session.startTime)
+      : 'In Progress';
+    const timestamp = this.formatTimestamp(session.endTime || Date.now());
+    const filename = this.generateFilename(projectName, session.startTime);
+
+    // Count types
+    const typeCounts = this.countTypes(items);
+    const screenshotCount = this.countScreenshots(items);
+
+    let content = `# ${projectName} Feedback Report
+> Generated by FeedbackFlow on ${timestamp}
+> Duration: ${duration} | Items: ${items.length} | Screenshots: ${screenshotCount}
+
+## Context
+- **Session ID:** \`${session.id}\`
+- **Environment:** ${session.metadata?.os || 'Unknown'}, capturing ${session.metadata?.sourceName || 'Unknown'}
+
+---
+
+## Feedback Items
+
+`;
+
+    items.forEach((item, index) => {
+      const id = this.generateFeedbackItemId(index);
+      const title = this.generateTitle(item.transcription);
+      const itemTimestamp = this.formatItemTimestamp(item.timestamp - session.startTime);
+      const category = item.category || 'General';
+
+      content += `### ${id}: ${title}
+**Type:** ${category}
+**Timestamp:** ${itemTimestamp}
+
+#### Feedback
+> ${this.wrapTranscription(item.transcription)}
+
+`;
+
+      if (item.screenshots.length > 0) {
+        content += `#### Screenshots\n`;
+        item.screenshots.forEach((ss, ssIndex) => {
+          const screenshotFilename = this.generateScreenshotFilename(id, ssIndex, item.screenshots.length);
+          content += `![${id}${item.screenshots.length > 1 ? `-${ssIndex + 1}` : ''}](${screenshotDir}/${screenshotFilename})\n`;
+        });
+        content += '\n';
+      }
+
+      content += `---
+
+`;
+    });
+
+    // Summary table
+    content += `## Summary
+
+| Type | Count |
+|------|-------|
+`;
+    Object.entries(typeCounts).forEach(([type, count]) => {
+      content += `| ${type} | ${count} |\n`;
+    });
+    content += `| **Total** | **${items.length}** |\n`;
+
+    content += `
+---
+*Generated by [FeedbackFlow](https://github.com/eddiesanjuan/feedbackflow)*
+`;
+
+    return {
+      content,
+      filename,
+      metadata: {
+        itemCount: items.length,
+        screenshotCount,
+        duration: session.endTime ? session.endTime - session.startTime : 0,
+        types: typeCounts,
+      },
+    };
+  }
+
+  /**
+   * Generate a clipboard-friendly summary (<1500 chars).
+   * Includes priority items and a reference to the full report.
+   */
+  generateClipboardSummary(session: Session, projectName?: string): string {
+    const name = projectName || session.metadata?.sourceName || 'Project';
+    const items = session.feedbackItems;
+
+    let summary = `# Feedback: ${name} - ${items.length} items\n\n`;
+
+    // Priority items (first 3)
+    const maxPriorityItems = 3;
+    summary += `## Priority Items\n`;
+
+    items.slice(0, maxPriorityItems).forEach((item, index) => {
+      const id = this.generateFeedbackItemId(index);
+      const title = this.generateTitle(item.transcription);
+      const oneLineSummary = this.truncateText(item.transcription, 60);
+      summary += `- **${id}:** ${title} - ${oneLineSummary}\n`;
+    });
+
+    if (items.length > maxPriorityItems) {
+      const remainingIds = items
+        .slice(maxPriorityItems)
+        .map((_, i) => this.generateFeedbackItemId(i + maxPriorityItems))
+        .join(', ');
+      summary += `\n## Other\n- ${remainingIds} (see full report)\n`;
+    }
+
+    summary += `\n**Full report:** ./feedback-report.md`;
+
+    // Ensure we stay under 1500 chars
+    if (summary.length > 1500) {
+      summary = summary.slice(0, 1497) + '...';
+    }
+
+    return summary;
+  }
+
+  /**
+   * Generate a feedback item ID (FB-001, FB-002, etc.)
+   */
+  generateFeedbackItemId(index: number): string {
+    return `FB-${(index + 1).toString().padStart(3, '0')}`;
+  }
+
+  // ==========================================================================
+  // Private Helper Methods
+  // ==========================================================================
+
+  /**
+   * Generate a title from the transcription (first sentence or 50 chars)
+   */
+  private generateTitle(transcription: string): string {
+    // Extract first sentence
+    const firstSentence = transcription.split(/[.!?]/)[0].trim();
+    if (firstSentence.length <= 50) return firstSentence;
+    return firstSentence.slice(0, 47) + '...';
+  }
+
+  /**
+   * Truncate text to specified length
+   */
+  private truncateText(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength - 3) + '...';
+  }
+
+  /**
+   * Wrap transcription for markdown blockquote (handle multi-line)
+   */
+  private wrapTranscription(transcription: string): string {
+    // Split by natural sentence breaks for readability
+    const sentences = transcription.match(/[^.!?]+[.!?]+/g) || [transcription];
+    if (sentences.length <= 2) return transcription;
+
+    // For longer transcriptions, add line breaks between sentences
+    return sentences.map(s => s.trim()).join('\n> ');
+  }
+
+  /**
+   * Format duration from milliseconds to M:SS
+   */
+  private formatDuration(ms: number): string {
+    const totalSeconds = Math.floor(ms / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Format timestamp to locale string
+   */
+  private formatTimestamp(ms: number): string {
+    return new Date(ms).toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  /**
+   * Format item timestamp as MM:SS from session start
+   */
+  private formatItemTimestamp(ms: number): string {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Generate filename following pattern: {project}-feedback-{YYYYMMDD-HHmmss}.md
+   */
+  private generateFilename(projectName: string, startTime: number): string {
+    const date = new Date(startTime);
+    const year = date.getFullYear();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+
+    const dateStr = `${year}${month}${day}`;
+    const timeStr = `${hours}${minutes}${seconds}`;
+    const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+
+    return `${safeName}-feedback-${dateStr}-${timeStr}.md`;
+  }
+
+  /**
+   * Generate screenshot filename for a feedback item
+   */
+  private generateScreenshotFilename(itemId: string, index: number, total: number): string {
+    const suffix = total > 1 ? `-${index + 1}` : '';
+    return `${itemId.toLowerCase()}${suffix}.png`;
+  }
+
+  /**
+   * Count feedback items by type/category
+   */
+  private countTypes(items: FeedbackItem[]): Record<string, number> {
+    return items.reduce((acc, item) => {
+      const type = item.category || 'General';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }
+
+  /**
+   * Count total screenshots across all items
+   */
+  private countScreenshots(items: FeedbackItem[]): number {
+    return items.reduce((sum, item) => sum + item.screenshots.length, 0);
+  }
+}
+
+// ============================================================================
+// Exports
+// ============================================================================
+
+/**
+ * Singleton instance for easy import
+ */
+export const markdownGenerator = new MarkdownGeneratorImpl();
+
+// Re-export the class for testing
+export { MarkdownGeneratorImpl as MarkdownGenerator };

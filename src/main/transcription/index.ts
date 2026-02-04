@@ -1,107 +1,75 @@
 /**
  * Transcription Module
  *
- * Handles:
- * - Real-time transcription via Deepgram WebSocket API
- * - Interim and final transcript handling
- * - Transcript segment management
+ * Three-Tier Transcription System:
+ * - Tier 1: Deepgram (cloud, optional, best quality)
+ * - Tier 2: Local Whisper (default)
+ * - Tier 3: macOS Dictation (fallback)
+ * - Tier 4: Timer-only (emergency)
+ *
+ * The TierManager orchestrates tier selection and failover.
+ * App works WITHOUT any API keys using local Whisper.
  */
 
-import type { TranscriptionSegment } from '../../shared/types';
+// ============================================================================
+// Primary API - TierManager (use this for transcription)
+// ============================================================================
 
-export interface TranscriptionEvents {
-  onInterim: (text: string) => void;
-  onFinal: (segment: TranscriptionSegment) => void;
-  onError: (error: Error) => void;
-}
+export { TierManager, tierManager } from './TierManager';
 
-export class TranscriptionManager {
-  private apiKey: string;
-  private segments: TranscriptionSegment[] = [];
-  private isConnected = false;
+// ============================================================================
+// Supporting Services
+// ============================================================================
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-  }
+// Deepgram (Tier 1)
+export {
+  TranscriptionService,
+  transcriptionService,
+  type AudioChunk,
+  type TranscriptResult,
+  type TranscriptWord,
+  type TranscriptionServiceConfig,
+} from './TranscriptionService';
 
-  /**
-   * Connect to Deepgram and start transcription
-   */
-  async connect(events: TranscriptionEvents): Promise<void> {
-    if (!this.apiKey) {
-      events.onError(new Error('Deepgram API key not configured'));
-      return;
-    }
+// Whisper (Tier 2)
+export { WhisperService, whisperService } from './WhisperService';
 
-    // TODO: Implement Deepgram WebSocket connection
-    // Using @deepgram/sdk for real-time transcription
-    //
-    // const deepgram = createClient(this.apiKey);
-    // const connection = deepgram.listen.live({
-    //   model: 'nova-2',
-    //   smart_format: true,
-    //   interim_results: true,
-    //   punctuate: true,
-    // });
-    //
-    // connection.on('Results', (data) => {
-    //   const transcript = data.channel.alternatives[0].transcript;
-    //   if (data.is_final) {
-    //     events.onFinal(...)
-    //   } else {
-    //     events.onInterim(transcript)
-    //   }
-    // });
+// Silence Detection (for non-Deepgram tiers)
+export { SilenceDetector, silenceDetector } from './SilenceDetector';
 
-    this.isConnected = true;
-    console.log('[TranscriptionManager] Connected to Deepgram');
-  }
+// Model Management
+export { ModelDownloadManager, modelDownloadManager } from './ModelDownloadManager';
 
-  /**
-   * Send audio data to Deepgram
-   */
-  sendAudio(audioData: ArrayBuffer): void {
-    if (!this.isConnected) {
-      return;
-    }
+// ============================================================================
+// Types
+// ============================================================================
 
-    // TODO: Send audio data via WebSocket
-    // connection.send(audioData);
-  }
+export type {
+  // Tier types
+  TranscriptionTier,
+  WhisperModel,
+  TierStatus,
+  TierQuality,
+  // Event types
+  TranscriptEvent,
+  PauseEvent,
+  WhisperTranscriptResult,
+  WhisperConfig,
+  // Model types
+  ModelInfo,
+  DownloadProgress,
+  DownloadResult,
+  // Silence detection
+  SilenceDetectorConfig,
+  // Callbacks
+  TranscriptCallback,
+  PauseCallback,
+  TierChangeCallback,
+  ErrorCallback,
+  ProgressCallback,
+  CompleteCallback,
+  SilenceCallback,
+} from './types';
 
-  /**
-   * Disconnect from Deepgram
-   */
-  disconnect(): void {
-    if (!this.isConnected) {
-      return;
-    }
-
-    // TODO: Close WebSocket connection
-    this.isConnected = false;
-    console.log('[TranscriptionManager] Disconnected from Deepgram');
-  }
-
-  /**
-   * Get all transcription segments
-   */
-  getSegments(): TranscriptionSegment[] {
-    return [...this.segments];
-  }
-
-  /**
-   * Get full transcript as a single string
-   */
-  getFullTranscript(): string {
-    return this.segments.map((s) => s.text).join(' ');
-  }
-
-  /**
-   * Clear all segments
-   */
-  clear(): void {
-    this.segments = [];
-  }
-}
-
-export default TranscriptionManager;
+// Re-export types from shared for convenience
+export type { TranscriptionSegment } from '../../shared/types';

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Allow JIT compilation for V8/Electron -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!-- Allow unsigned executable memory (required for Electron) -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- Disable library validation (required for native modules like keytar) -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- Microphone access for voice capture -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+
+  <!-- Camera access (disabled - not needed for FeedbackFlow) -->
+  <key>com.apple.security.device.camera</key>
+  <false/>
+
+  <!-- AppleScript automation (for potential future integrations) -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+
+  <!-- Screen capture capability -->
+  <key>com.apple.security.personal-information.photos-library</key>
+  <false/>
+
+  <!-- File system access for saving feedback -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Network access for Deepgram API -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>

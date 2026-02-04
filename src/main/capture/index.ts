@@ -3,20 +3,35 @@
  *
  * Handles:
  * - Full screen capture using Electron's desktopCapturer
+ * - Multi-monitor support with display detection
  * - Screenshot timing based on voice pause detection
  * - Image compression and storage
+ * - Display hotplug events
  */
 
+// Re-export everything from ScreenCapture for external use
+export {
+  screenCapture,
+  ScreenCaptureServiceImpl,
+  type CaptureSource,
+  type Screenshot,
+  type DisplayInfo,
+  type DisplayChangeCallback,
+  type ScreenCaptureService,
+} from './ScreenCapture';
+
+// Legacy CaptureManager for backwards compatibility
 import { desktopCapturer, screen } from 'electron';
-import type { Screenshot } from '../../shared/types';
+import type { Screenshot as SharedScreenshot } from '../../shared/types';
 
 export class CaptureManager {
-  private screenshots: Screenshot[] = [];
+  private screenshots: SharedScreenshot[] = [];
 
   /**
    * Capture the current screen
+   * @deprecated Use screenCapture.captureScreen() instead
    */
-  async captureScreen(): Promise<Screenshot> {
+  async captureScreen(): Promise<SharedScreenshot> {
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: screen.getPrimaryDisplay().size,
@@ -27,7 +42,7 @@ export class CaptureManager {
       throw new Error('No screen source available');
     }
 
-    const screenshot: Screenshot = {
+    const screenshot: SharedScreenshot = {
       id: `screenshot-${Date.now()}`,
       timestamp: Date.now(),
       imagePath: '', // TODO: Save to temp directory
@@ -43,7 +58,7 @@ export class CaptureManager {
   /**
    * Get all captured screenshots
    */
-  getScreenshots(): Screenshot[] {
+  getScreenshots(): SharedScreenshot[] {
     return [...this.screenshots];
   }
 

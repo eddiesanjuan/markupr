@@ -1,0 +1,136 @@
+# electron-builder.yml
+# macOS Distribution Configuration for FeedbackFlow
+# Version: 0.4.0
+
+appId: com.eddiesanjuan.feedbackflow
+productName: FeedbackFlow
+copyright: Copyright 2026 Eddie San Juan
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: assets
+    to: assets
+    filter:
+      - "**/*"
+  # Windows taskbar icons (overlay and thumbnail toolbar)
+  - from: build
+    to: build
+    filter:
+      - "overlay-*.png"
+      - "toolbar-*.png"
+
+# =============================================================================
+# macOS Configuration
+# =============================================================================
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  # Hide from dock and Cmd+Tab - pure menu bar app
+  extendInfo:
+    LSUIElement: true
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+# =============================================================================
+# DMG Installer Configuration
+# =============================================================================
+dmg:
+  background: build/dmg-background.png
+  iconSize: 100
+  iconTextSize: 12
+  window:
+    width: 660
+    height: 400
+  contents:
+    - x: 180
+      y: 170
+      type: file
+    - x: 480
+      y: 170
+      type: link
+      path: /Applications
+  title: "Install FeedbackFlow"
+  artifactName: "FeedbackFlow-${version}-${arch}.dmg"
+
+# =============================================================================
+# Windows Configuration
+# =============================================================================
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64, ia32]
+    - target: portable
+      arch: [x64]
+  publisherName: "FeedbackFlow"
+  verifyUpdateCodeSignature: false
+  # File associations
+  fileAssociations:
+    - ext: feedbackflow
+      name: FeedbackFlow Session
+      description: FeedbackFlow feedback session file
+      icon: build/icon.ico
+      role: Editor
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeader: build/installer-header.bmp
+  installerSidebar: build/installer-sidebar.bmp
+  license: LICENSE
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "FeedbackFlow"
+  artifactName: "FeedbackFlow-Setup-${version}.exe"
+  include: build/installer.nsh
+  deleteAppDataOnUninstall: false
+
+# =============================================================================
+# Linux Configuration (for future use)
+# =============================================================================
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Development
+  icon: build/icons
+
+# =============================================================================
+# Code Signing & Notarization
+# =============================================================================
+afterSign: scripts/notarize.cjs
+
+# =============================================================================
+# Publishing Configuration
+# =============================================================================
+publish:
+  provider: github
+  owner: eddiesanjuan
+  repo: feedbackflow
+  releaseType: release

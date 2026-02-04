@@ -1,0 +1,156 @@
+/**
+ * Shared Types for Transcription Services
+ *
+ * Common types used across all transcription tiers:
+ * - Tier 1: Deepgram (cloud)
+ * - Tier 2: Local Whisper
+ * - Tier 3: macOS Dictation
+ * - Tier 4: Timer-only
+ */
+
+// ============================================================================
+// Transcription Tier Types
+// ============================================================================
+
+/**
+ * Available transcription tiers in priority order
+ */
+export type TranscriptionTier = 'deepgram' | 'whisper' | 'macos-dictation' | 'timer-only';
+
+/**
+ * Whisper model sizes available for download
+ */
+export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large';
+
+/**
+ * Status of a transcription tier
+ */
+export interface TierStatus {
+  tier: TranscriptionTier;
+  available: boolean;
+  reason?: string;
+}
+
+/**
+ * Quality information for a tier
+ */
+export interface TierQuality {
+  accuracy: string;
+  latency: string;
+}
+
+// ============================================================================
+// Transcript Event Types
+// ============================================================================
+
+/**
+ * Unified transcript event from any tier
+ */
+export interface TranscriptEvent {
+  text: string;
+  isFinal: boolean;
+  confidence: number;
+  timestamp: number;
+  tier: TranscriptionTier;
+}
+
+/**
+ * Pause detection event (triggers screenshots)
+ */
+export interface PauseEvent {
+  timestamp: number;
+  tier: TranscriptionTier;
+}
+
+// ============================================================================
+// Whisper-Specific Types
+// ============================================================================
+
+/**
+ * Result from Whisper transcription
+ */
+export interface WhisperTranscriptResult {
+  text: string;
+  startTime: number;
+  endTime: number;
+  confidence: number;
+}
+
+/**
+ * Whisper service configuration
+ */
+export interface WhisperConfig {
+  modelPath: string;
+  language: string;
+  threads: number;
+  translateToEnglish: boolean;
+}
+
+// ============================================================================
+// Model Download Types
+// ============================================================================
+
+/**
+ * Information about a Whisper model
+ */
+export interface ModelInfo {
+  name: WhisperModel;
+  filename: string;
+  sizeBytes: number;
+  sizeMB: number;
+  ramRequired: string;
+  quality: string;
+  url: string;
+}
+
+/**
+ * Progress information during model download
+ */
+export interface DownloadProgress {
+  model: WhisperModel;
+  downloadedBytes: number;
+  totalBytes: number;
+  percent: number;
+  speedBps: number;
+  estimatedSecondsRemaining: number;
+}
+
+/**
+ * Result of a model download operation
+ */
+export interface DownloadResult {
+  success: boolean;
+  model: WhisperModel;
+  path: string;
+  error?: string;
+}
+
+// ============================================================================
+// Silence Detection Types
+// ============================================================================
+
+/**
+ * Configuration for silence detection
+ */
+export interface SilenceDetectorConfig {
+  /** RMS threshold below which audio is considered silence (0-1) */
+  silenceThreshold: number;
+  /** Minimum silence duration to trigger event (ms) */
+  silenceDurationMs: number;
+  /** Minimum time between silence events (ms) */
+  debounceDurationMs: number;
+  /** Sample rate of incoming audio */
+  sampleRate: number;
+}
+
+// ============================================================================
+// Callback Types
+// ============================================================================
+
+export type TranscriptCallback = (event: TranscriptEvent) => void;
+export type PauseCallback = (event: PauseEvent) => void;
+export type TierChangeCallback = (oldTier: TranscriptionTier, newTier: TranscriptionTier, reason: string) => void;
+export type ErrorCallback = (error: Error, tier?: TranscriptionTier) => void;
+export type ProgressCallback = (progress: DownloadProgress) => void;
+export type CompleteCallback = (result: DownloadResult) => void;
+export type SilenceCallback = (timestamp: number) => void;
