@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+
+# Electron
+*.dmg
+*.app
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+coverage/
+
+# Temporary
+tmp/
+temp/
