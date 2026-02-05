@@ -31,7 +31,30 @@ export class SessionHistory {
     try {
       if (existsSync(this.historyPath)) {
         const data = readFileSync(this.historyPath, "utf-8");
-        this.sessions = JSON.parse(data);
+        const parsed: unknown = JSON.parse(data);
+
+        if (!Array.isArray(parsed)) {
+          logger.error("Session history is not an array, resetting to empty");
+          this.sessions = [];
+          return;
+        }
+
+        this.sessions = parsed.filter(
+          (s): s is RecentSession =>
+            s !== null &&
+            typeof s === "object" &&
+            typeof s.id === "string" &&
+            typeof s.reportPath === "string" &&
+            typeof s.timestamp === "number" &&
+            typeof s.duration === "number" &&
+            typeof s.screenshotCount === "number"
+        );
+
+        if (this.sessions.length !== parsed.length) {
+          logger.warn(
+            `Filtered ${parsed.length - this.sessions.length} invalid entries from session history`
+          );
+        }
       }
     } catch (err) {
       logger.error("Failed to load session history:", err);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { DonateButton } from './DonateButton'
 import type { TranscriptionConfig } from '../types/api'
+import { isIPCResponse } from '../utils/ipc'
 
 // SF Symbol: chevron.backward
 const ChevronBackIcon = ({ className }: { className?: string }) => (
@@ -29,9 +30,8 @@ export function SettingsView({ onBack, transcription }: SettingsViewProps) {
 
   useEffect(() => {
     window.api.invoke('app:getVersion').then((response) => {
-      const res = response as { success: boolean; data?: string }
-      if (res.success && res.data) {
-        setAppVersion(res.data)
+      if (isIPCResponse<string>(response) && response.success && response.data) {
+        setAppVersion(response.data)
       }
     })
   }, [])
@@ -106,7 +106,7 @@ export function SettingsView({ onBack, transcription }: SettingsViewProps) {
                 </div>
               )}
               {isModelReady && (
-                <span className="text-sm text-green-400" role="status">Ready</span>
+                <span className="text-sm text-green-600 dark:text-green-400" role="status">Ready</span>
               )}
             </div>
           </div>

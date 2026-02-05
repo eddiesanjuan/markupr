@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { TranscriptionConfig } from "../types/api";
-
-/**
- * IPC response structure from main process
- */
-interface IPCResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+import { isIPCResponse } from "../utils/ipc";
 
 /**
  * Valid preferred tier values
@@ -19,18 +11,6 @@ const VALID_PREFERRED_TIERS = ["whisper_local", "macos_dictation", "none"] as co
  * Valid whisper model values
  */
 const VALID_WHISPER_MODELS = ["tiny", "base", "small", "medium"] as const;
-
-/**
- * Type guard to validate IPC response structure
- */
-function isIPCResponse<T>(value: unknown): value is IPCResponse<T> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "success" in value &&
-    typeof (value as IPCResponse).success === "boolean"
-  );
-}
 
 /**
  * Type guard to validate TranscriptionConfig structure
@@ -108,25 +88,38 @@ export function useTranscription() {
   const downloadModel = useCallback(async () => {
     setIsDownloading(true);
     setDownloadProgress(0);
-    const result = await window.api.invoke("transcription:downloadModel");
+    const response = await window.api.invoke("transcription:downloadModel");
     setIsDownloading(false);
-    if (result) {
+    if (!isIPCResponse<boolean>(response) || !response.success) {
+      return false;
+    }
+    if (response.data) {
       setIsModelReady(true);
     }
-    return result as boolean;
+    return response.data ?? false;
   }, []);
 
   const updateConfig = useCallback(
     async (newConfig: Partial<TranscriptionConfig>) => {
-      await window.api.invoke("transcription:setConfig", newConfig);
+      const setConfigResponse = await window.api.invoke("transcription:setConfig", newConfig);
+      if (!isIPCResponse(setConfigResponse) || !setConfigResponse.success) {
+        console.error("Failed to set config:", isIPCResponse(setConfigResponse) ? setConfigResponse.error : "Invalid IPC response");
+        return;
+      }
       setConfig((prev) => (prev ? { ...prev, ...newConfig } : null));
 
       if (newConfig.whisperModel) {
         setIsModelReady(false);
       }
 
-      const ready = await window.api.invoke("transcription:isModelReady");
-      setIsModelReady(ready as boolean);
+      const readyResponse = await window.api.invoke("transcription:isModelReady");
+      if (!isIPCResponse<boolean>(readyResponse) || !readyResponse.success) {
+        console.error("Failed to check model ready:", isIPCResponse(readyResponse) ? readyResponse.error : "Invalid IPC response");
+        return;
+      }
+      if (typeof readyResponse.data === "boolean") {
+        setIsModelReady(readyResponse.data);
+      }
     },
     [],
   );

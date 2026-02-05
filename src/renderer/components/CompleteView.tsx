@@ -105,7 +105,7 @@ export function CompleteView({ session, onReset, onCopy }: CompleteViewProps) {
           role="region"
         >
           <p className="text-sm text-theme-secondary whitespace-pre-wrap font-mono">
-            {session.markdownOutput || session.transcript || 'No transcription available'}
+            {session.transcript || 'No transcription available'}
           </p>
         </div>
       </div>

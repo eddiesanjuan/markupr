@@ -408,13 +408,6 @@ export class AudioService extends EventEmitter {
     return this.currentPath;
   }
 
-  async checkMicrophonePermission(): Promise<boolean> {
-    // On macOS, we need microphone permission
-    // This will be checked when we try to start recording
-    // For now, return true and handle the error if permission is denied
-    return true;
-  }
-
   destroy(): void {
     if (this.recordingProcess) {
       this.recordingProcess.kill("SIGKILL");

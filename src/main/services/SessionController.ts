@@ -82,6 +82,7 @@ export class SessionController extends EventEmitter {
   private screenshotService: ScreenshotService | null;
   private watchdogInterval: NodeJS.Timeout | null = null;
   private operationLock = false;
+  private onAudioFatalError: (error: Error) => void;
 
   constructor(
     audioService: AudioService,
@@ -96,6 +97,16 @@ export class SessionController extends EventEmitter {
     this.screenshotService = screenshotService || null;
     this.session = this.createFreshSession();
     // Don't start watchdog in constructor - only needed when not IDLE
+
+    // Listen for fatal audio errors (e.g., recording process crash)
+    // so the UI transitions to ERROR instead of freezing on "Recording"
+    this.onAudioFatalError = (error: Error) => {
+      logger.error("Audio fatal error:", error);
+      if (this.session.state === SessionState.RECORDING) {
+        this.setState(SessionState.ERROR, `Recording failed: ${error.message}`);
+      }
+    };
+    this.audioService.on("fatalError", this.onAudioFatalError);
   }
 
   private createFreshSession(): SessionData {
@@ -147,6 +158,12 @@ export class SessionController extends EventEmitter {
 
   private setState(newState: SessionState, error?: string): void {
     const oldState = this.session.state;
+
+    // Prevent redundant state transitions (e.g., idle-to-idle after createFreshSession)
+    if (oldState === newState && !error) {
+      return;
+    }
+
     this.session.state = newState;
     this.session.stateEnteredAt = Date.now();
 
@@ -561,6 +578,7 @@ export class SessionController extends EventEmitter {
     if (this.watchdogInterval) {
       clearInterval(this.watchdogInterval);
     }
+    this.audioService.removeListener("fatalError", this.onAudioFatalError);
     this.removeAllListeners();
   }
 }

@@ -1,14 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { SessionState, SessionData, ScreenshotResult } from '../types/api'
-
-/**
- * IPC response structure from main process
- */
-interface IPCResponse<T = unknown> {
-  success: boolean
-  data?: T
-  error?: string
-}
+import { isIPCResponse } from '../utils/ipc'
 
 /**
  * Valid session states for type guard validation
@@ -16,18 +8,6 @@ interface IPCResponse<T = unknown> {
 const VALID_SESSION_STATES: SessionState[] = [
   'idle', 'starting', 'recording', 'stopping', 'processing', 'complete', 'error'
 ]
-
-/**
- * Type guard to validate IPC response structure
- */
-function isIPCResponse<T>(value: unknown): value is IPCResponse<T> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'success' in value &&
-    typeof (value as IPCResponse).success === 'boolean'
-  )
-}
 
 /**
  * Type guard to validate SessionState

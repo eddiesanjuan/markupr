@@ -59,8 +59,16 @@ function createWindow(): BrowserWindow {
   });
 
   // Block window.open and redirect to system browser
+  // Only allow http/https protocols to prevent file:/javascript:/custom scheme abuse
   window.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        shell.openExternal(url);
+      }
+    } catch {
+      // Invalid URL, ignore silently
+    }
     return { action: "deny" };
   });
 

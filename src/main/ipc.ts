@@ -26,22 +26,6 @@ function wrapHandler<T>(handler: () => Promise<T> | T): () => Promise<IPCRespons
   }
 }
 
-/**
- * Helper to wrap async IPC handlers that take arguments
- */
-function wrapHandlerWithArgs<T, A extends unknown[]>(
-  handler: (...args: A) => Promise<T> | T
-): (...args: A) => Promise<IPCResponse<T>> {
-  return async (...args: A) => {
-    try {
-      const data = await handler(...args)
-      return { success: true, data }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      return { success: false, error: message }
-    }
-  }
-}
 
 export function setupIPC(
   sessionController: SessionController,
@@ -140,9 +124,9 @@ export function setupIPC(
     return { success: false, error: 'Failed to capture screenshot' }
   })
 
-  ipcMain.handle('screenshot:getCount', () => {
+  ipcMain.handle('screenshot:getCount', wrapHandler(() => {
     return screenshotService?.getCaptureCount() ?? 0
-  })
+  }))
 
   // App version
   ipcMain.handle('app:getVersion', wrapHandler(() => app.getVersion()))
