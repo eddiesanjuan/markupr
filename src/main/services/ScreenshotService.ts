@@ -45,8 +45,6 @@ export class ScreenshotService extends EventEmitter {
     }
 
     try {
-      // Get all displays
-      const displays = screen.getAllDisplays()
       const primaryDisplay = screen.getPrimaryDisplay()
 
       // Get sources - capture entire screen
