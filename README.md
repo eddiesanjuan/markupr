@@ -38,9 +38,10 @@ npm run build
 npm run package
 ```
 
-## Requirements
+## System Requirements
 
-- macOS 11.0 or later
+- macOS 12.0 (Monterey) or later
+- ffmpeg (`brew install ffmpeg`)
 - Microphone access permission
 
 ## Usage
