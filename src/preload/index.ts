@@ -23,8 +23,8 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore
+  // @ts-expect-error - window types not available in preload context
   window.electron = electronAPI
-  // @ts-ignore
+  // @ts-expect-error - window types not available in preload context
   window.api = api
 }
