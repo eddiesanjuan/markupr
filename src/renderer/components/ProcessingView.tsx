@@ -1,3 +1,12 @@
+// macOS-style large spinner component (12-segment)
+const MacSpinnerLarge = () => (
+  <div className="macos-spinner-large" aria-hidden="true">
+    {[...Array(12)].map((_, i) => (
+      <div key={i} className="macos-spinner-segment-large" />
+    ))}
+  </div>
+)
+
 export function ProcessingView() {
   return (
     <div
@@ -8,28 +17,7 @@ export function ProcessingView() {
       aria-label="Processing your recording"
     >
       <div className="mb-6">
-        <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center">
-          <svg
-            className="w-10 h-10 text-white animate-spin"
-            fill="none"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            />
-          </svg>
-        </div>
+        <MacSpinnerLarge />
       </div>
 
       <h2 className="text-xl font-medium text-white mb-2">Processing</h2>
@@ -42,7 +30,7 @@ export function ProcessingView() {
 
       <div className="mt-6 w-full">
         <div
-          className="h-1 bg-gray-700 rounded-full overflow-hidden"
+          className="h-1 bg-white/10 rounded-full overflow-hidden"
           role="progressbar"
           aria-label="Processing progress"
           aria-valuetext="Processing in progress"
