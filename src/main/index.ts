@@ -1,7 +1,7 @@
 import { app, BrowserWindow, globalShortcut } from "electron";
 import { join } from "path";
 import { electronApp, optimizer } from "@electron-toolkit/utils";
-import { createTray, updateTrayIcon } from "./tray";
+import { createTray, updateTrayIcon, updateRecentSessions } from "./tray";
 import {
   SessionController,
   AudioService,
@@ -9,6 +9,7 @@ import {
   StateStore,
   SessionState,
   ScreenshotService,
+  SessionHistory,
 } from "./services";
 import { setupIPC } from "./ipc";
 
@@ -18,6 +19,7 @@ let audioService: AudioService | null = null;
 let transcriptionService: TranscriptionService | null = null;
 let stateStore: StateStore | null = null;
 let screenshotService: ScreenshotService | null = null;
+let sessionHistory: SessionHistory | null = null;
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -61,6 +63,7 @@ function initializeServices(): void {
   audioService = new AudioService();
   transcriptionService = new TranscriptionService();
   screenshotService = new ScreenshotService();
+  sessionHistory = new SessionHistory();
   sessionController = new SessionController(
     audioService,
     transcriptionService,
@@ -69,8 +72,27 @@ function initializeServices(): void {
   );
 
   // Update tray icon based on session state
-  sessionController.on("stateChange", ({ newState }) => {
+  sessionController.on("stateChange", ({ newState, session }) => {
     updateTrayIcon(newState as SessionState);
+
+    // Add to history when session completes
+    if (newState === SessionState.COMPLETE && session.reportPath) {
+      const duration =
+        session.startedAt && session.stoppedAt
+          ? Math.round((session.stoppedAt - session.startedAt) / 1000)
+          : 0;
+
+      sessionHistory?.addSession({
+        id: session.id,
+        reportPath: session.reportPath,
+        timestamp: Date.now(),
+        duration,
+        screenshotCount: session.screenshots?.length || 0,
+      });
+
+      // Update tray menu with recent sessions
+      updateRecentSessions(sessionHistory!.getSessions());
+    }
   });
 }
 
@@ -137,6 +159,11 @@ app.whenReady().then(async () => {
 
   // Create tray
   createTray(mainWindow);
+
+  // Initialize tray with recent sessions
+  if (sessionHistory) {
+    updateRecentSessions(sessionHistory.getSessions());
+  }
 
   // Register global shortcuts
   registerGlobalShortcuts();

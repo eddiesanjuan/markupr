@@ -1,8 +1,10 @@
-import { Tray, Menu, nativeImage, BrowserWindow, screen, app } from 'electron'
-import { SessionState } from './services'
+import { Tray, Menu, nativeImage, BrowserWindow, screen, app, clipboard } from 'electron'
+import { SessionState, type RecentSession } from './services'
+import { basename } from 'path'
 
 let tray: Tray | null = null
 let mainWindowRef: BrowserWindow | null = null
+let recentSessions: RecentSession[] = []
 
 // Base64 encoded 16x16 template icons for menu bar
 // These are simple monochrome icons that work with macOS dark/light mode
@@ -38,7 +40,7 @@ export function createTray(mainWindow: BrowserWindow): Tray {
 function updateContextMenu(): void {
   if (!tray || !mainWindowRef) return
 
-  const contextMenu = Menu.buildFromTemplate([
+  const menuItems: Electron.MenuItemConstructorOptions[] = [
     {
       label: 'Record Feedback',
       click: () => {
@@ -48,7 +50,33 @@ function updateContextMenu(): void {
         }
       }
     },
-    { type: 'separator' },
+    { type: 'separator' }
+  ]
+
+  // Add recent sessions submenu if there are any
+  if (recentSessions.length > 0) {
+    const recentItems: Electron.MenuItemConstructorOptions[] = recentSessions.map((session) => {
+      const filename = basename(session.reportPath)
+      const durationMin = Math.floor(session.duration / 60)
+      const durationSec = session.duration % 60
+      const durationStr = `${durationMin}:${String(durationSec).padStart(2, '0')}`
+
+      return {
+        label: `${filename} (${durationStr})`,
+        click: () => {
+          clipboard.writeText(session.reportPath)
+        }
+      }
+    })
+
+    menuItems.push({
+      label: 'Recent Sessions',
+      submenu: recentItems
+    })
+    menuItems.push({ type: 'separator' })
+  }
+
+  menuItems.push(
     {
       label: 'Settings',
       click: () => {
@@ -65,9 +93,15 @@ function updateContextMenu(): void {
         app.quit()
       }
     }
-  ])
+  )
 
+  const contextMenu = Menu.buildFromTemplate(menuItems)
   tray.setContextMenu(contextMenu)
+}
+
+export function updateRecentSessions(sessions: RecentSession[]): void {
+  recentSessions = sessions
+  updateContextMenu()
 }
 
 export function updateTrayIcon(state: SessionState): void {

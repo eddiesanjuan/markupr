@@ -7,6 +7,7 @@ export interface SessionData {
   transcript: string | null
   screenshots: string[]
   markdownOutput: string | null
+  reportPath: string | null
   error: string | null
   stateEnteredAt: number
 }

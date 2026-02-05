@@ -1,5 +1,9 @@
 import { EventEmitter } from "events";
 import { v4 as uuidv4 } from "uuid";
+import { clipboard } from "electron";
+import { homedir } from "os";
+import { join } from "path";
+import { mkdirSync, writeFileSync, existsSync } from "fs";
 import { AudioService } from "./AudioService";
 import { TranscriptionService } from "./TranscriptionService";
 import { StateStore } from "./StateStore";
@@ -24,6 +28,7 @@ export interface SessionData {
   transcript: string | null;
   screenshots: string[];
   markdownOutput: string | null;
+  reportPath: string | null;
   error: string | null;
   stateEnteredAt: number;
 }
@@ -102,6 +107,7 @@ export class SessionController extends EventEmitter {
       transcript: null,
       screenshots: [],
       markdownOutput: null,
+      reportPath: null,
       error: null,
       stateEnteredAt: Date.now(),
     };
@@ -286,6 +292,7 @@ export class SessionController extends EventEmitter {
 
     if (!this.session.audioPath) {
       this.session.markdownOutput = this.generateMarkdown();
+      this.saveMarkdownToFile();
       this.setState(SessionState.COMPLETE);
       return;
     }
@@ -299,12 +306,47 @@ export class SessionController extends EventEmitter {
 
       this.session.transcript = transcript;
       this.session.markdownOutput = this.generateMarkdown();
+      this.saveMarkdownToFile();
       this.setState(SessionState.COMPLETE);
     } catch (err) {
       console.error("Transcription failed:", err);
       this.session.transcript = "[Transcription failed]";
       this.session.markdownOutput = this.generateMarkdown();
+      this.saveMarkdownToFile();
       this.setState(SessionState.COMPLETE);
+    }
+  }
+
+  private saveMarkdownToFile(): void {
+    if (!this.session.markdownOutput) return;
+
+    try {
+      // Create ~/FeedbackFlow directory
+      const feedbackDir = join(homedir(), "FeedbackFlow");
+      if (!existsSync(feedbackDir)) {
+        mkdirSync(feedbackDir, { recursive: true });
+      }
+
+      // Generate filename: session-YYYY-MM-DD-HHMM.md
+      const now = new Date();
+      const dateStr = now.toISOString().split("T")[0];
+      const timeStr = now
+        .toTimeString()
+        .slice(0, 5)
+        .replace(":", "");
+      const filename = `session-${dateStr}-${timeStr}.md`;
+      const filePath = join(feedbackDir, filename);
+
+      // Write markdown to file
+      writeFileSync(filePath, this.session.markdownOutput, "utf-8");
+      this.session.reportPath = filePath;
+
+      // Auto-copy path to clipboard
+      clipboard.writeText(filePath);
+
+      console.log(`Report saved to: ${filePath}`);
+    } catch (err) {
+      console.error("Failed to save markdown to file:", err);
     }
   }
 
