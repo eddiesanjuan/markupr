@@ -20,6 +20,44 @@ body {
   background: transparent;
 }
 
+/* Theme CSS Variables - Light Mode (default) */
+:root {
+  --bg-popover: rgba(255, 255, 255, 0.92);
+  --bg-popover-arrow: rgba(255, 255, 255, 0.92);
+  --bg-arrow-border: rgba(0, 0, 0, 0.1);
+  --bg-secondary: rgba(0, 0, 0, 0.05);
+  --bg-tertiary: rgba(0, 0, 0, 0.03);
+  --text-primary: #1f2937;
+  --text-secondary: #4b5563;
+  --text-tertiary: #6b7280;
+  --text-muted: #9ca3af;
+  --border-color: rgba(0, 0, 0, 0.1);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --scrollbar-thumb: #d1d5db;
+  --scrollbar-thumb-hover: #9ca3af;
+  --ring-offset: #ffffff;
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-popover: rgba(30, 30, 30, 0.85);
+    --bg-popover-arrow: rgba(30, 30, 30, 0.85);
+    --bg-arrow-border: rgba(255, 255, 255, 0.1);
+    --bg-secondary: rgba(255, 255, 255, 0.1);
+    --bg-tertiary: rgba(255, 255, 255, 0.05);
+    --text-primary: #ffffff;
+    --text-secondary: #d1d5db;
+    --text-tertiary: #9ca3af;
+    --text-muted: #6b7280;
+    --border-color: rgba(255, 255, 255, 0.1);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --scrollbar-thumb: #4b5563;
+    --scrollbar-thumb-hover: #6b7280;
+    --ring-offset: #1e1e1e;
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -30,12 +68,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Animation for recording pulse */
@@ -114,6 +152,37 @@ body {
 .macos-spinner-segment:nth-child(10) { transform: translate(-50%, -50%) rotate(270deg) translateY(-4px); animation: macos-spinner 1s linear infinite; animation-delay: -0.25s; }
 .macos-spinner-segment:nth-child(11) { transform: translate(-50%, -50%) rotate(300deg) translateY(-4px); animation: macos-spinner 1s linear infinite; animation-delay: -0.167s; }
 .macos-spinner-segment:nth-child(12) { transform: translate(-50%, -50%) rotate(330deg) translateY(-4px); animation: macos-spinner 1s linear infinite; animation-delay: -0.083s; }
+
+/* macOS Large Spinner (for Processing view) */
+.macos-spinner-large {
+  position: relative;
+  width: 48px;
+  height: 48px;
+}
+
+.macos-spinner-segment-large {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 12px;
+  background: #9ca3af;
+  border-radius: 2px;
+  transform-origin: center -8px;
+}
+
+.macos-spinner-segment-large:nth-child(1) { transform: translate(-50%, -50%) rotate(0deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: 0s; }
+.macos-spinner-segment-large:nth-child(2) { transform: translate(-50%, -50%) rotate(30deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.917s; }
+.macos-spinner-segment-large:nth-child(3) { transform: translate(-50%, -50%) rotate(60deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.833s; }
+.macos-spinner-segment-large:nth-child(4) { transform: translate(-50%, -50%) rotate(90deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.75s; }
+.macos-spinner-segment-large:nth-child(5) { transform: translate(-50%, -50%) rotate(120deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.667s; }
+.macos-spinner-segment-large:nth-child(6) { transform: translate(-50%, -50%) rotate(150deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.583s; }
+.macos-spinner-segment-large:nth-child(7) { transform: translate(-50%, -50%) rotate(180deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.5s; }
+.macos-spinner-segment-large:nth-child(8) { transform: translate(-50%, -50%) rotate(210deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.417s; }
+.macos-spinner-segment-large:nth-child(9) { transform: translate(-50%, -50%) rotate(240deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.333s; }
+.macos-spinner-segment-large:nth-child(10) { transform: translate(-50%, -50%) rotate(270deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.25s; }
+.macos-spinner-segment-large:nth-child(11) { transform: translate(-50%, -50%) rotate(300deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.167s; }
+.macos-spinner-segment-large:nth-child(12) { transform: translate(-50%, -50%) rotate(330deg) translateY(-8px); animation: macos-spinner 1s linear infinite; animation-delay: -0.083s; }
 
 /* macOS Native Buttons */
 .btn-macos {
