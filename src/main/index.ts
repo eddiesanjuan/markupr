@@ -14,6 +14,12 @@ import {
 import { setupIPC } from "./ipc";
 import { logger } from "./utils/logger";
 
+// Single instance lock - prevent multiple instances from running
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+}
+
 let mainWindow: BrowserWindow | null = null;
 let sessionController: SessionController | null = null;
 let audioService: AudioService | null = null;
@@ -43,6 +49,8 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
 
@@ -170,6 +178,13 @@ async function checkForRecovery(): Promise<void> {
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId("com.eddiesanjuan.feedbackflow");
+
+  // Focus existing window when second instance is launched
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      mainWindow.show();
+    }
+  });
 
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);

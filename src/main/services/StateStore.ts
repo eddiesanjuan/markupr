@@ -7,6 +7,7 @@ import {
   unlinkSync,
   mkdirSync,
 } from "fs";
+import { writeFile } from "fs/promises";
 import type { SessionData } from "./SessionController";
 import { logger } from "../utils/logger";
 
@@ -53,7 +54,7 @@ export class StateStore {
 
     try {
       const data = JSON.stringify(this.pendingState, null, 2);
-      writeFileSync(this.statePath, data, "utf-8");
+      await writeFile(this.statePath, data, "utf-8");
     } catch (err) {
       logger.error("Failed to persist state:", err);
       return;

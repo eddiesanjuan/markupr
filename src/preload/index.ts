@@ -19,6 +19,7 @@ const allowedInvokeChannels = new Set([
   "screenshot:capture",
   "screenshot:getCount",
   "shell:openExternal",
+  "app:getVersion",
 ]);
 
 const allowedOnChannels = new Set([

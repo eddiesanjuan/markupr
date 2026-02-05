@@ -1,4 +1,4 @@
-import { ipcMain, clipboard, BrowserWindow, shell } from 'electron'
+import { ipcMain, clipboard, BrowserWindow, shell, app } from 'electron'
 import { SessionController, type SessionData, ScreenshotService, SessionState } from './services'
 import { TranscriptionService } from './services'
 
@@ -143,6 +143,9 @@ export function setupIPC(
   ipcMain.handle('screenshot:getCount', () => {
     return screenshotService?.getCaptureCount() ?? 0
   })
+
+  // App version
+  ipcMain.handle('app:getVersion', wrapHandler(() => app.getVersion()))
 
   // External URL handler - safe way to open URLs in system browser
   ipcMain.handle('shell:openExternal', async (_, url: string) => {

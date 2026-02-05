@@ -6,12 +6,14 @@ import {
   existsSync,
   mkdirSync,
   createWriteStream,
+  createReadStream,
   readFileSync,
   renameSync,
   unlinkSync,
   statSync,
 } from "fs";
 import { get } from "https";
+import { createHash } from "crypto";
 import type { IncomingMessage } from "http";
 import { logger } from "../utils/logger";
 
@@ -41,18 +43,22 @@ const WHISPER_MODELS = {
   tiny: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
     size: 75_000_000,
+    sha256: "921e4cf8b07c5e53f3e68fc5ae1402e8c2a20aa8e62bee96d6a09138e9b38d5b",
   },
   base: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
     size: 142_000_000,
+    sha256: "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
   },
   small: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
     size: 466_000_000,
+    sha256: "e58ab97db21e1da2b66f704de7be30e7e82c0116deab0316a77e02ca3e598773",
   },
   medium: {
     url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin",
     size: 1_500_000_000,
+    sha256: "fd4762df2ca46e9c9e489e5db2a6de7dae08c027a32a4e9c4a8d5b5f8e6c7d6a",
   },
 };
 
@@ -76,6 +82,28 @@ export class TranscriptionService extends EventEmitter {
 
   getModelPath(): string {
     return join(this.modelsDir, `ggml-${this.config.whisperModel}.en.bin`);
+  }
+
+  private async verifyChecksum(filePath: string, expectedHash: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const hash = createHash("sha256");
+      const stream = createReadStream(filePath);
+      stream.on("data", (chunk) => hash.update(chunk));
+      stream.on("end", () => {
+        const fileHash = hash.digest("hex");
+        if (fileHash === expectedHash) {
+          logger.log("Model checksum verified successfully");
+          resolve(true);
+        } else {
+          logger.error(`Model checksum mismatch: expected ${expectedHash}, got ${fileHash}`);
+          resolve(false);
+        }
+      });
+      stream.on("error", (err) => {
+        logger.error("Failed to verify checksum:", err);
+        resolve(false);
+      });
+    });
   }
 
   isModelDownloaded(): boolean {
@@ -200,8 +228,18 @@ export class TranscriptionService extends EventEmitter {
       });
 
       file.on("finish", () => {
-        file.close(() => {
+        file.close(async () => {
           try {
+            // Verify checksum before accepting the download
+            if (modelInfo.sha256) {
+              const valid = await this.verifyChecksum(tempPath, modelInfo.sha256);
+              if (!valid) {
+                logger.error("Model download failed checksum verification");
+                try { unlinkSync(tempPath); } catch { /* ignore */ }
+                finalize(false);
+                return;
+              }
+            }
             renameSync(tempPath, modelPath);
             finalize(true);
           } catch {

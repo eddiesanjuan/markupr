@@ -108,13 +108,14 @@ body {
 .popover-arrow::before {
   content: '';
   position: absolute;
-  top: 1px;
-  left: -8px;
+  top: -1px;
+  left: -9px;
   width: 0;
   height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 8px solid var(--bg-arrow-border);
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 9px solid var(--bg-arrow-border);
+  z-index: -1;
 }
 
 /* macOS Native Spinner */
@@ -311,7 +312,7 @@ body {
 }
 
 .view-transition {
-  animation: view-fade-in 0.15s ease-out;
+  animation: view-fade-in 0.2s ease-out;
 }
 
 /* Animated Checkmark for Completion */

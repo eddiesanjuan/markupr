@@ -3,7 +3,8 @@ import { v4 as uuidv4 } from "uuid";
 import { clipboard } from "electron";
 import { homedir } from "os";
 import { join } from "path";
-import { mkdirSync, writeFileSync, existsSync } from "fs";
+import { mkdirSync, existsSync } from "fs";
+import { writeFile } from "fs/promises";
 import { AudioService } from "./AudioService";
 import { TranscriptionService } from "./TranscriptionService";
 import { StateStore } from "./StateStore";
@@ -34,13 +35,13 @@ export interface SessionData {
   stateEnteredAt: number;
 }
 
-interface StateTimeout {
+interface StateTimeoutConfig {
   state: SessionState;
   duration: number;
   fallbackState: SessionState;
 }
 
-const STATE_TIMEOUTS: StateTimeout[] = [
+const STATE_TIMEOUTS: StateTimeoutConfig[] = [
   {
     state: SessionState.STARTING,
     duration: 5000,
@@ -80,7 +81,6 @@ export class SessionController extends EventEmitter {
   private stateStore: StateStore;
   private screenshotService: ScreenshotService | null;
   private watchdogInterval: NodeJS.Timeout | null = null;
-  private stateTimeout: NodeJS.Timeout | null = null;
   private operationLock = false;
 
   constructor(
@@ -161,7 +161,6 @@ export class SessionController extends EventEmitter {
       this.startWatchdog();
     }
 
-    this.clearStateTimeout();
     this.persistState();
 
     this.emit("stateChange", {
@@ -169,13 +168,6 @@ export class SessionController extends EventEmitter {
       newState,
       session: this.getSession(),
     });
-  }
-
-  private clearStateTimeout(): void {
-    if (this.stateTimeout) {
-      clearTimeout(this.stateTimeout);
-      this.stateTimeout = null;
-    }
   }
 
   private async persistState(): Promise<void> {
@@ -200,7 +192,6 @@ export class SessionController extends EventEmitter {
       // Reset to fresh session and emit single state change
       const previousState = this.session.state;
       this.session = this.createFreshSession();
-      this.clearStateTimeout();
       this.persistState();
       this.emit("stateChange", {
         oldState: previousState,
@@ -368,7 +359,7 @@ export class SessionController extends EventEmitter {
 
     if (!this.session.audioPath) {
       this.session.markdownOutput = this.generateMarkdown();
-      this.saveMarkdownToFile();
+      await this.saveMarkdownToFile();
       this.setState(SessionState.COMPLETE);
       return;
     }
@@ -382,18 +373,18 @@ export class SessionController extends EventEmitter {
 
       this.session.transcript = transcript;
       this.session.markdownOutput = this.generateMarkdown();
-      this.saveMarkdownToFile();
+      await this.saveMarkdownToFile();
       this.setState(SessionState.COMPLETE);
     } catch (err) {
       logger.error("Transcription failed:", err);
       this.session.transcript = "[Transcription failed]";
       this.session.markdownOutput = this.generateMarkdown();
-      this.saveMarkdownToFile();
+      await this.saveMarkdownToFile();
       this.setState(SessionState.COMPLETE);
     }
   }
 
-  private saveMarkdownToFile(): void {
+  private async saveMarkdownToFile(): Promise<void> {
     if (!this.session.markdownOutput) return;
 
     try {
@@ -413,8 +404,8 @@ export class SessionController extends EventEmitter {
       const filename = `session-${timestamp}-${shortId}.md`;
       const filePath = join(feedbackDir, filename);
 
-      // Write markdown to file
-      writeFileSync(filePath, this.session.markdownOutput, "utf-8");
+      // Write markdown to file asynchronously
+      await writeFile(filePath, this.session.markdownOutput, "utf-8");
       this.session.reportPath = filePath;
 
       // Auto-copy path to clipboard
@@ -570,7 +561,6 @@ export class SessionController extends EventEmitter {
     if (this.watchdogInterval) {
       clearInterval(this.watchdogInterval);
     }
-    this.clearStateTimeout();
     this.removeAllListeners();
   }
 }

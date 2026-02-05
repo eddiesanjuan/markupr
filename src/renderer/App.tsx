@@ -11,11 +11,20 @@ import { DonateButton } from './components/DonateButton'
 
 type View = 'main' | 'settings'
 
+interface RecoverySession {
+  id: string
+  state: string
+  startedAt: number | null
+  audioPath: string | null
+}
+
 function App() {
   const { state, session, isLoading, start, stop, cancel, reset, copyToClipboard, captureScreenshot } = useSession()
   const transcription = useTranscription()
   const [view, setView] = useState<View>('main')
   const [screenshotCount, setScreenshotCount] = useState(0)
+  const [recoverySession, setRecoverySession] = useState<RecoverySession | null>(null)
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false)
 
   // Use ref to access state in IPC callbacks without re-subscribing on state changes
   const stateRef = useRef(state)
@@ -46,6 +55,30 @@ function App() {
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [handleKeyDown])
+
+  // Listen for session recovery events
+  useEffect(() => {
+    const unsubRecovery = window.api.on('recovery:found', (data: unknown) => {
+      const saved = data as RecoverySession
+      setRecoverySession(saved)
+      setShowRecoveryModal(true)
+    })
+    return () => unsubRecovery()
+  }, [])
+
+  const handleRecover = async () => {
+    if (recoverySession) {
+      await window.api.invoke('recovery:recover', recoverySession)
+    }
+    setShowRecoveryModal(false)
+    setRecoverySession(null)
+  }
+
+  const handleDiscardRecovery = async () => {
+    await window.api.invoke('recovery:discard')
+    setShowRecoveryModal(false)
+    setRecoverySession(null)
+  }
 
   // Listen for tray menu events
   // Use stateRef to avoid re-subscribing listeners on every state change
@@ -164,7 +197,7 @@ function App() {
   return (
     <div
       className="h-screen bg-popover rounded-xl overflow-hidden flex flex-col relative"
-      role="application"
+      role="main"
       aria-label="FeedbackFlow"
     >
       {/* Popover arrow */}
@@ -180,6 +213,32 @@ function App() {
         <footer className="py-2 flex justify-center border-t border-theme">
           <DonateButton />
         </footer>
+      )}
+
+      {/* Recovery modal */}
+      {showRecoveryModal && (
+        <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-50 rounded-xl" role="dialog" aria-label="Session recovery">
+          <div className="bg-popover rounded-lg p-5 mx-4 shadow-xl border border-theme">
+            <h3 className="text-base font-medium text-theme-primary mb-2">Recover Session?</h3>
+            <p className="text-sm text-theme-tertiary mb-4">
+              An interrupted recording session was found. Would you like to recover and process it?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDiscardRecovery}
+                className="flex-1 px-3 py-2 btn-macos btn-macos-secondary text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ring-offset-theme"
+              >
+                Discard
+              </button>
+              <button
+                onClick={handleRecover}
+                className="flex-1 px-3 py-2 btn-macos btn-macos-primary text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ring-offset-theme"
+              >
+                Recover
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

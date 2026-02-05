@@ -99,7 +99,7 @@ export function CompleteView({ session, onReset, onCopy }: CompleteViewProps) {
 
       <div className="flex-1 min-h-0 mb-3">
         <div
-          className="h-full bg-theme-tertiary rounded p-3 overflow-y-auto"
+          className="min-h-[100px] max-h-[200px] bg-theme-tertiary rounded p-3 overflow-y-auto"
           aria-label="Transcription result"
           tabIndex={0}
           role="region"

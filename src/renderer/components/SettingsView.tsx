@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { DonateButton } from './DonateButton'
 import type { TranscriptionConfig } from '../types/api'
 
@@ -24,6 +25,16 @@ interface SettingsViewProps {
 
 export function SettingsView({ onBack, transcription }: SettingsViewProps) {
   const { isModelReady, isDownloading, downloadProgress, config, downloadModel, updateConfig } = transcription
+  const [appVersion, setAppVersion] = useState('...')
+
+  useEffect(() => {
+    window.api.invoke('app:getVersion').then((response) => {
+      const res = response as { success: boolean; data?: string }
+      if (res.success && res.data) {
+        setAppVersion(res.data)
+      }
+    })
+  }, [])
 
   return (
     <div className="view-transition flex flex-col h-full">
@@ -113,22 +124,17 @@ export function SettingsView({ onBack, transcription }: SettingsViewProps) {
             className="w-full bg-theme-secondary text-theme-primary text-sm rounded px-3 py-2 border border-theme focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ring-offset-theme"
           >
             <option value="en">English</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="it">Italian</option>
-            <option value="pt">Portuguese</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="zh">Chinese</option>
           </select>
+          <p className="text-xs text-theme-muted mt-1.5">
+            Current models are English-only. Multilingual support coming soon.
+          </p>
         </section>
 
         {/* About */}
         <section aria-labelledby="about-heading">
           <h3 id="about-heading" className="text-sm font-medium text-theme-secondary mb-3">About</h3>
           <div className="text-sm text-theme-tertiary space-y-1">
-            <p>FeedbackFlow v0.3.0</p>
+            <p>FeedbackFlow v{appVersion}</p>
             <p className="text-xs text-theme-muted">
               Voice-to-AI feedback capture for developers
             </p>

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { MicIcon, GearIcon, MacSpinner } from './icons'
 import type { TranscriptionConfig } from '../types/api'
 
@@ -19,6 +20,16 @@ interface IdleViewProps {
 
 export function IdleView({ onStart, onOpenSettings, isLoading, transcription }: IdleViewProps) {
   const { isModelReady, isDownloading, downloadProgress, downloadModel } = transcription
+  const [isStartingDownload, setIsStartingDownload] = useState(false)
+
+  const handleDownload = async () => {
+    setIsStartingDownload(true)
+    try {
+      await downloadModel()
+    } finally {
+      setIsStartingDownload(false)
+    }
+  }
 
   return (
     <div className="view-transition flex flex-col items-center justify-center h-full p-6">
@@ -39,11 +50,19 @@ export function IdleView({ onStart, onOpenSettings, isLoading, transcription }: 
             Download Whisper model to get started
           </p>
           <button
-            onClick={downloadModel}
+            onClick={handleDownload}
+            disabled={isStartingDownload}
             aria-label="Download Whisper model, approximately 140 megabytes"
-            className="w-full px-3 py-1.5 btn-macos btn-macos-primary text-white text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ring-offset-theme"
+            className="w-full px-3 py-1.5 btn-macos btn-macos-primary text-white text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ring-offset-theme flex items-center justify-center gap-2"
           >
-            Download Model (~140MB)
+            {isStartingDownload ? (
+              <>
+                <MacSpinner className="text-white" />
+                <span>Starting...</span>
+              </>
+            ) : (
+              'Download Model (~140MB)'
+            )}
           </button>
           <p className="text-xs text-theme-muted text-center mt-2">
             Also requires: brew install whisper-cpp
@@ -91,7 +110,7 @@ export function IdleView({ onStart, onOpenSettings, isLoading, transcription }: 
               <circle cx="12" cy="12" r="6" />
             </svg>
             Start Recording
-            <span className="text-xs text-red-200 ml-1" aria-hidden="true">(&#8984;&#8679;F)</span>
+            <span className="text-xs text-red-200 ml-1" aria-hidden="true">(⌘⇧F)</span>
           </>
         )}
       </button>

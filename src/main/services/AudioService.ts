@@ -211,6 +211,8 @@ export class AudioService extends EventEmitter {
 
   private async startWithFfmpeg(outputPath: string): Promise<string> {
     return new Promise((resolve, reject) => {
+      // avfoundation format: "video_device:audio_device"
+      // ":0" = no video capture, audio device index 0 (macOS system default input)
       const args = [
         "-f",
         "avfoundation",

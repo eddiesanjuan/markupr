@@ -2,7 +2,8 @@ import { EventEmitter } from 'events'
 import { desktopCapturer, screen } from 'electron'
 import { app } from 'electron'
 import { join } from 'path'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
+import { writeFile } from 'fs/promises'
 import { logger } from '../utils/logger'
 
 export interface Screenshot {
@@ -46,13 +47,15 @@ export class ScreenshotService extends EventEmitter {
     }
 
     try {
-      const primaryDisplay = screen.getPrimaryDisplay()
-      const scaleFactor = primaryDisplay.scaleFactor
+      // Capture the display where the cursor is located (supports multi-monitor)
+      const cursorPoint = screen.getCursorScreenPoint()
+      const display = screen.getDisplayNearestPoint(cursorPoint)
+      const scaleFactor = display.scaleFactor
 
       // Calculate scaled dimensions, capped at max width to prevent OOM on 4K/5K displays
       const maxWidth = 1920
-      const scaledWidth = Math.round(primaryDisplay.size.width * scaleFactor)
-      const scaledHeight = Math.round(primaryDisplay.size.height * scaleFactor)
+      const scaledWidth = Math.round(display.size.width * scaleFactor)
+      const scaledHeight = Math.round(display.size.height * scaleFactor)
 
       // Cap to max resolution while maintaining aspect ratio
       const finalWidth = Math.min(scaledWidth, maxWidth)
@@ -72,8 +75,8 @@ export class ScreenshotService extends EventEmitter {
         return null
       }
 
-      // Use the primary display source (usually "Entire Screen" or "Screen 1")
-      const source = sources.find(s => s.display_id === String(primaryDisplay.id)) || sources[0]
+      // Use the display source matching the cursor's display
+      const source = sources.find(s => s.display_id === String(display.id)) || sources[0]
       const thumbnail = source.thumbnail
 
       if (thumbnail.isEmpty()) {
@@ -88,7 +91,7 @@ export class ScreenshotService extends EventEmitter {
       const filepath = join(this.sessionDir, filename)
 
       const pngBuffer = thumbnail.toPNG()
-      writeFileSync(filepath, pngBuffer)
+      await writeFile(filepath, pngBuffer)
 
       const screenshot: Screenshot = {
         path: filepath,

@@ -35,10 +35,13 @@ export const StopIcon = ({ className }: IconProps) => (
   </svg>
 )
 
+// Static array to avoid re-creating on every render
+const SPINNER_SEGMENTS = Array.from({ length: 12 }, (_, i) => i)
+
 // macOS-style spinner component
 export const MacSpinner = ({ className }: IconProps) => (
   <div className={`macos-spinner ${className || ''}`} aria-hidden="true">
-    {[...Array(12)].map((_, i) => (
+    {SPINNER_SEGMENTS.map((i) => (
       <div key={i} className="macos-spinner-segment" />
     ))}
   </div>

@@ -93,7 +93,7 @@ export function RecordingView({
       >
         <CameraIcon className="w-4 h-4" />
         Screenshot
-        <span className="text-xs text-theme-muted ml-1" aria-hidden="true">(&#8984;&#8679;S)</span>
+        <span className="text-xs text-theme-muted ml-1" aria-hidden="true">(⌘⇧S)</span>
       </button>
 
       <div className="flex gap-3 w-full">
