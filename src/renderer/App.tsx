@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSession } from './hooks/useSession'
 import { IdleView } from './components/IdleView'
 import { RecordingView } from './components/RecordingView'
@@ -14,6 +14,30 @@ function App() {
   const { state, session, isLoading, start, stop, cancel, reset, copyToClipboard, captureScreenshot } = useSession()
   const [view, setView] = useState<View>('main')
   const [screenshotCount, setScreenshotCount] = useState(0)
+
+  // Keyboard navigation handler
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    // Escape key: close popover (except during recording to prevent accidental cancellation)
+    if (event.key === 'Escape') {
+      if (state === 'recording') {
+        // During recording, Escape does nothing to prevent accidental cancellation
+        return
+      }
+      if (view === 'settings') {
+        setView('main')
+        event.preventDefault()
+      }
+      // In main view, Escape could close the popover via IPC if needed
+    }
+  }, [state, view])
+
+  // Register keyboard event listener
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [handleKeyDown])
 
   // Listen for tray menu events
   useEffect(() => {
@@ -68,7 +92,13 @@ function App() {
 
   if (view === 'settings') {
     return (
-      <div className="h-screen bg-gray-900 rounded-xl overflow-hidden">
+      <div
+        className="h-screen rounded-xl overflow-hidden relative"
+        style={{ backgroundColor: 'rgba(30, 30, 30, 0.85)' }}
+        role="dialog"
+        aria-label="Settings"
+      >
+        <div className="popover-arrow" aria-hidden="true" />
         <SettingsView onBack={() => setView('main')} />
       </div>
     )
@@ -122,22 +152,25 @@ function App() {
   }
 
   return (
-    <div className="h-screen bg-gray-900 rounded-xl overflow-hidden flex flex-col">
-      {/* Drag handle */}
-      <div className="h-6 bg-gray-800/50 flex items-center justify-center" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <div className="w-10 h-1 bg-gray-600 rounded-full" />
-      </div>
+    <div
+      className="h-screen rounded-xl overflow-hidden flex flex-col relative"
+      style={{ backgroundColor: 'rgba(30, 30, 30, 0.85)' }}
+      role="application"
+      aria-label="FeedbackFlow"
+    >
+      {/* Popover arrow */}
+      <div className="popover-arrow" aria-hidden="true" />
 
       {/* Main content */}
-      <div className="flex-1 min-h-0">
+      <main className="flex-1 min-h-0 pt-2">
         {renderMainContent()}
-      </div>
+      </main>
 
       {/* Footer with donate button (only show in idle/complete states) */}
       {(state === 'idle' || state === 'complete') && (
-        <div className="py-2 flex justify-center border-t border-gray-800">
+        <footer className="py-2 flex justify-center border-t border-white/10">
           <DonateButton />
-        </div>
+        </footer>
       )}
     </div>
   )

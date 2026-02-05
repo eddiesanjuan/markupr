@@ -1,12 +1,19 @@
 export function ProcessingView() {
   return (
-    <div className="flex flex-col items-center justify-center h-full p-6">
+    <div
+      className="flex flex-col items-center justify-center h-full p-6"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Processing your recording"
+    >
       <div className="mb-6">
         <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center">
           <svg
             className="w-10 h-10 text-white animate-spin"
             fill="none"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             <circle
               className="opacity-25"
@@ -26,7 +33,7 @@ export function ProcessingView() {
       </div>
 
       <h2 className="text-xl font-medium text-white mb-2">Processing</h2>
-      <p className="text-sm text-gray-400 text-center">
+      <p className="text-sm text-gray-400 text-center" aria-live="polite">
         Transcribing your feedback...
       </p>
       <p className="text-xs text-gray-500 text-center mt-1">
@@ -34,7 +41,12 @@ export function ProcessingView() {
       </p>
 
       <div className="mt-6 w-full">
-        <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
+        <div
+          className="h-1 bg-gray-700 rounded-full overflow-hidden"
+          role="progressbar"
+          aria-label="Processing progress"
+          aria-valuetext="Processing in progress"
+        >
           <div className="h-full bg-blue-500 animate-pulse w-2/3" />
         </div>
       </div>

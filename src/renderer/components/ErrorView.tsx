@@ -5,10 +5,14 @@ interface ErrorViewProps {
 
 export function ErrorView({ error, onReset }: ErrorViewProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full p-6">
+    <div
+      className="flex flex-col items-center justify-center h-full p-6"
+      role="alert"
+      aria-live="assertive"
+    >
       <div className="mb-6">
         <div className="w-16 h-16 rounded-full bg-orange-600 flex items-center justify-center">
-          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -26,7 +30,8 @@ export function ErrorView({ error, onReset }: ErrorViewProps) {
 
       <button
         onClick={onReset}
-        className="w-full px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
+        aria-label="Try again, start a new recording"
+        className="w-full px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
       >
         Try Again
       </button>
