@@ -15,7 +15,6 @@
 
 import { EventEmitter } from 'events';
 import * as os from 'os';
-import * as dns from 'dns';
 import { transcriptionService as deepgramService } from './TranscriptionService';
 import { whisperService } from './WhisperService';
 import { silenceDetector } from './SilenceDetector';
@@ -54,6 +53,7 @@ const TIMER_SCREENSHOT_INTERVAL_MS = 10000;
 
 // Max failovers before forcing timer-only
 const MAX_FAILOVERS = 3;
+type PreferredTier = 'auto' | TranscriptionTier;
 
 // ============================================================================
 // TierManager Class
@@ -61,6 +61,7 @@ const MAX_FAILOVERS = 3;
 
 export class TierManager extends EventEmitter {
   private currentTier: TranscriptionTier | null = null;
+  private preferredTier: PreferredTier = 'auto';
   private isActive: boolean = false;
   private failoverCount: number = 0;
 
@@ -99,6 +100,28 @@ export class TierManager extends EventEmitter {
    */
   getCurrentTier(): TranscriptionTier | null {
     return this.currentTier;
+  }
+
+  /**
+   * Get preferred tier selection. 'auto' means dynamic best-available choice.
+   */
+  getPreferredTier(): PreferredTier {
+    return this.preferredTier;
+  }
+
+  /**
+   * Set preferred tier selection used for future session starts.
+   * Only transcription-capable tiers are accepted in strict feedback mode.
+   */
+  setPreferredTier(tier: PreferredTier): void {
+    if (tier !== 'auto' && !this.tierProvidesTranscription(tier)) {
+      throw new Error(
+        'This tier does not provide transcription. Select Deepgram, Whisper, or Auto.'
+      );
+    }
+
+    this.preferredTier = tier;
+    this.log(`Preferred tier set to: ${tier}`);
   }
 
   /**
@@ -147,6 +170,17 @@ export class TierManager extends EventEmitter {
   async selectBestTier(): Promise<TranscriptionTier> {
     const statuses = await this.getTierStatuses();
 
+    if (this.preferredTier !== 'auto') {
+      const preferredStatus = statuses.find((s) => s.tier === this.preferredTier);
+      if (preferredStatus?.available) {
+        return this.preferredTier;
+      }
+
+      this.log(
+        `Preferred tier "${this.preferredTier}" unavailable, using automatic failover`
+      );
+    }
+
     for (const tier of TIER_PRIORITY) {
       const status = statuses.find((s) => s.tier === tier);
       if (status?.available) {
@@ -188,7 +222,7 @@ export class TierManager extends EventEmitter {
     this.log(`Selected tier: ${tier}`);
     await this.startTier(tier);
 
-    return tier;
+    return this.currentTier ?? tier;
   }
 
   /**
@@ -355,10 +389,9 @@ export class TierManager extends EventEmitter {
         return { tier: 'deepgram', available: false, reason: 'No API key configured' };
       }
 
-      // Check internet connectivity
-      const hasInternet = await this.checkInternetConnectivity();
-      if (!hasInternet) {
-        return { tier: 'deepgram', available: false, reason: 'No internet connection' };
+      const normalizedKey = apiKey.trim();
+      if (normalizedKey.length < 16) {
+        return { tier: 'deepgram', available: false, reason: 'API key format looks invalid' };
       }
 
       return { tier: 'deepgram', available: true };
@@ -403,14 +436,6 @@ export class TierManager extends EventEmitter {
   private async checkTier4Availability(): Promise<TierStatus> {
     // Timer-only is always available
     return { tier: 'timer-only', available: true };
-  }
-
-  private checkInternetConnectivity(): Promise<boolean> {
-    return new Promise((resolve) => {
-      dns.lookup('api.deepgram.com', (err) => {
-        resolve(!err);
-      });
-    });
   }
 
   // ============================================================================

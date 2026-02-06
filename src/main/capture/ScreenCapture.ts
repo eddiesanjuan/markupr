@@ -7,7 +7,7 @@
  * - Window and full-screen capture
  * - Multi-monitor support with display detection
  * - Retina/HiDPI display support (per-monitor)
- * - Image resizing via sharp
+ * - Image resizing via Electron's nativeImage (no native dependencies)
  * - Display hotplug events (monitors added/removed)
  */
 
@@ -17,9 +17,8 @@ import {
   systemPreferences,
   BrowserWindow,
   Display,
+  nativeImage,
 } from 'electron';
-// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
-const sharp = require('sharp') as typeof import('sharp');
 import { randomUUID } from 'crypto';
 import { errorHandler } from '../ErrorHandler';
 
@@ -444,17 +443,14 @@ class ScreenCaptureServiceImpl implements ScreenCaptureService {
       // Convert NativeImage to PNG buffer
       const pngBuffer = thumbnail.toPNG();
 
-      // Resize using sharp if needed
-      const resizedBuffer = await this.resizeImage(pngBuffer);
-
-      // Get final dimensions
-      const metadata = await sharp(resizedBuffer).metadata();
+      // Resize using nativeImage if needed
+      const { buffer: resizedBuffer, width, height } = await this.resizeImage(pngBuffer);
 
       const screenshot: Screenshot = {
         id: randomUUID(),
         buffer: resizedBuffer,
-        width: metadata.width || 0,
-        height: metadata.height || 0,
+        width,
+        height,
         timestamp: Date.now(),
         sourceId,
       };
@@ -589,14 +585,13 @@ class ScreenCaptureServiceImpl implements ScreenCaptureService {
     }
 
     const pngBuffer = thumbnail.toPNG();
-    const resizedBuffer = await this.resizeImage(pngBuffer);
-    const metadata = await sharp(resizedBuffer).metadata();
+    const { buffer: resizedBuffer, width, height } = await this.resizeImage(pngBuffer);
 
     return {
       id: randomUUID(),
       buffer: resizedBuffer,
-      width: metadata.width || 0,
-      height: metadata.height || 0,
+      width,
+      height,
       timestamp: Date.now(),
       sourceId: source.id,
       displayId: display.id,
@@ -650,39 +645,45 @@ class ScreenCaptureServiceImpl implements ScreenCaptureService {
 
   /**
    * Resize image to max width while maintaining aspect ratio
-   * Uses sharp for efficient image processing
+   * Uses Electron's nativeImage for efficient image processing (no native dependencies)
    */
-  private async resizeImage(buffer: Buffer): Promise<Buffer> {
+  private async resizeImage(buffer: Buffer): Promise<{ buffer: Buffer; width: number; height: number }> {
     try {
-      const image = sharp(buffer);
-      const metadata = await image.metadata();
+      const image = nativeImage.createFromBuffer(buffer);
+      const { width, height } = image.getSize();
 
       // Only resize if wider than max
-      if (metadata.width && metadata.width > MAX_WIDTH) {
-        return await image
-          .resize({
-            width: MAX_WIDTH,
-            withoutEnlargement: true,
-            fit: 'inside',
-          })
-          .png({
-            compressionLevel: 6, // Balance between size and speed
-            adaptiveFiltering: true,
-          })
-          .toBuffer();
+      if (width > MAX_WIDTH) {
+        // Calculate new height maintaining aspect ratio
+        const aspectRatio = height / width;
+        const newWidth = MAX_WIDTH;
+        const newHeight = Math.round(newWidth * aspectRatio);
+
+        const resized = image.resize({ width: newWidth, height: newHeight });
+        return {
+          buffer: resized.toPNG(),
+          width: newWidth,
+          height: newHeight,
+        };
       }
 
-      // Optimize PNG even if not resizing
-      return await image
-        .png({
-          compressionLevel: 6,
-          adaptiveFiltering: true,
-        })
-        .toBuffer();
+      // Return original dimensions
+      return {
+        buffer: image.toPNG(),
+        width,
+        height,
+      };
     } catch (error) {
       console.error('[ScreenCapture] Error resizing image:', error);
-      // Return original if resize fails
-      return buffer;
+      // Return original if resize fails - try to get dimensions
+      try {
+        const fallbackImage = nativeImage.createFromBuffer(buffer);
+        const { width, height } = fallbackImage.getSize();
+        return { buffer, width, height };
+      } catch {
+        // Absolute fallback
+        return { buffer, width: 0, height: 0 };
+      }
     }
   }
 
@@ -760,14 +761,13 @@ class ScreenCaptureServiceImpl implements ScreenCaptureService {
             const buffer = Buffer.from(base64Data, 'base64');
 
             // Resize if needed
-            const resizedBuffer = await this.resizeImage(buffer);
-            const metadata = await sharp(resizedBuffer).metadata();
+            const { buffer: resizedBuffer, width, height } = await this.resizeImage(buffer);
 
             resolve({
               id: randomUUID(),
               buffer: resizedBuffer,
-              width: metadata.width || 0,
-              height: metadata.height || 0,
+              width,
+              height,
               timestamp: Date.now(),
               sourceId,
             });

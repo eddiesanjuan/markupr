@@ -16,12 +16,12 @@ import { join } from 'path';
  * Popover sizes for different application states
  */
 export const POPOVER_SIZES = {
-  idle: { width: 320, height: 240 },
-  recording: { width: 320, height: 320 },
-  processing: { width: 320, height: 200 },
-  complete: { width: 320, height: 280 },
+  idle: { width: 460, height: 680 },
+  recording: { width: 460, height: 700 },
+  processing: { width: 440, height: 560 },
+  complete: { width: 460, height: 720 },
   settings: { width: 400, height: 520 },
-  error: { width: 320, height: 200 },
+  error: { width: 440, height: 620 },
 } as const;
 
 export type PopoverState = keyof typeof POPOVER_SIZES;
@@ -39,6 +39,7 @@ export class PopoverManager {
   private window: BrowserWindow | null = null;
   private tray: Tray | null = null;
   private config: PopoverConfig;
+  private keepVisibleOnBlur = false;
 
   constructor(config: PopoverConfig) {
     this.config = config;
@@ -89,6 +90,9 @@ export class PopoverManager {
 
     // Hide on blur (clicking outside the popover)
     this.window.on('blur', () => {
+      if (this.keepVisibleOnBlur) {
+        return;
+      }
       this.hide();
     });
 
@@ -217,6 +221,14 @@ export class PopoverManager {
   resizeToState(state: PopoverState): void {
     const size = POPOVER_SIZES[state];
     this.resize(size.width, size.height);
+  }
+
+  /**
+   * Keep popover visible while app focus changes.
+   * Useful during active recording when users switch to other apps.
+   */
+  setKeepVisibleOnBlur(enabled: boolean): void {
+    this.keepVisibleOnBlur = enabled;
   }
 
   /**

@@ -15,27 +15,19 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import type {
+  TranscriptionTier as SharedTranscriptionTier,
+  TranscriptionTierStatus,
+  WhisperDownloadProgressPayload,
+} from '../../shared/types';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type TranscriptionTier = 'deepgram' | 'whisper' | 'macos-dictation' | 'timer-only';
-
-export interface TierStatus {
-  tier: TranscriptionTier;
-  available: boolean;
-  reason?: string;
-}
-
-export interface DownloadProgress {
-  model: string;
-  downloadedBytes: number;
-  totalBytes: number;
-  percent: number;
-  speedBps: number;
-  estimatedSecondsRemaining: number;
-}
+export type TranscriptionTier = Exclude<SharedTranscriptionTier, 'auto'>;
+type TierStatus = TranscriptionTierStatus;
+type DownloadProgress = WhisperDownloadProgressPayload;
 
 interface TierInfo {
   name: string;
@@ -159,21 +151,8 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
   const loadTierStatuses = useCallback(async () => {
     setLoading(true);
     try {
-      // Call IPC to get tier statuses
-      const statuses = await (window.feedbackflow as any)?.transcription?.getTierStatuses?.();
-      if (statuses) {
-        setTierStatuses(statuses);
-      } else {
-        // Fallback: assume whisper is default/available
-        // Check platform for macOS dictation availability
-        const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
-        setTierStatuses([
-          { tier: 'deepgram', available: false, reason: 'No API key configured' },
-          { tier: 'whisper', available: true },
-          { tier: 'macos-dictation', available: isMac },
-          { tier: 'timer-only', available: true },
-        ]);
-      }
+      const statuses = await window.feedbackflow.transcription.getTierStatuses();
+      setTierStatuses(statuses);
     } catch (error) {
       console.error('Failed to load tier statuses:', error);
       // Fallback statuses
@@ -188,7 +167,10 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
   const handleDownloadModel = useCallback(async () => {
     setIsDownloading(true);
     try {
-      await (window.feedbackflow as any)?.transcription?.downloadModel?.('medium');
+      const result = await window.feedbackflow.transcription.downloadModel('medium');
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to start model download.');
+      }
     } catch (error) {
       console.error('Download failed:', error);
       setIsDownloading(false);
@@ -197,7 +179,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
 
   const handleCancelDownload = useCallback(async () => {
     try {
-      await (window.feedbackflow as any)?.transcription?.cancelDownload?.('medium');
+      await window.feedbackflow.transcription.cancelDownload('medium');
     } catch (error) {
       console.error('Cancel failed:', error);
     }
@@ -210,7 +192,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
     loadTierStatuses();
 
     // Subscribe to model download progress
-    const unsubscribe = (window.feedbackflow as any)?.transcription?.onModelProgress?.((progress: DownloadProgress) => {
+    const unsubscribe = window.feedbackflow.transcription.onModelProgress((progress: DownloadProgress) => {
       setDownloadProgress(progress);
       if (progress.percent >= 100) {
         setIsDownloading(false);
@@ -220,7 +202,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
     });
 
     return () => {
-      unsubscribe?.();
+      unsubscribe();
     };
   }, [loadTierStatuses]);
 

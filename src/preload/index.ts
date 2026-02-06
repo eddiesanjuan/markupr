@@ -24,10 +24,16 @@ import {
   type FeedbackItemPayload,
   type TranscriptChunkPayload,
   type ScreenshotCapturedPayload,
+  type OutputReadyPayload,
   type SaveResult,
   type HotkeyConfig,
   type SessionState,
   type UpdateStatusPayload,
+  type WhisperDownloadProgressPayload,
+  type WhisperModelInfoPayload,
+  type WhisperModelCheckResult,
+  type TranscriptionTier,
+  type TranscriptionTierStatus,
 } from '../shared/types';
 
 // =============================================================================
@@ -61,8 +67,11 @@ const feedbackflow = {
      * Start a recording session
      * @param sourceId - ID of the capture source (screen or window)
      */
-    start: (sourceId: string): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
-      return ipcRenderer.invoke(IPC_CHANNELS.SESSION_START, sourceId);
+    start: (
+      sourceId?: string,
+      sourceName?: string
+    ): Promise<{ success: boolean; sessionId?: string; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SESSION_START, sourceId, sourceName);
     },
 
     /**
@@ -278,6 +287,40 @@ const feedbackflow = {
   },
 
   // ===========================================================================
+  // Screen Recording API
+  // ===========================================================================
+  screenRecording: {
+    /**
+     * Start persisted screen recording for a session
+     */
+    start: (
+      sessionId: string,
+      mimeType: string
+    ): Promise<{ success: boolean; path?: string; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SCREEN_RECORDING_START, sessionId, mimeType);
+    },
+
+    /**
+     * Append a video chunk to the active recording file
+     */
+    appendChunk: (
+      sessionId: string,
+      chunk: Uint8Array
+    ): Promise<{ success: boolean; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SCREEN_RECORDING_CHUNK, sessionId, chunk);
+    },
+
+    /**
+     * Finalize persisted recording for a session
+     */
+    stop: (
+      sessionId: string
+    ): Promise<{ success: boolean; path?: string; bytes?: number; mimeType?: string; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SCREEN_RECORDING_STOP, sessionId);
+    },
+  },
+
+  // ===========================================================================
   // Transcription API
   // ===========================================================================
   transcript: {
@@ -294,6 +337,53 @@ const feedbackflow = {
       confidence: number;
       timestamp: number;
     }>(IPC_CHANNELS.TRANSCRIPTION_FINAL),
+  },
+
+  // ===========================================================================
+  // Transcription Control API
+  // ===========================================================================
+  transcription: {
+    /**
+     * Get runtime availability for all transcription tiers.
+     */
+    getTierStatuses: (): Promise<TranscriptionTierStatus[]> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.TRANSCRIPTION_GET_TIER_STATUSES);
+    },
+
+    /**
+     * Get current preferred/active transcription tier.
+     */
+    getCurrentTier: (): Promise<TranscriptionTier | null> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.TRANSCRIPTION_GET_CURRENT_TIER);
+    },
+
+    /**
+     * Set preferred transcription tier.
+     */
+    setTier: (tier: TranscriptionTier): Promise<{ success: boolean; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.TRANSCRIPTION_SET_TIER, tier);
+    },
+
+    /**
+     * Download a specific Whisper model via transcription controls.
+     */
+    downloadModel: (model: string): Promise<{ success: boolean; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_DOWNLOAD_MODEL, model);
+    },
+
+    /**
+     * Cancel Whisper model download via transcription controls.
+     */
+    cancelDownload: (model: string): Promise<{ success: boolean }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_CANCEL_DOWNLOAD, model);
+    },
+
+    /**
+     * Subscribe to Whisper model progress updates.
+     */
+    onModelProgress: createEventSubscriber<WhisperDownloadProgressPayload>(
+      IPC_CHANNELS.WHISPER_DOWNLOAD_PROGRESS
+    ),
   },
 
   // ===========================================================================
@@ -333,6 +423,48 @@ const feedbackflow = {
      */
     setApiKey: (service: string, key: string): Promise<boolean> => {
       return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET_API_KEY, service, key);
+    },
+
+    /**
+     * Delete an API key from secure storage
+     */
+    deleteApiKey: (service: string): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_DELETE_API_KEY, service);
+    },
+
+    /**
+     * Check if an API key exists in secure storage
+     */
+    hasApiKey: (service: string): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_HAS_API_KEY, service);
+    },
+
+    /**
+     * Open native directory picker for output path selection
+     */
+    selectDirectory: (): Promise<string | null> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SELECT_DIRECTORY);
+    },
+
+    /**
+     * Clear app data and reset settings
+     */
+    clearAllData: (): Promise<void> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_CLEAR_ALL_DATA);
+    },
+
+    /**
+     * Export settings to a JSON file
+     */
+    export: (): Promise<void> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_EXPORT);
+    },
+
+    /**
+     * Import settings from a JSON file
+     */
+    import: (): Promise<AppSettings | null> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_IMPORT);
     },
   },
 
@@ -418,7 +550,7 @@ const feedbackflow = {
     /**
      * Subscribe to output ready events
      */
-    onReady: createEventSubscriber<{ markdown: string; sessionId: string; path: string }>(
+    onReady: createEventSubscriber<OutputReadyPayload>(
       IPC_CHANNELS.OUTPUT_READY
     ),
 
@@ -655,6 +787,77 @@ const feedbackflow = {
   },
 
   // ===========================================================================
+  // Whisper Model API
+  // ===========================================================================
+  whisper: {
+    /**
+     * Check if any Whisper model is downloaded and get recommended model
+     */
+    checkModel: (): Promise<WhisperModelCheckResult> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_CHECK_MODEL);
+    },
+
+    /**
+     * Check if we have any tier that can actually transcribe
+     * (Deepgram with API key or Whisper with model)
+     */
+    hasTranscriptionCapability: (): Promise<boolean> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_HAS_TRANSCRIPTION_CAPABILITY);
+    },
+
+    /**
+     * Get available models with their info
+     */
+    getAvailableModels: (): Promise<WhisperModelInfoPayload[]> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_GET_AVAILABLE_MODELS);
+    },
+
+    /**
+     * Download a specific Whisper model
+     * @param model - Model name: 'tiny', 'base', 'small', 'medium', or 'large'
+     */
+    downloadModel: (model: string): Promise<{ success: boolean; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_DOWNLOAD_MODEL, model);
+    },
+
+    /**
+     * Cancel an active download
+     * @param model - Model name to cancel
+     */
+    cancelDownload: (model: string): Promise<{ success: boolean }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.WHISPER_CANCEL_DOWNLOAD, model);
+    },
+
+    /**
+     * Subscribe to download progress events
+     */
+    onDownloadProgress: createEventSubscriber<WhisperDownloadProgressPayload>(
+      IPC_CHANNELS.WHISPER_DOWNLOAD_PROGRESS
+    ),
+
+    /**
+     * Subscribe to download complete events
+     */
+    onDownloadComplete: createEventSubscriber<{ model: string; path: string }>(
+      IPC_CHANNELS.WHISPER_DOWNLOAD_COMPLETE
+    ),
+
+    /**
+     * Subscribe to download error events
+     */
+    onDownloadError: createEventSubscriber<{ model: string; error: string }>(
+      IPC_CHANNELS.WHISPER_DOWNLOAD_ERROR
+    ),
+  },
+
+  // ===========================================================================
+  // App Version
+  // ===========================================================================
+  version: (): Promise<string> => {
+    return ipcRenderer.invoke('feedbackflow:app:version');
+  },
+
+  // ===========================================================================
   // Legacy API (for backwards compatibility)
   // ===========================================================================
   startSession: (): Promise<{ success: boolean; sessionId?: string }> => {
@@ -690,6 +893,52 @@ const feedbackflow = {
     },
   },
 
+  // Popover controls
+  popover: {
+    resize: (width: number, height: number): Promise<{ success: boolean }> => {
+      return ipcRenderer.invoke('feedbackflow:popover:resize', width, height);
+    },
+    resizeToState: (state: string): Promise<{ success: boolean }> => {
+      return ipcRenderer.invoke('feedbackflow:popover:resize-to-state', state);
+    },
+  },
+
+  // ===========================================================================
+  // Navigation API (Main -> Renderer navigation events)
+  // ===========================================================================
+  navigation: {
+    onShowSettings: (callback: () => void): Unsubscribe => {
+      const handler = () => callback();
+      ipcRenderer.on('feedbackflow:show-settings', handler);
+      return () => ipcRenderer.removeListener('feedbackflow:show-settings', handler);
+    },
+    onShowHistory: (callback: () => void): Unsubscribe => {
+      const handler = () => callback();
+      ipcRenderer.on('feedbackflow:show-history', handler);
+      return () => ipcRenderer.removeListener('feedbackflow:show-history', handler);
+    },
+    onShowShortcuts: (callback: () => void): Unsubscribe => {
+      const handler = () => callback();
+      ipcRenderer.on('feedbackflow:show-shortcuts', handler);
+      return () => ipcRenderer.removeListener('feedbackflow:show-shortcuts', handler);
+    },
+    onShowOnboarding: (callback: () => void): Unsubscribe => {
+      const handler = () => callback();
+      ipcRenderer.on('feedbackflow:show-onboarding', handler);
+      return () => ipcRenderer.removeListener('feedbackflow:show-onboarding', handler);
+    },
+    onShowExport: (callback: () => void): Unsubscribe => {
+      const handler = () => callback();
+      ipcRenderer.on('feedbackflow:show-export', handler);
+      return () => ipcRenderer.removeListener('feedbackflow:show-export', handler);
+    },
+    onShowWindowSelector: (callback: () => void): Unsubscribe => {
+      const handler = () => callback();
+      ipcRenderer.on('feedbackflow:show-window-selector', handler);
+      return () => ipcRenderer.removeListener('feedbackflow:show-window-selector', handler);
+    },
+  },
+
   onSessionStatus: (
     callback: (status: { action: string; status?: SessionStatusPayload }) => void
   ): Unsubscribe => {
@@ -715,8 +964,8 @@ const feedbackflow = {
     return () => ipcRenderer.removeListener(IPC_CHANNELS.SCREENSHOT_CAPTURED, handler);
   },
 
-  onOutputReady: (callback: (data: { markdown: string; sessionId: string }) => void): Unsubscribe => {
-    const handler = (_: Electron.IpcRendererEvent, data: { markdown: string; sessionId: string }) =>
+  onOutputReady: (callback: (data: OutputReadyPayload) => void): Unsubscribe => {
+    const handler = (_: Electron.IpcRendererEvent, data: OutputReadyPayload) =>
       callback(data);
     ipcRenderer.on(IPC_CHANNELS.OUTPUT_READY, handler);
     return () => ipcRenderer.removeListener(IPC_CHANNELS.OUTPUT_READY, handler);

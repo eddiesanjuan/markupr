@@ -10,6 +10,9 @@ directories:
   output: release
   buildResources: build
 
+# Rebuild native modules for Electron's Node.js version
+npmRebuild: true
+
 files:
   - dist/**/*
   - package.json

@@ -209,6 +209,9 @@ export const IPC_CHANNELS = {
   // ---------------------------------------------------------------------------
   CAPTURE_GET_SOURCES: 'feedbackflow:capture:get-sources',
   CAPTURE_MANUAL_SCREENSHOT: 'feedbackflow:capture:manual-screenshot',
+  SCREEN_RECORDING_START: 'feedbackflow:screen-recording:start',
+  SCREEN_RECORDING_CHUNK: 'feedbackflow:screen-recording:chunk',
+  SCREEN_RECORDING_STOP: 'feedbackflow:screen-recording:stop',
 
   // ---------------------------------------------------------------------------
   // Capture Channels (Main -> Renderer)
@@ -249,6 +252,13 @@ export const IPC_CHANNELS = {
   TRANSCRIPTION_FINAL: 'feedbackflow:transcript:final',
 
   // ---------------------------------------------------------------------------
+  // Transcription Control Channels (Renderer -> Main)
+  // ---------------------------------------------------------------------------
+  TRANSCRIPTION_GET_TIER_STATUSES: 'feedbackflow:transcription:get-tier-statuses',
+  TRANSCRIPTION_GET_CURRENT_TIER: 'feedbackflow:transcription:get-current-tier',
+  TRANSCRIPTION_SET_TIER: 'feedbackflow:transcription:set-tier',
+
+  // ---------------------------------------------------------------------------
   // Settings Channels (Renderer -> Main)
   // ---------------------------------------------------------------------------
   SETTINGS_GET: 'feedbackflow:settings:get',
@@ -256,6 +266,12 @@ export const IPC_CHANNELS = {
   SETTINGS_SET: 'feedbackflow:settings:set',
   SETTINGS_GET_API_KEY: 'feedbackflow:settings:get-api-key',
   SETTINGS_SET_API_KEY: 'feedbackflow:settings:set-api-key',
+  SETTINGS_DELETE_API_KEY: 'feedbackflow:settings:delete-api-key',
+  SETTINGS_HAS_API_KEY: 'feedbackflow:settings:has-api-key',
+  SETTINGS_SELECT_DIRECTORY: 'feedbackflow:settings:select-directory',
+  SETTINGS_CLEAR_ALL_DATA: 'feedbackflow:settings:clear-all-data',
+  SETTINGS_EXPORT: 'feedbackflow:settings:export',
+  SETTINGS_IMPORT: 'feedbackflow:settings:import',
 
   // ---------------------------------------------------------------------------
   // Permissions Channels (Renderer -> Main)
@@ -340,6 +356,22 @@ export const IPC_CHANNELS = {
   TASKBAR_SET_OVERLAY: 'feedbackflow:taskbar:setOverlay',
 
   // ---------------------------------------------------------------------------
+  // Whisper Model Channels (Renderer -> Main)
+  // ---------------------------------------------------------------------------
+  WHISPER_CHECK_MODEL: 'feedbackflow:whisper:check-model',
+  WHISPER_DOWNLOAD_MODEL: 'feedbackflow:whisper:download-model',
+  WHISPER_CANCEL_DOWNLOAD: 'feedbackflow:whisper:cancel-download',
+  WHISPER_GET_AVAILABLE_MODELS: 'feedbackflow:whisper:get-available-models',
+  WHISPER_HAS_TRANSCRIPTION_CAPABILITY: 'feedbackflow:whisper:has-transcription-capability',
+
+  // ---------------------------------------------------------------------------
+  // Whisper Model Channels (Main -> Renderer)
+  // ---------------------------------------------------------------------------
+  WHISPER_DOWNLOAD_PROGRESS: 'feedbackflow:whisper:download-progress',
+  WHISPER_DOWNLOAD_COMPLETE: 'feedbackflow:whisper:download-complete',
+  WHISPER_DOWNLOAD_ERROR: 'feedbackflow:whisper:download-error',
+
+  // ---------------------------------------------------------------------------
   // Legacy channels (backwards compatibility)
   // ---------------------------------------------------------------------------
   START_SESSION: 'session:start',
@@ -404,6 +436,118 @@ export interface ScreenshotCapturedPayload {
   count: number;
   width?: number;
   height?: number;
+  trigger?: 'pause' | 'manual' | 'voice-command';
+}
+
+/**
+ * Transcription tier identifiers used by UI and IPC.
+ */
+export type TranscriptionTier = 'auto' | 'deepgram' | 'whisper' | 'macos-dictation' | 'timer-only';
+
+/**
+ * Runtime availability status for a transcription tier.
+ */
+export interface TranscriptionTierStatus {
+  tier: Exclude<TranscriptionTier, 'auto'>;
+  available: boolean;
+  reason?: string;
+}
+
+// =============================================================================
+// Review Session Types (renderer-compatible mirrors of MarkdownGenerator types)
+// =============================================================================
+
+/**
+ * Feedback category labels for the review UI
+ */
+export type ReviewFeedbackCategory = 'Bug' | 'UX Issue' | 'Suggestion' | 'Performance' | 'Question' | 'General';
+
+/**
+ * Feedback severity levels for the review UI
+ */
+export type ReviewFeedbackSeverity = 'Critical' | 'High' | 'Medium' | 'Low';
+
+/**
+ * A single feedback item in the review session (renderer-safe)
+ */
+export interface ReviewFeedbackItem {
+  id: string;
+  transcription: string;
+  timestamp: number;
+  screenshots: Screenshot[];
+  title?: string;
+  keywords?: string[];
+  category?: ReviewFeedbackCategory;
+  severity?: ReviewFeedbackSeverity;
+}
+
+/**
+ * Review session metadata
+ */
+export interface ReviewSessionMetadata {
+  os?: string;
+  sourceName?: string;
+  sourceType?: 'screen' | 'window';
+}
+
+/**
+ * Complete review session for SessionReview component (renderer-safe)
+ */
+export interface ReviewSession {
+  id: string;
+  startTime: number;
+  endTime?: number;
+  feedbackItems: ReviewFeedbackItem[];
+  metadata?: ReviewSessionMetadata;
+}
+
+/**
+ * Output ready payload
+ */
+export interface OutputReadyPayload {
+  markdown: string;
+  sessionId: string;
+  path: string;
+  reportPath?: string;
+  sessionDir?: string;
+  recordingPath?: string;
+  /** The full review session for SessionReview component */
+  reviewSession?: ReviewSession;
+}
+
+/**
+ * Whisper model download progress payload
+ */
+export interface WhisperDownloadProgressPayload {
+  model: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  percent: number;
+  speedBps: number;
+  estimatedSecondsRemaining: number;
+}
+
+/**
+ * Whisper model info payload
+ */
+export interface WhisperModelInfoPayload {
+  name: string;
+  filename: string;
+  sizeMB: number;
+  ramRequired: string;
+  quality: string;
+  isDownloaded: boolean;
+}
+
+/**
+ * Whisper model check result
+ */
+export interface WhisperModelCheckResult {
+  hasAnyModel: boolean;
+  defaultModel: string | null;
+  downloadedModels: string[];
+  recommendedModel: string;
+  recommendedModelSizeMB: number;
 }
 
 /**
@@ -560,6 +704,9 @@ export interface SessionMetadata {
   sourceName?: string;
   windowTitle?: string;
   appName?: string;
+  recordingPath?: string;
+  recordingMimeType?: string;
+  recordingBytes?: number;
 }
 
 /**

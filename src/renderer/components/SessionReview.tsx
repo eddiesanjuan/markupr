@@ -15,11 +15,11 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type {
-  Session,
-  FeedbackItem,
-  FeedbackCategory,
-  FeedbackSeverity,
-} from '../../main/output/MarkdownGenerator';
+  ReviewSession as Session,
+  ReviewFeedbackItem as FeedbackItem,
+  ReviewFeedbackCategory as FeedbackCategory,
+  ReviewFeedbackSeverity as FeedbackSeverity,
+} from '../../shared/types';
 
 // ============================================================================
 // Types
@@ -43,13 +43,14 @@ interface DeletedItem {
 // Constants
 // ============================================================================
 
-const CATEGORIES: FeedbackCategory[] = ['Bug', 'UX Issue', 'Suggestion', 'Question', 'General'];
+const CATEGORIES: FeedbackCategory[] = ['Bug', 'UX Issue', 'Suggestion', 'Performance', 'Question', 'General'];
 const SEVERITIES: FeedbackSeverity[] = ['Critical', 'High', 'Medium', 'Low'];
 
 const CATEGORY_COLORS: Record<FeedbackCategory, string> = {
   Bug: '#ef4444',
   'UX Issue': '#f59e0b',
   Suggestion: '#3b82f6',
+  Performance: '#22c55e',
   Question: '#8b5cf6',
   General: '#6b7280',
 };

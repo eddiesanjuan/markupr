@@ -1,0 +1,464 @@
+:root {
+  --ff-shell-bg: radial-gradient(circle at 20% -10%, rgba(136, 116, 255, 0.24), transparent 45%),
+    radial-gradient(circle at 110% 10%, rgba(0, 178, 255, 0.18), transparent 42%),
+    linear-gradient(165deg, #0a111f 0%, #111f33 48%, #142543 100%);
+  --ff-surface: rgba(13, 22, 38, 0.8);
+  --ff-surface-strong: rgba(17, 30, 51, 0.92);
+  --ff-border: rgba(174, 200, 255, 0.24);
+  --ff-text-primary: #f2f6ff;
+  --ff-text-secondary: #b2c0dd;
+  --ff-text-muted: #8f9db8;
+  --ff-live: #ff5470;
+  --ff-live-soft: rgba(255, 84, 112, 0.25);
+  --ff-accent: #62a8ff;
+  --ff-accent-soft: rgba(98, 168, 255, 0.25);
+  --ff-success: #3bd49a;
+  --ff-error: #ff7f8b;
+}
+
+.ff-shell {
+  width: 100%;
+  min-height: 100%;
+  background: var(--ff-shell-bg);
+  color: var(--ff-text-primary);
+  padding: 14px;
+  font-family: 'SF Pro Display', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+}
+
+.ff-shell__card {
+  border: 1px solid var(--ff-border);
+  border-radius: 22px;
+  background: linear-gradient(160deg, rgba(13, 23, 40, 0.84), rgba(11, 20, 35, 0.96));
+  box-shadow:
+    0 14px 45px rgba(5, 11, 25, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 28px);
+  overflow-y: auto;
+  animation: ffShellIn 220ms cubic-bezier(0.24, 1.06, 0.4, 1);
+}
+
+.ff-shell__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ff-shell__eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ff-text-muted);
+  font-weight: 600;
+}
+
+.ff-shell__title {
+  margin-top: 2px;
+  font-size: 24px;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.ff-shell__quiet-btn {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ff-text-secondary);
+  background: rgba(189, 216, 255, 0.12);
+  border: 1px solid rgba(190, 218, 255, 0.22);
+  border-radius: 999px;
+  padding: 8px 12px;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.ff-shell__quiet-btn:hover {
+  background: rgba(189, 216, 255, 0.2);
+  border-color: rgba(190, 218, 255, 0.38);
+}
+
+.ff-shell__subtitle {
+  color: var(--ff-text-secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ff-shell__controls {
+  display: grid;
+  gap: 8px;
+}
+
+.ff-shell__primary-btn,
+.ff-shell__secondary-btn {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: transform 140ms ease, opacity 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.ff-shell__primary-btn {
+  color: #07111f;
+  background: linear-gradient(140deg, #8ec4ff 0%, #67a0ff 62%, #7f8cff 100%);
+  box-shadow: 0 8px 20px rgba(74, 136, 255, 0.32);
+}
+
+.ff-shell__primary-btn.is-live {
+  color: #ffeef3;
+  background: linear-gradient(140deg, #ff5f8a 0%, #ff4a6d 60%, #f83a53 100%);
+  box-shadow: 0 10px 24px rgba(255, 72, 103, 0.36);
+}
+
+.ff-shell__primary-btn:disabled,
+.ff-shell__secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ff-shell__primary-btn:not(:disabled):active,
+.ff-shell__secondary-btn:not(:disabled):active {
+  transform: translateY(1px) scale(0.995);
+}
+
+.ff-shell__secondary-btn {
+  color: var(--ff-text-primary);
+  background: rgba(158, 190, 255, 0.08);
+  border-color: rgba(158, 190, 255, 0.24);
+}
+
+.ff-shell__secondary-btn:hover:not(:disabled) {
+  background: rgba(158, 190, 255, 0.14);
+}
+
+.ff-shell__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ff-shell__meta span {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(167, 196, 255, 0.18);
+  background: rgba(82, 116, 175, 0.18);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--ff-text-secondary);
+}
+
+.ff-shell__meta span.is-ready {
+  border-color: rgba(104, 233, 178, 0.28);
+  background: rgba(60, 175, 134, 0.2);
+  color: #bbf7e4;
+}
+
+.ff-shell__meta span.is-missing {
+  border-color: rgba(255, 151, 164, 0.35);
+  background: rgba(143, 39, 54, 0.24);
+  color: #ffd6de;
+}
+
+.ff-shell__transcript {
+  border-radius: 14px;
+  padding: 12px;
+  border: 1px solid rgba(126, 166, 255, 0.26);
+  background: linear-gradient(145deg, rgba(66, 102, 170, 0.3), rgba(43, 63, 109, 0.2));
+}
+
+.ff-shell__transcript-label {
+  font-size: 11px;
+  color: var(--ff-text-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ff-shell__transcript p {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.ff-shell__transcript-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+  display: grid;
+  gap: 7px;
+  padding-right: 4px;
+}
+
+.ff-shell__transcript-line {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ff-text-primary);
+}
+
+.ff-shell__transcript-interim {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #c6d8ff;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.ff-shell__transcript-placeholder {
+  font-size: 12px;
+  color: var(--ff-text-muted);
+}
+
+.ff-shell__report {
+  border-radius: 16px;
+  border: 1px solid rgba(87, 219, 170, 0.45);
+  background: linear-gradient(145deg, rgba(33, 91, 74, 0.46), rgba(18, 62, 52, 0.5));
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.ff-shell__report-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #b2f0d7;
+}
+
+.ff-shell__path {
+  font-family: 'SF Mono', Menlo, Monaco, 'Cascadia Mono', monospace;
+  font-size: 11px;
+  color: #e8fff5;
+  overflow-wrap: anywhere;
+  background: rgba(6, 24, 18, 0.35);
+  border-radius: 10px;
+  padding: 9px;
+}
+
+.ff-shell__report-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ff-shell__report-actions button {
+  flex: 1;
+  border-radius: 10px;
+  border: 1px solid rgba(176, 255, 223, 0.34);
+  background: rgba(180, 255, 223, 0.16);
+  color: #e9fff6;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.ff-shell__error {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 128, 139, 0.45);
+  background: rgba(97, 24, 32, 0.58);
+  color: #ffd9de;
+  padding: 10px 11px;
+  font-size: 12px;
+}
+
+.ff-shell__recent {
+  border: 1px solid rgba(164, 194, 255, 0.2);
+  border-radius: 15px;
+  background: rgba(14, 23, 38, 0.66);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.ff-shell__recent-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ff-shell__recent-header h2 {
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.ff-shell__recent-header button {
+  color: var(--ff-text-secondary);
+  font-size: 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(167, 196, 255, 0.22);
+  padding: 6px 8px;
+  background: rgba(167, 196, 255, 0.1);
+}
+
+.ff-shell__recent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.ff-shell__recent-item {
+  border: 1px solid rgba(161, 191, 255, 0.16);
+  background: rgba(18, 28, 47, 0.72);
+  border-radius: 10px;
+  padding: 9px;
+  display: grid;
+  gap: 8px;
+}
+
+.ff-shell__recent-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ff-text-primary);
+}
+
+.ff-shell__recent-open span:last-child {
+  color: var(--ff-text-muted);
+  font-size: 11px;
+}
+
+.ff-shell__recent-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ff-text-secondary);
+}
+
+.ff-shell__recent-meta button {
+  margin-left: auto;
+  color: #d6e7ff;
+  border: 1px solid rgba(166, 194, 255, 0.32);
+  background: rgba(166, 194, 255, 0.12);
+  border-radius: 8px;
+  padding: 4px 7px;
+  font-size: 10px;
+}
+
+.ff-shell__empty {
+  font-size: 12px;
+  color: var(--ff-text-muted);
+}
+
+.ff-shell__footer {
+  display: grid;
+  gap: 4px;
+}
+
+.ff-shell__footer p {
+  font-size: 11px;
+  color: var(--ff-text-muted);
+}
+
+.ff-shell--recording .ff-shell__card {
+  border-color: rgba(255, 120, 145, 0.42);
+  box-shadow:
+    0 14px 45px rgba(50, 8, 19, 0.48),
+    inset 0 0 0 1px rgba(255, 149, 172, 0.22);
+}
+
+.ff-shell--recording .ff-shell__title::after {
+  content: '';
+  display: inline-flex;
+  margin-left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ff-live);
+  box-shadow: 0 0 0 8px var(--ff-live-soft);
+  animation: ffLivePulse 1.6s ease-in-out infinite;
+}
+
+.ff-shell--complete .ff-shell__card {
+  border-color: rgba(100, 222, 173, 0.44);
+}
+
+.ff-shell--error .ff-shell__card {
+  border-color: rgba(255, 129, 140, 0.4);
+}
+
+@keyframes ffLivePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--ff-live-soft);
+    opacity: 1;
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 84, 112, 0);
+    opacity: 0.62;
+  }
+}
+
+@keyframes ffShellIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Processing state spinner */
+@keyframes ffSpinnerSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ff-shell--processing .ff-shell__card::before {
+  content: '';
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 8px auto;
+  border: 2.5px solid var(--ff-border);
+  border-top-color: var(--ff-accent);
+  border-radius: 50%;
+  animation: ffSpinnerSpin 0.8s linear infinite;
+}
+
+/* Error state with retry guidance */
+.ff-shell__error-guidance {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ff-text-muted);
+  line-height: 1.45;
+}
+
+.ff-shell__error-retry {
+  margin-top: 10px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ff-error);
+  background: rgba(255, 127, 139, 0.12);
+  border: 1px solid rgba(255, 127, 139, 0.3);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.ff-shell__error-retry:hover {
+  background: rgba(255, 127, 139, 0.22);
+  border-color: rgba(255, 127, 139, 0.5);
+}
+
+/* Focus-visible indicators */
+:focus-visible {
+  outline: 2px solid var(--ff-accent);
+  outline-offset: 2px;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

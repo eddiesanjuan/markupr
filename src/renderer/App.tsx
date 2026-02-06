@@ -1,24 +1,131 @@
-/**
- * FeedbackFlow - Main App Component
- *
- * A minimal, floating UI that shows:
- * - Current recording status
- * - Live transcription preview
- * - Screenshot count
- * - Quick actions
- */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { SessionPayload, SessionState, AppSettings, ReviewSession } from '../shared/types';
+import { getScreenRecordingRenderer } from './capture/ScreenRecordingRenderer';
+import {
+  CrashRecoveryDialog,
+  useCrashRecovery,
+  Onboarding,
+  SettingsPanel,
+  UpdateNotification,
+  CountdownTimer,
+  CompactAudioIndicator,
+  DonateButton,
+  KeyboardShortcuts,
+  RecordingOverlay,
+  ExportDialog,
+  SessionReview,
+} from './components';
+import { SessionHistory } from './components/SessionHistory';
+import { ToggleRecordingHint, ManualScreenshotHint } from './components/HotkeyHint';
+import StatusIndicator from './components/StatusIndicator';
+import './styles/app-shell.css';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import type { SessionStatus, SessionState } from '../shared/types';
-import { CrashRecoveryDialog, useCrashRecovery } from './components/CrashRecoveryDialog';
+// ============================================================================
+// Types
+// ============================================================================
+
+interface RecentSession {
+  id: string;
+  startTime: number;
+  endTime: number;
+  itemCount: number;
+  screenshotCount: number;
+  sourceName: string;
+  firstThumbnail?: string;
+  folder: string;
+  transcriptionPreview?: string;
+}
+
+interface LastCapture {
+  trigger?: 'pause' | 'manual' | 'voice-command';
+  timestamp: number;
+}
+
+type AppView = 'main' | 'settings' | 'history' | 'shortcuts';
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function formatDuration(durationMs: number): string {
+  const seconds = Math.floor(durationMs / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (diff < minute) return 'just now';
+  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
+  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
+  return `${Math.floor(diff / day)}d ago`;
+}
+
+function formatCaptureTrigger(trigger?: LastCapture['trigger']): string {
+  switch (trigger) {
+    case 'manual':
+      return 'Manual Capture';
+    case 'voice-command':
+      return 'Voice Cue Capture';
+    default:
+      return 'Auto Pause Capture';
+  }
+}
+
+function mapPopoverState(state: SessionState): 'idle' | 'recording' | 'processing' | 'complete' | 'error' {
+  if (state === 'recording' || state === 'starting') return 'recording';
+  if (state === 'stopping' || state === 'processing') return 'processing';
+  if (state === 'complete') return 'complete';
+  if (state === 'error') return 'error';
+  return 'idle';
+}
+
+// ============================================================================
+// App Component
+// ============================================================================
 
 const App: React.FC = () => {
-  const [status, setStatus] = useState<SessionStatus>('idle');
-  const [transcription, setTranscription] = useState<string>('');
-  const [screenshotCount, setScreenshotCount] = useState<number>(0);
-  const [error, setError] = useState<string | null>(null);
+  // ---------------------------------------------------------------------------
+  // Session state (existing)
+  // ---------------------------------------------------------------------------
+  const [state, setState] = useState<SessionState>('idle');
+  const [duration, setDuration] = useState(0);
+  const [transcriptEntries, setTranscriptEntries] = useState<string[]>([]);
+  const [liveInterimTranscript, setLiveInterimTranscript] = useState('');
+  const [screenshotCount, setScreenshotCount] = useState(0);
+  const [reportPath, setReportPath] = useState<string | null>(null);
+  const [recordingPath, setRecordingPath] = useState<string | null>(null);
+  const [sessionDir, setSessionDir] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasTranscriptionCapability, setHasTranscriptionCapability] = useState<boolean | null>(null);
+  const [isMutating, setIsMutating] = useState(false);
+  const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [lastCapture, setLastCapture] = useState<LastCapture | null>(null);
+  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const screenRecorderRef = useRef(getScreenRecordingRenderer());
 
-  // Crash recovery hook - checks for incomplete sessions on startup
+  // ---------------------------------------------------------------------------
+  // View state (new)
+  // ---------------------------------------------------------------------------
+  const [currentView, setCurrentView] = useState<AppView>('main');
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Crash recovery (existing)
+  // ---------------------------------------------------------------------------
   const {
     incompleteSession,
     isCheckingRecovery,
@@ -26,154 +133,504 @@ const App: React.FC = () => {
     discardSession,
   } = useCrashRecovery();
 
-  // Map SessionState to SessionStatus
-  const mapStateToStatus = (state: SessionState): SessionStatus => {
-    // SessionState and SessionStatus share the same values
-    return state as SessionStatus;
-  };
-
-  // Handle session toggle from global hotkey (legacy API)
+  // ---------------------------------------------------------------------------
+  // Load settings once on mount
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const unsubscribe = window.feedbackflow.onSessionStatus((data) => {
-      if (data.action === 'toggle') {
-        handleToggle();
-      } else if (data.status) {
-        // Legacy: status comes as SessionStatusPayload, extract state
-        setStatus(mapStateToStatus(data.status.state));
+    window.feedbackflow.settings.getAll().then(setSettings).catch(() => {
+      // Settings load failure is non-fatal
+    });
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Recent sessions (existing)
+  // ---------------------------------------------------------------------------
+  const loadRecentSessions = useCallback(async () => {
+    try {
+      if (!window.feedbackflow?.output?.listSessions) {
+        setRecentSessions([]);
+        return;
+      }
+      const sessions = await window.feedbackflow.output.listSessions();
+      setRecentSessions(sessions.slice(0, 5));
+    } catch (error) {
+      console.error('[App] Failed to load recent sessions:', error);
+      setRecentSessions([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRecentSessions();
+  }, [loadRecentSessions]);
+
+  // ---------------------------------------------------------------------------
+  // Transcription capability check (existing)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    window.feedbackflow.whisper
+      .hasTranscriptionCapability()
+      .then((ready) => {
+        setHasTranscriptionCapability(ready);
+      })
+      .catch(() => {
+        setHasTranscriptionCapability(false);
+      });
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Screen recording sync (existing)
+  // ---------------------------------------------------------------------------
+  const syncScreenRecording = useCallback(async (nextState: SessionState, session: SessionPayload | null) => {
+    const recorder = screenRecorderRef.current;
+
+    if (nextState === 'recording') {
+      if (recorder.isRecording()) {
+        return;
+      }
+
+      const activeSession = session || (await window.feedbackflow.session.getCurrent());
+      if (!activeSession) {
+        return;
+      }
+
+      try {
+        await recorder.start({
+          sessionId: activeSession.id,
+          sourceId: activeSession.sourceId,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown screen recording error.';
+        console.warn('[App] Continuous screen recording failed to start:', message);
+        setErrorMessage((prev) => prev || `Screen recording unavailable: ${message}`);
+      }
+      return;
+    }
+
+    if (recorder.isRecording()) {
+      await recorder.stop().catch((error) => {
+        console.warn('[App] Failed to stop continuous screen recording:', error);
+      });
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Session IPC listeners (existing)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    let mounted = true;
+    const recorder = screenRecorderRef.current;
+
+    window.feedbackflow.session
+      .getStatus()
+      .then((status) => {
+        if (!mounted) return;
+        setState(status.state);
+        setDuration(status.duration);
+        setScreenshotCount(status.screenshotCount);
+      })
+      .catch((error) => {
+        console.error('[App] Failed to load initial status:', error);
+      });
+
+    const unsubState = window.feedbackflow.session.onStateChange(({ state: nextState, session }) => {
+      setState(nextState);
+      void syncScreenRecording(nextState, session);
+      if (nextState === 'recording') {
+        setErrorMessage(null);
+        setReportPath(null);
+        setRecordingPath(null);
+        setSessionDir(null);
+        setReviewSession(null);
+        setTranscriptEntries([]);
+        setLiveInterimTranscript('');
+        shouldAutoScrollRef.current = true;
+        // Dismiss overlays when recording starts
+        setCurrentView('main');
+        setShowCountdown(false);
+      }
+      if (nextState === 'idle') {
+        setDuration(0);
       }
     });
-    return unsubscribe;
-  }, [status]);
 
-  // Listen to modern session state changes
-  useEffect(() => {
-    const unsubscribe = window.feedbackflow.session.onStateChange(({ state }) => {
-      setStatus(mapStateToStatus(state));
+    const unsubStatus = window.feedbackflow.session.onStatusUpdate((status) => {
+      setDuration(status.duration);
+      setScreenshotCount(status.screenshotCount);
+      setState(status.state);
     });
-    return unsubscribe;
+
+    const unsubChunk = window.feedbackflow.transcript.onChunk((chunk) => {
+      if (chunk.text.trim()) {
+        setLiveInterimTranscript(chunk.text.trim());
+      }
+    });
+
+    const unsubFinal = window.feedbackflow.transcript.onFinal((finalChunk) => {
+      const text = finalChunk.text.trim();
+      if (!text) return;
+
+      setLiveInterimTranscript('');
+      setTranscriptEntries((prev) => {
+        if (prev[prev.length - 1] === text) {
+          return prev;
+        }
+        return [...prev, text];
+      });
+    });
+
+    const unsubScreenshot = window.feedbackflow.capture.onScreenshot((payload) => {
+      setScreenshotCount(payload.count);
+      setLastCapture({
+        trigger: payload.trigger,
+        timestamp: payload.timestamp,
+      });
+    });
+
+    const unsubReady = window.feedbackflow.output.onReady((payload) => {
+      setState('complete');
+      setErrorMessage(null);
+      setReportPath(payload.path || payload.reportPath || null);
+      setRecordingPath(payload.recordingPath || null);
+      setSessionDir(payload.sessionDir || null);
+      setReviewSession(payload.reviewSession || null);
+      setDuration(0);
+      setLiveInterimTranscript('');
+      loadRecentSessions();
+    });
+
+    const unsubSessionError = window.feedbackflow.session.onError((payload) => {
+      setState('error');
+      setErrorMessage(payload.message);
+    });
+
+    const unsubOutputError = window.feedbackflow.output.onError((payload) => {
+      setState('error');
+      setErrorMessage(payload.message);
+    });
+
+    return () => {
+      mounted = false;
+      unsubState();
+      unsubStatus();
+      unsubChunk();
+      unsubFinal();
+      unsubScreenshot();
+      unsubReady();
+      unsubSessionError();
+      unsubOutputError();
+
+      if (recorder.isRecording()) {
+        void recorder.stop();
+      }
+    };
+  }, [loadRecentSessions, syncScreenRecording]);
+
+  // ---------------------------------------------------------------------------
+  // Audio level + voice activity listeners (for CompactAudioIndicator)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const unsubLevel = window.feedbackflow.audio.onLevel((level) => {
+      setAudioLevel(level);
+    });
+    const unsubVoice = window.feedbackflow.audio.onVoiceActivity((active) => {
+      setIsVoiceActive(active);
+    });
+    return () => {
+      unsubLevel();
+      unsubVoice();
+    };
   }, []);
 
-  // Listen for transcription updates
+  // ---------------------------------------------------------------------------
+  // Navigation event listeners (new - from main process menu/tray)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const unsubscribe = window.feedbackflow.onTranscriptionUpdate((data) => {
-      setTranscription(data.text);
+    const nav = window.feedbackflow.navigation;
+    if (!nav) return;
+
+    const unsubSettings = nav.onShowSettings(() => {
+      setCurrentView('settings');
     });
-    return unsubscribe;
+    const unsubHistory = nav.onShowHistory(() => {
+      setCurrentView('history');
+    });
+    const unsubShortcuts = nav.onShowShortcuts(() => {
+      setCurrentView('shortcuts');
+    });
+    const unsubOnboarding = nav.onShowOnboarding(() => {
+      setShowOnboarding(true);
+    });
+    const unsubExport = nav.onShowExport(() => {
+      setShowExportDialog(true);
+    });
+
+    return () => {
+      unsubSettings();
+      unsubHistory();
+      unsubShortcuts();
+      unsubOnboarding();
+      unsubExport();
+    };
   }, []);
 
-  // Listen for screenshots
+  // ---------------------------------------------------------------------------
+  // Auto-scroll transcript (existing)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const unsubscribe = window.feedbackflow.onScreenshotCaptured(() => {
-      setScreenshotCount((prev) => prev + 1);
-    });
-    return unsubscribe;
-  }, []);
+    const container = transcriptScrollRef.current;
+    if (!container || !shouldAutoScrollRef.current) return;
+    container.scrollTop = container.scrollHeight;
+  }, [transcriptEntries, liveInterimTranscript]);
 
-  // Listen for output ready
+  // ---------------------------------------------------------------------------
+  // Popover resize on state change (existing)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    const unsubscribe = window.feedbackflow.onOutputReady((data) => {
-      setStatus('complete');
-      // Auto-copy to clipboard
-      window.feedbackflow.copyToClipboard(data.markdown);
+    window.feedbackflow.popover.resizeToState(mapPopoverState(state)).catch(() => {
+      // Popover controls are optional in non-popover mode.
     });
-    return unsubscribe;
-  }, []);
+  }, [state]);
 
-  // Listen for errors
-  useEffect(() => {
-    const unsubscribe = window.feedbackflow.onOutputError((err) => {
-      setStatus('error');
-      setError(err.message);
-    });
-    return unsubscribe;
-  }, []);
+  // ---------------------------------------------------------------------------
+  // Status copy text (existing)
+  // ---------------------------------------------------------------------------
+  const statusCopy = useMemo(() => {
+    switch (state) {
+      case 'starting':
+        return {
+          title: 'Preparing Session',
+          detail: 'Initializing microphone and transcription stack.',
+        };
+      case 'recording':
+        return {
+          title: 'Recording Live',
+          detail: 'Talk while testing. Pauses, hotkey, and voice cues can trigger captures.',
+        };
+      case 'stopping':
+      case 'processing':
+        return {
+          title: 'Building Report',
+          detail: 'Generating markdown and linking screenshots to context.',
+        };
+      case 'complete':
+        return {
+          title: 'Report Ready',
+          detail: 'Markdown path copied to your clipboard.',
+        };
+      case 'error':
+        return {
+          title: 'Session Error',
+          detail: errorMessage || 'An unexpected error interrupted this capture.',
+        };
+      default:
+        return {
+          title: 'Ready To Capture',
+          detail:
+            hasTranscriptionCapability === false
+              ? 'Transcription unavailable. Download a Whisper model, then start.'
+              : 'Press Cmd+Shift+F to start a fresh feedback pass.',
+        };
+    }
+  }, [state, errorMessage, hasTranscriptionCapability]);
 
-  const handleToggle = useCallback(async () => {
-    if (status === 'idle' || status === 'complete' || status === 'error') {
-      // Start new session
-      setStatus('recording');
-      setTranscription('');
+  // ---------------------------------------------------------------------------
+  // Derived state (existing)
+  // ---------------------------------------------------------------------------
+  const primaryActionLabel = state === 'recording' ? 'Stop Session' : 'Start Session';
+  const primaryActionDisabled = isMutating || state === 'starting' || state === 'stopping' || state === 'processing';
+  const manualCaptureDisabled = isMutating || state !== 'recording';
+
+  const countdownDuration = settings?.defaultCountdown ?? 0;
+  const showAudioWaveform = settings?.showAudioWaveform ?? true;
+
+  // ---------------------------------------------------------------------------
+  // Handlers (existing, with countdown integration)
+  // ---------------------------------------------------------------------------
+  const handlePrimaryAction = useCallback(async () => {
+    if (primaryActionDisabled) return;
+
+    // If idle and countdown is configured, show countdown first
+    if (state === 'idle' && countdownDuration > 0) {
+      setShowCountdown(true);
+      return;
+    }
+
+    setIsMutating(true);
+    try {
+      if (state === 'recording') {
+        const result = await window.feedbackflow.session.stop();
+        if (!result.success) {
+          setState('error');
+          setErrorMessage(result.error || 'Unable to stop session.');
+        }
+        return;
+      }
+
+      setTranscriptEntries([]);
+      setLiveInterimTranscript('');
+      shouldAutoScrollRef.current = true;
       setScreenshotCount(0);
-      setError(null);
-      await window.feedbackflow.startSession();
-    } else if (status === 'recording') {
-      // Stop session
-      setStatus('processing');
-      await window.feedbackflow.stopSession();
+      setLastCapture(null);
+      setRecordingPath(null);
+      setErrorMessage(null);
+
+      const result = await window.feedbackflow.session.start();
+      if (!result.success) {
+        setState('error');
+        setErrorMessage(result.error || 'Unable to start session.');
+        window.feedbackflow.whisper
+          .hasTranscriptionCapability()
+          .then((ready) => setHasTranscriptionCapability(ready))
+          .catch(() => {
+            // Keep previous badge state when status refresh fails.
+          });
+      }
+    } catch (error) {
+      setState('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Unknown session error.');
+    } finally {
+      setIsMutating(false);
     }
-  }, [status]);
+  }, [primaryActionDisabled, state, countdownDuration]);
 
-  const getStatusColor = (): string => {
-    switch (status) {
-      case 'recording':
-        return '#ef4444'; // red
-      case 'processing':
-        return '#f59e0b'; // amber
-      case 'complete':
-        return '#10b981'; // green
-      case 'error':
-        return '#ef4444'; // red
-      default:
-        return '#6b7280'; // gray
+  const handleCountdownComplete = useCallback(async () => {
+    setShowCountdown(false);
+    setIsMutating(true);
+    try {
+      setTranscriptEntries([]);
+      setLiveInterimTranscript('');
+      shouldAutoScrollRef.current = true;
+      setScreenshotCount(0);
+      setLastCapture(null);
+      setRecordingPath(null);
+      setErrorMessage(null);
+
+      const result = await window.feedbackflow.session.start();
+      if (!result.success) {
+        setState('error');
+        setErrorMessage(result.error || 'Unable to start session.');
+      }
+    } catch (error) {
+      setState('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Unknown session error.');
+    } finally {
+      setIsMutating(false);
     }
-  };
+  }, []);
 
-  const getStatusText = (): string => {
-    switch (status) {
-      case 'recording':
-        return 'Recording...';
-      case 'processing':
-        return 'Processing...';
-      case 'complete':
-        return 'Copied to clipboard!';
-      case 'error':
-        return error || 'Error occurred';
-      default:
-        return 'Press Cmd+Shift+F to start';
+  const handleCountdownSkip = useCallback(() => {
+    setShowCountdown(false);
+  }, []);
+
+  const handleManualCapture = useCallback(async () => {
+    if (manualCaptureDisabled) return;
+    const result = await window.feedbackflow.capture.manualScreenshot();
+    if (!result.success) {
+      setErrorMessage('Manual capture failed.');
     }
-  };
+  }, [manualCaptureDisabled]);
 
-  // Get status-specific animation class
-  const getStatusAnimationClass = (): string => {
-    switch (status) {
-      case 'recording':
-        return 'ff-recording-pulse';
-      case 'processing':
-        return 'ff-processing-pulse';
-      case 'complete':
-        return 'ff-success-pulse';
-      case 'error':
-        return 'ff-error-pulse';
-      default:
-        return '';
+  const handleCopyReportPath = useCallback(async () => {
+    if (!reportPath) return;
+    await window.feedbackflow.copyToClipboard(reportPath);
+  }, [reportPath]);
+
+  const handleOpenReportFolder = useCallback(async () => {
+    if (sessionDir) {
+      await window.feedbackflow.output.openFolder(sessionDir);
+      return;
     }
-  };
-
-  const handleMinimize = () => {
-    window.feedbackflow.window.minimize();
-  };
-
-  const handleHide = () => {
-    window.feedbackflow.window.hide();
-  };
-
-  // Handle crash recovery actions
-  const handleRecoverSession = useCallback((session: typeof incompleteSession) => {
-    if (session) {
-      recoverSession();
-      // After recovery, show the recovered session items in review mode
-      // The recovered data will be available in the session controller
-      setStatus('complete');
+    if (reportPath) {
+      await window.feedbackflow.output.openFolder(reportPath);
     }
-  }, [recoverSession]);
+  }, [sessionDir, reportPath]);
+
+  const handleCopyRecordingPath = useCallback(async () => {
+    if (!recordingPath) return;
+    await window.feedbackflow.copyToClipboard(recordingPath);
+  }, [recordingPath]);
+
+  const handleOpenRecent = useCallback(async (session: RecentSession) => {
+    await window.feedbackflow.output.openFolder(session.folder);
+  }, []);
+
+  const handleCopyRecentPath = useCallback(async (session: RecentSession) => {
+    await window.feedbackflow.copyToClipboard(`${session.folder}/feedback-report.md`);
+  }, []);
+
+  const handleRecoverSession = useCallback(() => {
+    recoverSession();
+    setState('complete');
+    loadRecentSessions();
+  }, [recoverSession, loadRecentSessions]);
 
   const handleDiscardSession = useCallback(() => {
     discardSession();
   }, [discardSession]);
 
+  const handleTranscriptScroll = useCallback(() => {
+    const container = transcriptScrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const distanceFromBottom =
+      container.scrollHeight - (container.scrollTop + container.clientHeight);
+    shouldAutoScrollRef.current = distanceFromBottom <= 24;
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // New view handlers
+  // ---------------------------------------------------------------------------
+  const handleCloseOverlay = useCallback(() => {
+    setCurrentView('main');
+  }, []);
+
+  const handleOnboardingComplete = useCallback(() => {
+    setShowOnboarding(false);
+    // Refresh transcription capability after onboarding
+    window.feedbackflow.whisper
+      .hasTranscriptionCapability()
+      .then((ready) => setHasTranscriptionCapability(ready))
+      .catch(() => {});
+  }, []);
+
+  const handleOnboardingSkip = useCallback(() => {
+    setShowOnboarding(false);
+  }, []);
+
+  const handleOpenSession = useCallback(async (session: { folder: string }) => {
+    await window.feedbackflow.output.openFolder(session.folder);
+  }, []);
+
+  const handleExport = useCallback(async () => {
+    // No-op for now; the ExportDialog handles its own export logic.
+    setShowExportDialog(false);
+  }, []);
+
+  const handleReviewSave = useCallback(async (_session: ReviewSession) => {
+    // Save edited session back to main process
+    try {
+      await window.feedbackflow.output.save();
+    } catch {
+      // Save failure is non-fatal in review mode
+    }
+  }, []);
+
+  const handleReviewClose = useCallback(() => {
+    setReviewSession(null);
+    setState('idle');
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
-    <div style={styles.container} className="ff-page-fade">
-      {/* Crash Recovery Dialog - shown when incomplete session detected */}
+    <div className={`ff-shell ff-shell--${state}`}>
+      {/* === Global overlays (always rendered, self-manage visibility) === */}
+      <UpdateNotification />
+
+      {/* === Crash Recovery Dialog === */}
       {incompleteSession && !isCheckingRecovery && (
         <CrashRecoveryDialog
           session={incompleteSession}
@@ -182,189 +639,277 @@ const App: React.FC = () => {
         />
       )}
 
-      <div style={styles.card} className="ff-dialog-enter ff-card-hover">
-        {/* Window controls */}
-        <div style={styles.windowControls}>
-          <button
-            style={styles.windowButton}
-            onClick={handleMinimize}
-            title="Minimize (Cmd+M)"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <rect x="2" y="5" width="8" height="2" rx="1" />
-            </svg>
-          </button>
-          <button
-            style={styles.windowButton}
-            onClick={handleHide}
-            title="Hide to tray"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
+      {/* === Onboarding (full-screen overlay) === */}
+      {showOnboarding && (
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          onSkip={handleOnboardingSkip}
+        />
+      )}
 
-        {/* Status indicator */}
-        <div style={styles.statusRow}>
-          <div
-            style={{
-              ...styles.statusDot,
-              backgroundColor: getStatusColor(),
+      {/* === Countdown Timer (full-screen overlay) === */}
+      {showCountdown && countdownDuration > 0 && (
+        <CountdownTimer
+          duration={countdownDuration as 3 | 5}
+          onComplete={handleCountdownComplete}
+          onSkip={handleCountdownSkip}
+        />
+      )}
+
+      {/* === Settings Panel (overlay) === */}
+      <SettingsPanel
+        isOpen={currentView === 'settings'}
+        onClose={handleCloseOverlay}
+      />
+
+      {/* === Session History (overlay) === */}
+      <SessionHistory
+        isOpen={currentView === 'history'}
+        onClose={handleCloseOverlay}
+        onOpenSession={handleOpenSession}
+      />
+
+      {/* === Keyboard Shortcuts (overlay) === */}
+      <KeyboardShortcuts
+        isOpen={currentView === 'shortcuts'}
+        onClose={handleCloseOverlay}
+      />
+
+      {/* === Export Dialog (overlay, shown when triggered from menu) === */}
+      {showExportDialog && (
+        <ExportDialog
+          session={{ id: '', startTime: Date.now(), feedbackItems: [] }}
+          isOpen={showExportDialog}
+          onClose={() => setShowExportDialog(false)}
+          onExport={handleExport}
+        />
+      )}
+
+      {/* === Main Card === */}
+      <main className="ff-shell__card">
+        <header className="ff-shell__header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <StatusIndicator
+              status={mapPopoverState(state)}
+              error={errorMessage}
+            />
+            <div>
+              <p className="ff-shell__eyebrow">FeedbackFlow</p>
+              <h1 className="ff-shell__title">{statusCopy.title}</h1>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              className="ff-shell__quiet-btn"
+              onClick={() => setCurrentView('settings')}
+              type="button"
+              title="Settings"
+              style={{ fontSize: 16 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" />
+                <path d="M13.178 9.689a1.2 1.2 0 00.24 1.324l.043.044a1.455 1.455 0 11-2.058 2.058l-.044-.044a1.2 1.2 0 00-1.324-.24 1.2 1.2 0 00-.727 1.098v.122a1.455 1.455 0 01-2.91 0v-.065a1.2 1.2 0 00-.785-1.097 1.2 1.2 0 00-1.324.24l-.044.043a1.455 1.455 0 11-2.058-2.058l.044-.044a1.2 1.2 0 00.24-1.324 1.2 1.2 0 00-1.098-.727h-.122a1.455 1.455 0 010-2.91h.065a1.2 1.2 0 001.097-.785 1.2 1.2 0 00-.24-1.324l-.043-.044A1.455 1.455 0 114.187 1.84l.044.044a1.2 1.2 0 001.324.24h.058a1.2 1.2 0 00.727-1.098V.904a1.455 1.455 0 012.91 0v.065a1.2 1.2 0 00.727 1.097 1.2 1.2 0 001.324-.24l.044-.043a1.455 1.455 0 112.058 2.058l-.044.044a1.2 1.2 0 00-.24 1.324v.058a1.2 1.2 0 001.098.727h.122a1.455 1.455 0 010 2.91h-.065a1.2 1.2 0 00-1.097.727z" />
+              </svg>
+            </button>
+            <button
+              className="ff-shell__quiet-btn"
+              onClick={() => setCurrentView('history')}
+              type="button"
+              title="Session History"
+              style={{ fontSize: 16 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 1.455A6.545 6.545 0 1014.545 8" />
+                <path d="M8 4v4l2.5 2.5" />
+              </svg>
+            </button>
+            <button
+              className="ff-shell__quiet-btn"
+              onClick={() => window.feedbackflow.window.hide()}
+              type="button"
+            >
+              Hide
+            </button>
+          </div>
+        </header>
+
+        <p className="ff-shell__subtitle">{statusCopy.detail}</p>
+
+        {/* === Recording Overlay (compact indicator during recording) === */}
+        {state === 'recording' && (
+          <RecordingOverlay
+            duration={Math.floor(duration / 1000)}
+            screenshotCount={screenshotCount}
+            onStop={async () => {
+              const result = await window.feedbackflow.session.stop();
+              if (!result.success) {
+                setState('error');
+                setErrorMessage(result.error || 'Unable to stop session.');
+              }
             }}
-            className={status === 'recording' ? 'ff-recording-dot' : ''}
+          />
+        )}
+
+        {/* === Audio Waveform (during recording, when enabled) === */}
+        {state === 'recording' && showAudioWaveform && (
+          <div style={{ padding: '0 2px' }}>
+            <CompactAudioIndicator
+              audioLevel={audioLevel}
+              isVoiceActive={isVoiceActive}
+            />
+          </div>
+        )}
+
+        <section className="ff-shell__controls">
+          <button
+            className={`ff-shell__primary-btn ${state === 'recording' ? 'is-live' : ''}`}
+            type="button"
+            onClick={handlePrimaryAction}
+            disabled={primaryActionDisabled}
           >
-            {/* Ping ring for recording state */}
-            {status === 'recording' && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  backgroundColor: getStatusColor(),
-                  borderRadius: '50%',
-                }}
-                className="ff-recording-ring"
-              />
-            )}
-          </div>
-          <span style={styles.statusText} className="ff-transition-colors">
-            {getStatusText()}
+            {state === 'processing' || state === 'stopping' ? 'Processing\u2026' : primaryActionLabel}
+          </button>
+
+          <button
+            className="ff-shell__secondary-btn"
+            type="button"
+            onClick={handleManualCapture}
+            disabled={manualCaptureDisabled}
+          >
+            Capture Screenshot (<ManualScreenshotHint inline />)
+          </button>
+        </section>
+
+        <section className="ff-shell__meta">
+          <span>{formatDuration(duration)}</span>
+          <span>{screenshotCount} screenshots</span>
+          <span className={hasTranscriptionCapability ? 'is-ready' : 'is-missing'}>
+            {hasTranscriptionCapability ? 'Transcription Ready' : 'Transcription Missing'}
           </span>
-        </div>
-
-        {/* Transcription preview with fade animation */}
-        {status === 'recording' && transcription && (
-          <div style={styles.transcriptionPreview} className="ff-list-item-enter">
-            {transcription.slice(-100)}
-            {transcription.length > 100 && '...'}
-          </div>
-        )}
-
-        {/* Stats with counter animation */}
-        {(status === 'recording' || status === 'processing') && (
-          <div style={styles.stats} className="ff-fade-in">
-            <span className={screenshotCount > 0 ? 'ff-counter-increment' : ''}>
-              {screenshotCount} screenshots
+          {lastCapture && (
+            <span title={new Date(lastCapture.timestamp).toLocaleString()}>
+              {formatCaptureTrigger(lastCapture.trigger)}
             </span>
-          </div>
-        )}
-
-        {/* Action button with press effect */}
-        <button
-          style={{
-            ...styles.button,
-            backgroundColor: status === 'recording' ? '#ef4444' : '#3b82f6',
-          }}
-          className={`ff-btn-press ${getStatusAnimationClass()}`}
-          onClick={handleToggle}
-          disabled={status === 'processing'}
-        >
-          {status === 'processing' ? (
-            <span className="ff-processing-rotate" style={{ display: 'inline-block' }}>
-              Processing...
-            </span>
-          ) : status === 'recording' ? (
-            'Stop'
-          ) : (
-            'Start'
           )}
-        </button>
-      </div>
+        </section>
+
+        {state === 'recording' && (
+          <section className="ff-shell__transcript">
+            <p className="ff-shell__transcript-label">Live Transcript</p>
+            <div
+              className="ff-shell__transcript-scroll"
+              ref={transcriptScrollRef}
+              onScroll={handleTranscriptScroll}
+            >
+              {transcriptEntries.map((entry, index) => (
+                <p key={`${entry}-${index}`} className="ff-shell__transcript-line">
+                  {entry}
+                </p>
+              ))}
+              {liveInterimTranscript && (
+                <p className="ff-shell__transcript-interim">{liveInterimTranscript}</p>
+              )}
+              {transcriptEntries.length === 0 && !liveInterimTranscript && (
+                <p className="ff-shell__transcript-placeholder">
+                  Listening for speech...
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {state === 'complete' && reviewSession && (
+          <SessionReview
+            session={reviewSession}
+            onSave={handleReviewSave}
+            onCopy={handleCopyReportPath}
+            onOpenFolder={handleOpenReportFolder}
+            onClose={handleReviewClose}
+          />
+        )}
+
+        {reportPath && !reviewSession && (
+          <section className="ff-shell__report">
+            <p className="ff-shell__report-label">Latest Report Path</p>
+            <code className="ff-shell__path">{reportPath}</code>
+            <div className="ff-shell__report-actions">
+              <button type="button" onClick={handleCopyReportPath}>
+                Copy Path
+              </button>
+              <button type="button" onClick={handleOpenReportFolder}>
+                Open Folder
+              </button>
+            </div>
+            {recordingPath && (
+              <>
+                <p className="ff-shell__report-label">Session Recording</p>
+                <code className="ff-shell__path">{recordingPath}</code>
+                <div className="ff-shell__report-actions">
+                  <button type="button" onClick={handleCopyRecordingPath}>
+                    Copy Recording Path
+                  </button>
+                  <button type="button" onClick={handleOpenReportFolder}>
+                    Open Folder
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+        )}
+
+        {errorMessage && state === 'error' && (
+          <section className="ff-shell__error">
+            <p>{errorMessage}</p>
+          </section>
+        )}
+
+        <section className="ff-shell__recent">
+          <div className="ff-shell__recent-header">
+            <h2>Recent Captures</h2>
+            <button type="button" onClick={loadRecentSessions}>
+              Refresh
+            </button>
+          </div>
+
+          {recentSessions.length === 0 ? (
+            <p className="ff-shell__empty">No captures yet. Run a session and it will appear here.</p>
+          ) : (
+            <ul className="ff-shell__recent-list">
+              {recentSessions.map((session) => (
+                <li key={session.id} className="ff-shell__recent-item">
+                  <button
+                    className="ff-shell__recent-open"
+                    type="button"
+                    onClick={() => handleOpenRecent(session)}
+                  >
+                    <span>{session.sourceName || 'Feedback Session'}</span>
+                    <span>{formatRelativeTime(session.startTime)}</span>
+                  </button>
+                  <div className="ff-shell__recent-meta">
+                    <span>{session.itemCount} items</span>
+                    <span>{session.screenshotCount} shots</span>
+                    <button type="button" onClick={() => handleCopyRecentPath(session)}>
+                      Copy File Path
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <footer className="ff-shell__footer">
+          <p>
+            Voice cue: say &quot;take screenshot&quot; while recording.
+          </p>
+          <p>
+            Global hotkey: <ToggleRecordingHint inline /> starts or stops the loop.
+          </p>
+          <DonateButton style={{ marginTop: 4 }} />
+        </footer>
+      </main>
     </div>
   );
-};
-
-// Extended CSS properties to support Electron-specific properties
-type ExtendedCSSProperties = React.CSSProperties & {
-  WebkitAppRegion?: 'drag' | 'no-drag';
-};
-
-const styles: Record<string, ExtendedCSSProperties> = {
-  container: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    WebkitAppRegion: 'drag',
-  },
-  card: {
-    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-    maxWidth: 360,
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    WebkitAppRegion: 'no-drag',
-    position: 'relative',
-  },
-  windowControls: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    display: 'flex',
-    gap: 4,
-  },
-  windowButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    border: 'none',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    color: '#9ca3af',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.15s ease',
-  },
-  statusRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  statusDot: {
-    position: 'relative',
-    width: 12,
-    height: 12,
-    borderRadius: '50%',
-    transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-  },
-  statusText: {
-    color: '#f3f4f6',
-    fontSize: 14,
-    fontWeight: 500,
-  },
-  transcriptionPreview: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    color: '#9ca3af',
-    fontSize: 12,
-    lineHeight: 1.5,
-    maxHeight: 80,
-    overflow: 'hidden',
-  },
-  stats: {
-    color: '#6b7280',
-    fontSize: 12,
-    marginBottom: 16,
-  },
-  button: {
-    width: '100%',
-    padding: '12px 16px',
-    borderRadius: 8,
-    border: 'none',
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-  },
 };
 
 export default App;

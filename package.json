@@ -1,6 +1,6 @@
 {
   "name": "feedbackflow",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "AI-ready developer feedback capture tool with voice narration and intelligent screenshots",
   "type": "module",
   "main": "dist/main/index.mjs",

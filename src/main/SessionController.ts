@@ -18,7 +18,7 @@ import { randomUUID } from 'crypto';
 import { audioCapture, type AudioChunk } from './audio/AudioCapture';
 import { screenCapture } from './capture/ScreenCapture';
 import { tierManager } from './transcription';
-import type { TranscriptEvent, PauseEvent } from './transcription/types';
+import type { TranscriptEvent, TranscriptionTier } from './transcription/types';
 import { IPC_CHANNELS } from '../shared/types';
 import { errorHandler } from './ErrorHandler';
 // Note: CrashRecovery module runs independently for crash logging.
@@ -70,6 +70,7 @@ export interface Screenshot {
   width: number;
   height: number;
   base64?: string;
+  trigger?: ScreenshotTrigger;
 }
 
 export interface FeedbackItem {
@@ -80,11 +81,16 @@ export interface FeedbackItem {
   confidence: number;
 }
 
+export type ScreenshotTrigger = 'pause' | 'manual' | 'voice-command';
+
 export interface SessionMetadata {
   sourceId: string;
   sourceName?: string;
   windowTitle?: string;
   appName?: string;
+  recordingPath?: string;
+  recordingMimeType?: string;
+  recordingBytes?: number;
 }
 
 export interface Session {
@@ -230,12 +236,22 @@ export class SessionController {
 
   // Pending screenshots
   private pendingScreenshots: Screenshot[] = [];
+  private screenshotCaptureInFlight = false;
+  private lastScreenshotCapturedAt = 0;
+  private handlingFatalTranscriptionLoss = false;
 
   // Configuration constants
   private readonly AUTO_SAVE_INTERVAL_MS = 5000;       // 5 seconds (per spec)
   private readonly WATCHDOG_CHECK_INTERVAL_MS = 1000;  // 1 second
   private readonly TRANSCRIPT_MATCH_WINDOW_MS = 3000;
+  private readonly SCREENSHOT_DEBOUNCE_MS = 450;
   private readonly MAX_RECENT_SESSIONS = 10;
+  private readonly MAX_TRANSCRIPT_BUFFER_EVENTS = 2000;
+  private readonly VOICE_SCREENSHOT_COMMANDS: RegExp[] = [
+    /\b(?:take|grab|capture)\s+(?:a\s+)?screenshot\b/i,
+    /\bscreenshot\s+(?:this|that|now|here)\b/i,
+    /^(?:please\s+)?screenshot(?:\s+now)?[.!?]*$/i,
+  ];
 
   constructor() {
     // Use singleton instances
@@ -642,8 +658,11 @@ export class SessionController {
     const unsubTransError = tierManager.onError((error) =>
       this.handleServiceError('transcription', error)
     );
+    const unsubTierChange = tierManager.onTierChange((fromTier, toTier, reason) => {
+      void this.handleTranscriptionTierChange(fromTier, toTier, reason);
+    });
 
-    this.cleanupFunctions.push(unsubTranscript, unsubPause, unsubTransError);
+    this.cleanupFunctions.push(unsubTranscript, unsubPause, unsubTransError, unsubTierChange);
 
     // Calculate remaining time
     const elapsed = Date.now() - startTime;
@@ -657,35 +676,33 @@ export class SessionController {
       'TierManager.start()'
     );
 
-    // Warn the user if no real transcription is available
+    // Require a real transcription tier (Deepgram/Whisper) for feedback quality.
     if (!tierManager.tierProvidesTranscription(selectedTier)) {
-      console.warn(`[SessionController] WARNING: Selected tier "${selectedTier}" does NOT provide transcription!`);
-      console.warn('[SessionController] Feedback items will only have screenshots, NO text transcription.');
-      console.warn('[SessionController] To enable transcription:');
-      console.warn('[SessionController]   - Download a Whisper model in Settings > Transcription');
-      console.warn('[SessionController]   - OR configure a Deepgram API key');
-
-      // Emit warning to renderer
-      this.emitToRenderer('session:warning', {
-        type: 'noTranscription',
-        message: 'No transcription available. Download a Whisper model in Settings for voice transcription.',
-        tier: selectedTier,
-      });
-    } else {
-      console.log(`[SessionController] Transcription tier active: ${selectedTier}`);
+      const message =
+        'No transcription tier is active. Add a Deepgram API key (BYOK/Premium) or download a local Whisper model before starting.';
+      console.warn(`[SessionController] ${message} Selected tier: "${selectedTier}".`);
+      throw new Error(message);
     }
+
+    console.log(`[SessionController] Transcription tier active: ${selectedTier}`);
 
     // Check if we still have time
     const elapsed2 = Date.now() - startTime;
     const remaining2 = Math.max(totalTimeout - elapsed2, 500);
 
     // Start audio capture with timeout
-    await this.withTimeout(
-      this.audioCaptureService.start(),
+    const audioStarted = await this.withTimeout(
+      this.audioCaptureService.start().then(() => true),
       remaining2,
-      undefined,
+      false,
       'AudioCapture.start()'
     );
+
+    if (!audioStarted) {
+      throw new Error(
+        'Microphone capture failed to start. Check microphone permission and selected input device, then retry.'
+      );
+    }
   }
 
   /**
@@ -832,10 +849,34 @@ export class SessionController {
   }
 
   /**
+   * Update metadata fields on the active session.
+   */
+  setSessionMetadata(updates: Partial<SessionMetadata>): boolean {
+    if (!this.session) {
+      return false;
+    }
+
+    this.session.metadata = {
+      ...this.session.metadata,
+      ...updates,
+    };
+
+    this.persistState();
+    return true;
+  }
+
+  /**
    * Get recent completed sessions (persisted metadata only)
    */
   getRecentSessions(): PersistedSession[] {
     return store.get('recentSessions') || [];
+  }
+
+  /**
+   * Capture a screenshot on-demand while recording (manual hotkey/button).
+   */
+  async captureManualScreenshot(): Promise<Screenshot | null> {
+    return this.captureAndQueueScreenshot('manual');
   }
 
   // ===========================================================================
@@ -943,47 +984,51 @@ export class SessionController {
    * Handle utterance end - KEY event that triggers screenshot capture
    */
   private async handleUtteranceEnd(_timestamp: number): Promise<void> {
-    if (this.state !== 'recording' || !this.session) {
-      console.log(`[SessionController] handleUtteranceEnd skipped: state=${this.state}, hasSession=${!!this.session}`);
+    await this.captureAndQueueScreenshot('pause');
+  }
+
+  /**
+   * Enforce transcription availability during active recording.
+   * If failover lands on a non-transcribing tier, end the session with a clear error.
+   */
+  private async handleTranscriptionTierChange(
+    fromTier: TranscriptionTier,
+    toTier: TranscriptionTier,
+    reason: string
+  ): Promise<void> {
+    if (tierManager.tierProvidesTranscription(toTier)) {
+      console.log(`[SessionController] Transcription failover: ${fromTier} -> ${toTier}`);
       return;
     }
 
-    console.log('[SessionController] Utterance ended, capturing screenshot...');
+    if (this.state !== 'recording' || !this.session || this.handlingFatalTranscriptionLoss) {
+      return;
+    }
 
+    const message =
+      `Live transcription became unavailable (${fromTier} -> ${toTier}). ${reason}. ` +
+      'Add a Deepgram API key (BYOK/Premium) or download a Whisper model, then start a new session.';
+
+    console.error(`[SessionController] ${message}`);
+    this.emitToRenderer(IPC_CHANNELS.SESSION_ERROR, {
+      service: 'transcription',
+      message,
+      tier: toTier,
+    });
+    this.events?.onError(new Error(message));
+
+    this.handlingFatalTranscriptionLoss = true;
     try {
-      // Capture using the session's source
-      const captureResult = await this.screenCaptureService.capture(
-        this.session.sourceId
-      );
+      await this.cleanupServicesAsync();
+      this.pendingScreenshots = [];
+      this.session = null;
+      store.set('currentSession', null);
 
-      // Convert to our Screenshot type
-      const screenshot: Screenshot = {
-        id: captureResult.id,
-        timestamp: Date.now(),
-        buffer: captureResult.buffer,
-        width: captureResult.width,
-        height: captureResult.height,
-      };
-
-      this.session.screenshotBuffer.push(screenshot);
-      console.log(`[SessionController] Screenshot captured! Total: ${this.session.screenshotBuffer.length}`);
-
-      // Add to pending for transcript matching
-      this.pendingScreenshots.push(screenshot);
-
-      // Try to match with recent transcripts
-      this.tryMatchScreenshotToTranscript(screenshot);
-
-      // Notify renderer
-      this.emitToRenderer(IPC_CHANNELS.SCREENSHOT_CAPTURED, {
-        id: screenshot.id,
-        timestamp: screenshot.timestamp,
-        width: screenshot.width,
-        height: screenshot.height,
-      });
-    } catch (error) {
-      console.error('[SessionController] Screenshot capture failed:', error);
-      this.handleServiceError('capture', error as Error);
+      if (!this.transition('error')) {
+        this.transitionForced('error');
+      }
+    } finally {
+      this.handlingFatalTranscriptionLoss = false;
     }
   }
 
@@ -995,27 +1040,177 @@ export class SessionController {
       return;
     }
 
+    const normalizedTimestamp = this.normalizeTranscriptTimestamp(event.timestamp);
+    const normalizedEvent: TranscriptEvent = {
+      ...event,
+      timestamp: normalizedTimestamp,
+    };
+
+    const finalEvent = normalizedEvent.isFinal
+      ? this.prepareFinalTranscript(normalizedEvent)
+      : normalizedEvent;
+    if (!finalEvent) {
+      return;
+    }
+
     // Add to buffer
-    this.session.transcriptBuffer.push(event);
+    this.session.transcriptBuffer.push(finalEvent);
+    if (this.session.transcriptBuffer.length > this.MAX_TRANSCRIPT_BUFFER_EVENTS) {
+      this.session.transcriptBuffer.splice(
+        0,
+        this.session.transcriptBuffer.length - this.MAX_TRANSCRIPT_BUFFER_EVENTS
+      );
+    }
 
     // Emit to renderer
-    if (event.isFinal) {
-      console.log(`[SessionController] Final transcript (${event.tier}): "${event.text}"`);
+    if (finalEvent.isFinal) {
+      console.log(`[SessionController] Final transcript (${finalEvent.tier}): "${finalEvent.text}"`);
       this.emitToRenderer(IPC_CHANNELS.TRANSCRIPTION_FINAL, {
-        text: event.text,
-        confidence: event.confidence,
-        timestamp: event.timestamp,
-        tier: event.tier,
+        text: finalEvent.text,
+        confidence: finalEvent.confidence,
+        timestamp: finalEvent.timestamp,
+        tier: finalEvent.tier,
       });
 
       // Try to match with pending screenshots
-      this.tryMatchTranscriptToScreenshot(event);
+      this.tryMatchTranscriptToScreenshot(finalEvent);
     } else {
       this.emitToRenderer(IPC_CHANNELS.TRANSCRIPTION_UPDATE, {
-        text: event.text,
+        text: finalEvent.text,
+        confidence: finalEvent.confidence,
+        timestamp: finalEvent.timestamp,
         isFinal: false,
-        tier: event.tier,
+        tier: finalEvent.tier,
       });
+    }
+  }
+
+  /**
+   * Normalizes transcript timestamps to epoch seconds for consistent matching.
+   * Deepgram may emit relative offsets while Whisper emits absolute timestamps.
+   */
+  private normalizeTranscriptTimestamp(timestamp: number): number {
+    if (!this.session) {
+      return timestamp;
+    }
+
+    const sessionStartSec = this.session.startTime / 1000;
+
+    // Relative offsets from stream start are typically small (< 1 day in seconds).
+    if (timestamp < 86_400) {
+      return sessionStartSec + Math.max(0, timestamp);
+    }
+
+    // Defensive fallback for timestamps that are still clearly before session start.
+    if (timestamp < sessionStartSec - 60) {
+      return sessionStartSec + Math.max(0, timestamp);
+    }
+
+    return timestamp;
+  }
+
+  /**
+   * Handles voice screenshot commands and strips command phrases from transcript text.
+   * Returns null if the transcript should be dropped from feedback output.
+   */
+  private prepareFinalTranscript(event: TranscriptEvent): TranscriptEvent | null {
+    const raw = event.text.trim();
+    if (!raw) {
+      return null;
+    }
+
+    if (!this.isVoiceScreenshotCommand(raw)) {
+      return event;
+    }
+
+    const cleanedText = this.stripVoiceCommand(raw);
+    void this.captureAndQueueScreenshot('voice-command');
+
+    if (!cleanedText) {
+      console.log('[SessionController] Voice screenshot command detected');
+      return null;
+    }
+
+    return {
+      ...event,
+      text: cleanedText,
+    };
+  }
+
+  private isVoiceScreenshotCommand(text: string): boolean {
+    return this.VOICE_SCREENSHOT_COMMANDS.some((pattern) => pattern.test(text));
+  }
+
+  private stripVoiceCommand(text: string): string {
+    let cleaned = text;
+
+    cleaned = cleaned.replace(/\b(?:take|grab|capture)\s+(?:a\s+)?screenshot(?:\s+now)?\b/gi, ' ');
+    cleaned = cleaned.replace(/\bscreenshot(?:\s+(?:this|that|now|here))?\b/gi, ' ');
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+    // Trim punctuation left behind after removing command words.
+    cleaned = cleaned.replace(/^[,.;:!?-]+\s*/, '').replace(/\s*[,.;:!?-]+$/, '');
+
+    return cleaned.trim();
+  }
+
+  private async captureAndQueueScreenshot(trigger: ScreenshotTrigger): Promise<Screenshot | null> {
+    if (this.state !== 'recording' || !this.session) {
+      return null;
+    }
+
+    if (this.screenshotCaptureInFlight) {
+      return null;
+    }
+
+    const now = Date.now();
+    if (now - this.lastScreenshotCapturedAt < this.SCREENSHOT_DEBOUNCE_MS) {
+      return null;
+    }
+
+    this.screenshotCaptureInFlight = true;
+
+    try {
+      const captureResult = await this.screenCaptureService.capture(this.session.sourceId);
+
+      if (!this.session || this.state !== 'recording') {
+        return null;
+      }
+
+      const screenshot: Screenshot = {
+        id: captureResult.id,
+        timestamp: Date.now(),
+        buffer: captureResult.buffer,
+        width: captureResult.width,
+        height: captureResult.height,
+        trigger,
+      };
+
+      this.lastScreenshotCapturedAt = screenshot.timestamp;
+      this.session.screenshotBuffer.push(screenshot);
+      this.pendingScreenshots.push(screenshot);
+
+      // Match immediately if relevant transcript context is already buffered.
+      this.tryMatchScreenshotToTranscript(screenshot);
+
+      this.emitToRenderer(IPC_CHANNELS.SCREENSHOT_CAPTURED, {
+        id: screenshot.id,
+        timestamp: screenshot.timestamp,
+        count: this.session.screenshotBuffer.length,
+        width: screenshot.width,
+        height: screenshot.height,
+        trigger,
+      });
+
+      this.persistSession();
+      this.persistState();
+
+      return screenshot;
+    } catch (error) {
+      this.handleServiceError('capture', error as Error);
+      return null;
+    } finally {
+      this.screenshotCaptureInFlight = false;
     }
   }
 
@@ -1080,6 +1275,7 @@ export class SessionController {
     const recentTranscripts = this.session.transcriptBuffer.filter(
       (t) =>
         t.isFinal &&
+        screenshotTimeSec >= t.timestamp &&
         screenshotTimeSec - t.timestamp < this.TRANSCRIPT_MATCH_WINDOW_MS / 1000
     );
 
@@ -1106,6 +1302,8 @@ export class SessionController {
 
       this.session.feedbackItems.push(feedbackItem);
       this.emitFeedbackItem(feedbackItem);
+      this.persistSession();
+      this.persistState();
 
       // Remove from pending
       const pendingIndex = this.pendingScreenshots.findIndex(
@@ -1167,6 +1365,8 @@ export class SessionController {
 
         this.session.feedbackItems.push(feedbackItem);
         this.emitFeedbackItem(feedbackItem);
+        this.persistSession();
+        this.persistState();
 
         // Remove from pending
         const pendingIndex = this.pendingScreenshots.findIndex(
@@ -1218,6 +1418,8 @@ export class SessionController {
     }
 
     this.pendingScreenshots = [];
+    this.persistSession();
+    this.persistState();
   }
 
   // ===========================================================================

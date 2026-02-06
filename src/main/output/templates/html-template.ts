@@ -72,6 +72,7 @@ function getCategoryClass(category: FeedbackCategory): string {
     Bug: 'tag-bug',
     'UX Issue': 'tag-ux',
     Suggestion: 'tag-suggestion',
+    Performance: 'tag-performance',
     Question: 'tag-question',
     General: 'tag-general',
   };
@@ -226,6 +227,7 @@ function getStyles(theme: 'dark' | 'light'): string {
     .tag-bug { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
     .tag-ux { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
     .tag-suggestion { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+    .tag-performance { background: rgba(34, 197, 94, 0.18); color: #22c55e; }
     .tag-question { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
     .tag-general { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
 

@@ -115,6 +115,7 @@ export interface ISettingsManager {
 // ============================================================================
 
 const KEYTAR_SERVICE = 'com.feedbackflow.app';
+const LEGACY_KEYTAR_SERVICES = ['feedbackflow'] as const;
 const SETTINGS_VERSION = 2;
 
 /**
@@ -359,7 +360,33 @@ export class SettingsManager implements ISettingsManager {
   async getApiKey(service: string): Promise<string | null> {
     try {
       const key = await keytar.getPassword(KEYTAR_SERVICE, service);
-      return key;
+      if (key) {
+        return key;
+      }
+
+      // Migration path: older builds stored keys under a different keychain service name.
+      for (const legacyService of LEGACY_KEYTAR_SERVICES) {
+        const legacyKey = await keytar.getPassword(legacyService, service);
+        if (!legacyKey) {
+          continue;
+        }
+
+        try {
+          await keytar.setPassword(KEYTAR_SERVICE, service, legacyKey);
+          console.log(
+            `[SettingsManager] Migrated API key for ${service} from "${legacyService}" to "${KEYTAR_SERVICE}"`
+          );
+        } catch (migrationError) {
+          console.warn(
+            `[SettingsManager] Failed to migrate API key for ${service} from "${legacyService}":`,
+            migrationError
+          );
+        }
+
+        return legacyKey;
+      }
+
+      return null;
     } catch (error) {
       console.error(`[SettingsManager] Failed to get API key for ${service}:`, error);
       return null;

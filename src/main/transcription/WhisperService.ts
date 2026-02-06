@@ -171,7 +171,7 @@ export class WhisperService extends EventEmitter {
 
     try {
       // Dynamically import whisper-node to avoid startup crashes if not installed
-      // @ts-ignore - whisper-node may not have types
+      // @ts-expect-error - whisper-node may not have types
       this.whisperModule = await import('whisper-node');
 
       // Verify the module loaded correctly

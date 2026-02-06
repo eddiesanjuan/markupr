@@ -53,6 +53,15 @@ export { SettingsPanel, default as SettingsPanelDefault } from './SettingsPanel'
 // Donate button
 export { DonateButton, default as DonateButtonDefault } from './DonateButton';
 
+// Session history
+export { SessionHistory } from './SessionHistory';
+
+// Transcription preview
+export { TranscriptionPreview, TranscriptionPreviewAnimated } from './TranscriptionPreview';
+
+// Model download dialog
+export { ModelDownloadDialog, useModelCheck } from './ModelDownloadDialog';
+
 // Type exports for external use
 export type { default as RecordingOverlayType } from './RecordingOverlay';
 export type { SessionReviewProps } from './SessionReview';

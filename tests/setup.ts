@@ -26,6 +26,7 @@ vi.mock('electron', () => ({
     getName: vi.fn(() => 'FeedbackFlow'),
     getVersion: vi.fn(() => '0.4.0'),
     getAppPath: vi.fn(() => '/mock/app/path'),
+    isReady: vi.fn(() => true),
     isPackaged: false,
     quit: vi.fn(),
     on: vi.fn(),
@@ -167,6 +168,10 @@ vi.mock('electron', () => ({
       isEmpty: () => false,
       getSize: () => ({ width: 32, height: 32 }),
       toDataURL: () => 'data:image/png;base64,mock',
+      resize: vi.fn(() => ({
+        toPNG: () => Buffer.from('PNG'),
+        getSize: () => ({ width: 32, height: 32 }),
+      })),
     })),
     createFromBuffer: vi.fn(() => ({
       isEmpty: () => false,
@@ -174,6 +179,10 @@ vi.mock('electron', () => ({
       toDataURL: () => 'data:image/png;base64,mock',
       toPNG: () => Buffer.from('PNG'),
       toJPEG: () => Buffer.from('JPEG'),
+      resize: vi.fn(() => ({
+        toPNG: () => Buffer.from('resized-PNG'),
+        getSize: () => ({ width: 1200, height: 675 }),
+      })),
     })),
     createEmpty: vi.fn(() => ({
       isEmpty: () => true,

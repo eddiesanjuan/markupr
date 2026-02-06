@@ -190,7 +190,7 @@ const ToggleSetting: React.FC<{
     <button
       style={{
         ...styles.toggle,
-        backgroundColor: value ? '#3B82F6' : '#374151',
+        backgroundColor: value ? 'var(--ff-accent)' : '#374151',
         opacity: disabled ? 0.5 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
@@ -299,7 +299,7 @@ const DirectoryPicker: React.FC<{
 }> = ({ label, description, value, onChange }) => {
   const handleBrowse = useCallback(async () => {
     try {
-      const result = await (window.feedbackflow.settings as any).selectDirectory?.();
+      const result = await window.feedbackflow.settings.selectDirectory();
       if (result) {
         onChange(result);
       }
@@ -1034,6 +1034,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [hasChanges, setHasChanges] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [currentTier, setCurrentTier] = useState<TranscriptionTier | null>('whisper');
+  const [appVersion, setAppVersion] = useState('');
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -1053,7 +1054,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         // Check if API key exists (we won't show the actual value for security)
         try {
-          const hasKey = await (window.feedbackflow.settings as any).hasApiKey?.('deepgram');
+          const hasKey = await window.feedbackflow.settings.hasApiKey('deepgram');
           if (hasKey) {
             setApiKey((prev) => ({ ...prev, value: '********', valid: true }));
           }
@@ -1063,13 +1064,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
         // Load current transcription tier
         try {
-          const tier = await (window.feedbackflow as any)?.transcription?.getCurrentTier?.();
-          if (tier) {
+          const tier = await window.feedbackflow.transcription.getCurrentTier();
+          if (tier && tier !== 'auto') {
             setCurrentTier(tier as TranscriptionTier);
           }
         } catch {
           // Default to whisper
           setCurrentTier('whisper');
+        }
+
+        // Load app version
+        try {
+          const ver = await window.feedbackflow.version();
+          setAppVersion(ver);
+        } catch {
+          setAppVersion('');
         }
       } catch (error) {
         console.error('Failed to load settings:', error);
@@ -1105,8 +1114,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
       try {
         await window.feedbackflow.settings.set('hotkeys', newHotkeys);
         // Re-register hotkeys
-        // @ts-expect-error - update may be named updateConfig in type definition
-        await (window.feedbackflow.hotkeys.update ?? window.feedbackflow.hotkeys.updateConfig)?.(newHotkeys);
+        await window.feedbackflow.hotkeys.updateConfig(newHotkeys);
       } catch (error) {
         console.error('Failed to update hotkey:', error);
       }
@@ -1166,12 +1174,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   // Transcription tier selection handler
   const handleTierSelect = useCallback(async (tier: TranscriptionTier) => {
-    setCurrentTier(tier);
-    setHasChanges(true);
-
     try {
-      // Save tier selection to settings
-      await (window.feedbackflow as any)?.transcription?.setTier?.(tier);
+      const result = await window.feedbackflow.transcription.setTier(tier);
+      if (!result.success) {
+        throw new Error(result.error || 'Unable to switch transcription tier.');
+      }
+
+      setCurrentTier(tier);
+      setHasChanges(true);
     } catch (error) {
       console.error('Failed to set transcription tier:', error);
     }
@@ -1246,7 +1256,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   // Data management handlers
   const handleClearAllData = useCallback(async () => {
     try {
-      await (window.feedbackflow.settings as any).clearAllData?.();
+      await window.feedbackflow.settings.clearAllData();
       setSettings(DEFAULT_SETTINGS);
       setApiKey({ value: '', visible: false, testing: false, valid: null, error: null });
     } catch (error) {
@@ -1256,7 +1266,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   const handleExportSettings = useCallback(async () => {
     try {
-      await (window.feedbackflow.settings as any).export?.();
+      await window.feedbackflow.settings.export();
     } catch (error) {
       console.error('Failed to export settings:', error);
     }
@@ -1264,7 +1274,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
 
   const handleImportSettings = useCallback(async () => {
     try {
-      const imported = await (window.feedbackflow.settings as any).import?.();
+      const imported = await window.feedbackflow.settings.import();
       if (imported) {
         setSettings({ ...DEFAULT_SETTINGS, ...imported });
       }
@@ -1434,7 +1444,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <div style={styles.footer}>
           <div style={styles.footerLeft}>
             <span style={styles.footerText}>
-              FeedbackFlow v0.4.0 {hasChanges && <span style={styles.savedIndicator}>Changes saved</span>}
+              FeedbackFlow {appVersion ? `v${appVersion}` : ''} {hasChanges && <span style={styles.savedIndicator}>Changes saved</span>}
             </span>
             <DonateButton />
           </div>

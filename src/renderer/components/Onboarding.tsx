@@ -82,8 +82,11 @@ const ConfettiCanvas: React.FC<{ active: boolean }> = ({ active }) => {
   const particlesRef = useRef<Particle[]>([]);
   const animationRef = useRef<number>();
 
+  const prefersReducedMotion = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   useEffect(() => {
-    if (!active) return;
+    if (!active || prefersReducedMotion) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -143,7 +146,7 @@ const ConfettiCanvas: React.FC<{ active: boolean }> = ({ active }) => {
     };
   }, [active]);
 
-  if (!active) return null;
+  if (!active || prefersReducedMotion) return null;
 
   return (
     <canvas
@@ -247,7 +250,7 @@ const AudioLevelMeter: React.FC<{ active: boolean }> = ({ active }) => {
           style={{
             ...styles.audioBar,
             height: `${Math.max(4, level * 48)}px`,
-            backgroundColor: level > 0.6 ? '#10b981' : level > 0.3 ? '#3b82f6' : '#6b7280',
+            backgroundColor: level > 0.6 ? 'var(--ff-success)' : level > 0.3 ? 'var(--ff-accent)' : '#6b7280',
             opacity: 0.5 + level * 0.5,
           }}
         />
@@ -356,6 +359,21 @@ const MicrophoneStep: React.FC<{
   onNext: () => void;
   onBack: () => void;
 }> = ({ status, onRequestPermission, onNext, onBack }) => {
+  const [isRechecking, setIsRechecking] = useState(false);
+
+  // Recheck permission after user returns from System Preferences
+  const handleRecheck = async () => {
+    setIsRechecking(true);
+    try {
+      const isGranted = await window.feedbackflow.permissions.check('microphone');
+      if (!isGranted) {
+        onRequestPermission();
+      }
+    } finally {
+      setTimeout(() => setIsRechecking(false), 500);
+    }
+  };
+
   return (
     <div style={styles.stepContent}>
       {/* Illustration */}
@@ -363,15 +381,15 @@ const MicrophoneStep: React.FC<{
         <div
           style={{
             ...styles.iconCircle,
-            backgroundColor: status === 'granted' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-            borderColor: status === 'granted' ? '#10b981' : '#3b82f6',
+            backgroundColor: status === 'granted' ? 'rgba(59, 212, 154, 0.1)' : 'rgba(98, 168, 255, 0.1)',
+            borderColor: status === 'granted' ? 'var(--ff-success)' : 'var(--ff-accent)',
           }}
         >
           {status === 'granted' ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M18 24l4 4 8-8"
-                stroke="#10b981"
+                stroke="var(--ff-success)"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -381,19 +399,19 @@ const MicrophoneStep: React.FC<{
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M24 8c-3.3 0-6 2.7-6 6v9c0 3.3 2.7 6 6 6s6-2.7 6-6v-9c0-3.3-2.7-6-6-6z"
-                stroke="#3b82f6"
+                stroke="var(--ff-accent)"
                 strokeWidth="2.5"
                 fill="none"
               />
               <path
                 d="M36 20v3c0 6.6-5.4 12-12 12s-12-5.4-12-12v-3"
-                stroke="#3b82f6"
+                stroke="var(--ff-accent)"
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
               <path
                 d="M24 35v5M18 40h12"
-                stroke="#3b82f6"
+                stroke="var(--ff-accent)"
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
@@ -419,23 +437,73 @@ const MicrophoneStep: React.FC<{
         </div>
       )}
 
+      {/* macOS System Preferences Instructions for denied */}
+      {status === 'denied' && (
+        <div style={styles.instructionBox}>
+          <div style={styles.instructionHeader}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+              <path
+                d="M10 6v4m0 4h.01M19 10a9 9 0 11-18 0 9 9 0 0118 0z"
+                stroke="#ef4444"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span style={{ ...styles.instructionTitle, color: '#f87171' }}>Permission Denied</span>
+          </div>
+          <ol style={styles.instructionList}>
+            <li>Click &quot;Open System Settings&quot; below</li>
+            <li>Find &quot;FeedbackFlow&quot; in the list</li>
+            <li>Toggle the switch ON</li>
+            <li>Click &quot;Check Again&quot; to verify</li>
+          </ol>
+        </div>
+      )}
+
       {/* Permission Button */}
       {status !== 'granted' && (
-        <button
-          style={{
-            ...styles.primaryButton,
-            backgroundColor: status === 'denied' ? '#ef4444' : '#3b82f6',
-          }}
-          onClick={onRequestPermission}
-          disabled={status === 'pending'}
-        >
-          {status === 'pending' && (
-            <span style={styles.spinner} />
+        <div style={styles.buttonGroup}>
+          <button
+            style={{
+              ...styles.primaryButton,
+              backgroundColor: status === 'denied' ? 'var(--ff-error)' : 'var(--ff-accent)',
+            }}
+            onClick={onRequestPermission}
+            disabled={status === 'pending'}
+          >
+            {status === 'pending' && (
+              <span style={styles.spinner} />
+            )}
+            {status === 'denied'
+              ? 'Open System Settings'
+              : 'Allow Microphone Access'}
+          </button>
+
+          {status === 'denied' && (
+            <button
+              style={styles.secondaryButton}
+              onClick={handleRecheck}
+              disabled={isRechecking}
+            >
+              {isRechecking ? (
+                <span style={styles.spinner} />
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ marginRight: 6 }}>
+                    <path
+                      d="M14 8A6 6 0 1 1 8 2m0 0v3m0-3h3"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Check Again
+                </>
+              )}
+            </button>
           )}
-          {status === 'denied'
-            ? 'Permission Denied - Open System Preferences'
-            : 'Allow Microphone Access'}
-        </button>
+        </div>
       )}
 
       {/* Continue Button */}
@@ -474,6 +542,24 @@ const ScreenRecordingStep: React.FC<{
   onNext: () => void;
   onBack: () => void;
 }> = ({ status, onRequestPermission, onNext, onBack }) => {
+  const [isRechecking, setIsRechecking] = useState(false);
+
+  // Recheck permission after user returns from System Preferences
+  const handleRecheck = async () => {
+    setIsRechecking(true);
+    try {
+      const isGranted = await window.feedbackflow.permissions.check('screen');
+      // The parent component will update status via the onRequestPermission callback
+      // which triggers a re-render. We just need to wait a moment.
+      if (!isGranted) {
+        // Still not granted, trigger the request flow again
+        onRequestPermission();
+      }
+    } finally {
+      setTimeout(() => setIsRechecking(false), 500);
+    }
+  };
+
   return (
     <div style={styles.stepContent}>
       {/* Illustration */}
@@ -481,15 +567,15 @@ const ScreenRecordingStep: React.FC<{
         <div
           style={{
             ...styles.iconCircle,
-            backgroundColor: status === 'granted' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-            borderColor: status === 'granted' ? '#10b981' : '#3b82f6',
+            backgroundColor: status === 'granted' ? 'rgba(59, 212, 154, 0.1)' : 'rgba(98, 168, 255, 0.1)',
+            borderColor: status === 'granted' ? 'var(--ff-success)' : 'var(--ff-accent)',
           }}
         >
           {status === 'granted' ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M18 24l4 4 8-8"
-                stroke="#10b981"
+                stroke="var(--ff-success)"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -503,13 +589,13 @@ const ScreenRecordingStep: React.FC<{
                 width="36"
                 height="24"
                 rx="3"
-                stroke="#3b82f6"
+                stroke="var(--ff-accent)"
                 strokeWidth="2.5"
                 fill="none"
               />
-              <path d="M14 38h20" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />
-              <path d="M24 34v4" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />
-              <circle cx="24" cy="22" r="4" stroke="#3b82f6" strokeWidth="2" fill="none" />
+              <path d="M14 38h20" stroke="var(--ff-accent)" strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M24 34v4" stroke="var(--ff-accent)" strokeWidth="2.5" strokeLinecap="round" />
+              <circle cx="24" cy="22" r="4" stroke="var(--ff-accent)" strokeWidth="2" fill="none" />
             </svg>
           )}
         </div>
@@ -525,39 +611,74 @@ const ScreenRecordingStep: React.FC<{
         this feature.
       </p>
 
-      {/* macOS System Preferences Note */}
+      {/* macOS System Preferences Instructions */}
       {status === 'denied' && (
-        <div style={styles.warningBox}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-            <path
-              d="M10 6v4m0 4h.01M19 10a9 9 0 11-18 0 9 9 0 0118 0z"
-              stroke="#f59e0b"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span>
-            Open <strong>System Preferences &gt; Privacy &gt; Screen Recording</strong> and
-            enable FeedbackFlow.
-          </span>
+        <div style={styles.instructionBox}>
+          <div style={styles.instructionHeader}>
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+              <path
+                d="M10 6v4m0 4h.01M19 10a9 9 0 11-18 0 9 9 0 0118 0z"
+                stroke="#f59e0b"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span style={styles.instructionTitle}>Manual Setup Required</span>
+          </div>
+          <ol style={styles.instructionList}>
+            <li>Click &quot;Open System Settings&quot; below</li>
+            <li>Find &quot;FeedbackFlow&quot; in the list</li>
+            <li>Toggle the switch ON</li>
+            <li>Click &quot;Check Again&quot; to verify</li>
+          </ol>
+          <p style={styles.instructionNote}>
+            Note: You may need to restart FeedbackFlow after enabling.
+          </p>
         </div>
       )}
 
       {/* Permission Button */}
       {status !== 'granted' && (
-        <button
-          style={{
-            ...styles.primaryButton,
-            backgroundColor: status === 'denied' ? '#f59e0b' : '#3b82f6',
-          }}
-          onClick={onRequestPermission}
-          disabled={status === 'pending'}
-        >
-          {status === 'pending' && <span style={styles.spinner} />}
-          {status === 'denied'
-            ? 'Open System Preferences'
-            : 'Allow Screen Recording'}
-        </button>
+        <div style={styles.buttonGroup}>
+          <button
+            style={{
+              ...styles.primaryButton,
+              backgroundColor: status === 'denied' ? '#f59e0b' : 'var(--ff-accent)',
+            }}
+            onClick={onRequestPermission}
+            disabled={status === 'pending'}
+          >
+            {status === 'pending' && <span style={styles.spinner} />}
+            {status === 'denied'
+              ? 'Open System Settings'
+              : 'Allow Screen Recording'}
+          </button>
+
+          {status === 'denied' && (
+            <button
+              style={styles.secondaryButton}
+              onClick={handleRecheck}
+              disabled={isRechecking}
+            >
+              {isRechecking ? (
+                <span style={styles.spinner} />
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ marginRight: 6 }}>
+                    <path
+                      d="M14 8A6 6 0 1 1 8 2m0 0v3m0-3h3"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Check Again
+                </>
+              )}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Success Preview */}
@@ -610,8 +731,9 @@ const ApiKeyStep: React.FC<{
   onApiKeyChange: (value: string) => void;
   onTestApiKey: () => void;
   onNext: () => void;
+  onSkip: () => void;
   onBack: () => void;
-}> = ({ apiKey, onApiKeyChange, onTestApiKey, onNext, onBack }) => {
+}> = ({ apiKey, onApiKeyChange, onTestApiKey, onNext, onSkip, onBack }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -626,15 +748,15 @@ const ApiKeyStep: React.FC<{
         <div
           style={{
             ...styles.iconCircle,
-            backgroundColor: apiKey.valid ? 'rgba(16, 185, 129, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-            borderColor: apiKey.valid ? '#10b981' : '#3b82f6',
+            backgroundColor: apiKey.valid ? 'rgba(59, 212, 154, 0.1)' : 'rgba(98, 168, 255, 0.1)',
+            borderColor: apiKey.valid ? 'var(--ff-success)' : 'var(--ff-accent)',
           }}
         >
           {apiKey.valid ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M18 24l4 4 8-8"
-                stroke="#10b981"
+                stroke="var(--ff-success)"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -644,7 +766,7 @@ const ApiKeyStep: React.FC<{
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M32 20l-8-8-8 8M16 28l8 8 8-8"
-                stroke="#3b82f6"
+                stroke="var(--ff-accent)"
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -653,7 +775,7 @@ const ApiKeyStep: React.FC<{
                 cx="24"
                 cy="24"
                 r="4"
-                stroke="#3b82f6"
+                stroke="var(--ff-accent)"
                 strokeWidth="2.5"
                 fill="none"
               />
@@ -690,7 +812,7 @@ const ApiKeyStep: React.FC<{
           onChange={(e) => onApiKeyChange(e.target.value)}
           style={{
             ...styles.input,
-            borderColor: apiKey.error ? '#ef4444' : apiKey.valid ? '#10b981' : '#374151',
+            borderColor: apiKey.error ? 'var(--ff-error)' : apiKey.valid ? 'var(--ff-success)' : '#374151',
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && apiKey.value.length > 10) {
@@ -702,7 +824,7 @@ const ApiKeyStep: React.FC<{
           <button
             style={{
               ...styles.testButton,
-              backgroundColor: apiKey.testing ? '#374151' : '#3b82f6',
+              backgroundColor: apiKey.testing ? '#374151' : 'var(--ff-accent)',
             }}
             onClick={onTestApiKey}
             disabled={apiKey.testing || apiKey.value.length < 10}
@@ -774,6 +896,11 @@ const ApiKeyStep: React.FC<{
             strokeLinejoin="round"
           />
         </svg>
+      </button>
+
+      {/* Skip - use local transcription */}
+      <button style={styles.skipButton} onClick={onSkip}>
+        Skip — use local Whisper transcription
       </button>
 
       {/* Back Button */}
@@ -977,37 +1104,71 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
     setCurrentStep(step);
   }, []);
 
+  // Check initial permission status on mount
+  useEffect(() => {
+    const checkInitialPermissions = async () => {
+      try {
+        const permissionStatus = await window.feedbackflow.permissions.getAll();
+        setPermissions({
+          microphone: permissionStatus.microphone ? 'granted' : 'unknown',
+          screen: permissionStatus.screen ? 'granted' : 'unknown',
+        });
+      } catch {
+        // Permissions API not available, leave as unknown
+      }
+    };
+
+    checkInitialPermissions();
+  }, []);
+
   // Request microphone permission
   const requestMicrophonePermission = useCallback(async () => {
     setPermissions((prev) => ({ ...prev, microphone: 'pending' }));
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      setPermissions((prev) => ({ ...prev, microphone: 'granted' }));
+      // First check via main process (macOS system permissions)
+      const isGranted = await window.feedbackflow.permissions.check('microphone');
+      if (isGranted) {
+        setPermissions((prev) => ({ ...prev, microphone: 'granted' }));
+        return;
+      }
+
+      // Request via main process first (triggers macOS prompt)
+      const mainGranted = await window.feedbackflow.permissions.request('microphone');
+
+      if (mainGranted) {
+        // Verify with browser API as well
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+        setPermissions((prev) => ({ ...prev, microphone: 'granted' }));
+      } else {
+        setPermissions((prev) => ({ ...prev, microphone: 'denied' }));
+      }
     } catch {
       setPermissions((prev) => ({ ...prev, microphone: 'denied' }));
     }
   }, []);
 
-  // Request screen recording permission (Electron-specific)
+  // Request screen recording permission via preload API
   const requestScreenPermission = useCallback(async () => {
     setPermissions((prev) => ({ ...prev, screen: 'pending' }));
 
     try {
-      // In Electron, we can test screen recording by attempting to get sources
-      // This will trigger the permission prompt on macOS
-      const { desktopCapturer } = window.require?.('electron') || {};
-      if (desktopCapturer) {
-        const sources = await desktopCapturer.getSources({ types: ['screen'] });
-        if (sources.length > 0) {
-          setPermissions((prev) => ({ ...prev, screen: 'granted' }));
-        } else {
-          setPermissions((prev) => ({ ...prev, screen: 'denied' }));
-        }
-      } else {
-        // Fallback for non-Electron environment (testing)
+      // First check if already granted
+      const isGranted = await window.feedbackflow.permissions.check('screen');
+      if (isGranted) {
         setPermissions((prev) => ({ ...prev, screen: 'granted' }));
+        return;
+      }
+
+      // Request permission - this will open System Preferences on macOS
+      const granted = await window.feedbackflow.permissions.request('screen');
+
+      if (granted) {
+        setPermissions((prev) => ({ ...prev, screen: 'granted' }));
+      } else {
+        // Permission was denied or user needs to enable manually
+        setPermissions((prev) => ({ ...prev, screen: 'denied' }));
       }
     } catch {
       setPermissions((prev) => ({ ...prev, screen: 'denied' }));
@@ -1097,6 +1258,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
             }
             onTestApiKey={testApiKey}
             onNext={() => goToStep('success')}
+            onSkip={() => goToStep('success')}
             onBack={() => goToStep('screen', 'right')}
           />
         );
@@ -1291,7 +1453,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 280,
     padding: '14px 24px',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--ff-accent)',
     border: 'none',
     borderRadius: 12,
     color: '#ffffff',
@@ -1299,7 +1461,6 @@ const styles: Record<string, ExtendedCSSProperties> = {
     fontWeight: 600,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    outline: 'none',
   },
 
   skipButton: {
@@ -1329,7 +1490,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '10px 16px',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--ff-accent)',
     border: 'none',
     borderRadius: 8,
     color: '#ffffff',
@@ -1389,7 +1550,6 @@ const styles: Record<string, ExtendedCSSProperties> = {
     borderRadius: 8,
     color: '#f9fafb',
     fontSize: 14,
-    outline: 'none',
     transition: 'border-color 0.2s ease',
   },
 
@@ -1456,6 +1616,71 @@ const styles: Record<string, ExtendedCSSProperties> = {
     fontSize: 13,
     color: '#f87171',
     textAlign: 'left',
+  },
+
+  // Instruction box for permission setup
+  instructionBox: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 16,
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
+    border: '1px solid rgba(245, 158, 11, 0.25)',
+    borderRadius: 12,
+    marginBottom: 20,
+    textAlign: 'left',
+  },
+
+  instructionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  instructionTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#fbbf24',
+  },
+
+  instructionList: {
+    margin: 0,
+    paddingLeft: 20,
+    fontSize: 13,
+    color: '#d1d5db',
+    lineHeight: 1.8,
+  },
+
+  instructionNote: {
+    marginTop: 12,
+    fontSize: 12,
+    color: '#9ca3af',
+    fontStyle: 'italic',
+  },
+
+  // Button group for multiple actions
+  buttonGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    width: '100%',
+    maxWidth: 280,
+  },
+
+  secondaryButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    padding: '12px 24px',
+    backgroundColor: 'transparent',
+    border: '1px solid #4b5563',
+    borderRadius: 12,
+    color: '#d1d5db',
+    fontSize: 14,
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
   },
 
   // Success Step

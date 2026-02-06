@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { Session } from '../../main/output/MarkdownGenerator';
+import type { ReviewSession as Session } from '../../shared/types';
 
 // ============================================================================
 // Types

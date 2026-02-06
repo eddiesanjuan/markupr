@@ -9,7 +9,8 @@
  * - Support both full and compact modes
  */
 
-import { clipboard, Notification, app, shell } from 'electron';
+import { clipboard, Notification, app, shell, BrowserWindow } from 'electron';
+import path from 'path';
 import { Session, FeedbackItem } from '../SessionController';
 
 // =============================================================================
@@ -326,7 +327,7 @@ class ClipboardServiceImpl implements ClipboardService {
 
     notification.on('click', () => {
       // Focus the app when notification is clicked
-      const windows = require('electron').BrowserWindow.getAllWindows();
+      const windows = BrowserWindow.getAllWindows();
       if (windows.length > 0) {
         windows[0].focus();
       }
@@ -352,7 +353,6 @@ class ClipboardServiceImpl implements ClipboardService {
     // For Windows/Linux, try to find the icon
     // This would be in the app resources after packaging
     try {
-      const path = require('path');
       const iconPath = path.join(app.getAppPath(), 'assets', 'icon.png');
       return iconPath;
     } catch {

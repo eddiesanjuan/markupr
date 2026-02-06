@@ -19,6 +19,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { app } from 'electron';
 import { errorHandler } from '../ErrorHandler';
+import { IPC_CHANNELS } from '../../shared/types';
 
 // ============================================================================
 // Types and Interfaces
@@ -69,17 +70,17 @@ export interface AudioCaptureService {
 
 export const AUDIO_IPC_CHANNELS = {
   // Main -> Renderer requests
-  REQUEST_DEVICES: 'audio:request-devices',
-  START_CAPTURE: 'audio:start-capture',
-  STOP_CAPTURE: 'audio:stop-capture',
-  SET_DEVICE: 'audio:set-device',
+  REQUEST_DEVICES: IPC_CHANNELS.AUDIO_REQUEST_DEVICES,
+  START_CAPTURE: IPC_CHANNELS.AUDIO_START_CAPTURE,
+  STOP_CAPTURE: IPC_CHANNELS.AUDIO_STOP_CAPTURE,
+  SET_DEVICE: IPC_CHANNELS.AUDIO_SET_DEVICE,
 
   // Renderer -> Main data
-  AUDIO_CHUNK: 'audio:chunk',
-  DEVICES_RESPONSE: 'audio:devices-response',
-  CAPTURE_ERROR: 'audio:capture-error',
-  CAPTURE_STARTED: 'audio:capture-started',
-  CAPTURE_STOPPED: 'audio:capture-stopped',
+  AUDIO_CHUNK: IPC_CHANNELS.AUDIO_CHUNK,
+  DEVICES_RESPONSE: IPC_CHANNELS.AUDIO_DEVICES_RESPONSE,
+  CAPTURE_ERROR: IPC_CHANNELS.AUDIO_CAPTURE_ERROR,
+  CAPTURE_STARTED: IPC_CHANNELS.AUDIO_CAPTURE_STARTED,
+  CAPTURE_STOPPED: IPC_CHANNELS.AUDIO_CAPTURE_STOPPED,
 } as const;
 
 // ============================================================================

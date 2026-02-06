@@ -11,7 +11,7 @@
  * Service Integration Order:
  * 1. Error handler (for crash recovery)
  * 2. Settings (needed for API keys and config)
- * 3. Keytar initialization (secure storage)
+ * 3. Secure settings + API key availability check
  * 4. Window creation
  * 5. Session controller initialization
  * 6. Transcription service configuration
@@ -25,11 +25,13 @@ import {
   BrowserWindow,
   ipcMain,
   desktopCapturer,
-  systemPreferences,
+  screen,
   shell,
   Notification,
+  dialog,
 } from 'electron';
-import { join, dirname } from 'path';
+import * as fs from 'fs/promises';
+import { join, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
 
 // Hide dock icon on macOS for pure menu bar experience
@@ -54,21 +56,45 @@ import {
   type SessionPayload,
   type SaveResult,
   type TrayState,
+  type TranscriptionTier as UiTranscriptionTier,
+  type TranscriptionTierStatus,
 } from '../shared/types';
 import { hotkeyManager, type HotkeyAction } from './HotkeyManager';
 import { sessionController, type Session, type SessionState } from './SessionController';
 import { trayManager } from './TrayManager';
 import { SettingsManager } from './settings';
-import { fileManager, outputManager, clipboardService, generateDocumentForFileManager, generateClipboardSummary } from './output';
-import { screenCapture } from './capture/ScreenCapture';
-import { intelligentCapture } from './capture/IntelligentCapture';
-import { transcriptionService } from './transcription/TranscriptionService';
+import { fileManager, outputManager, clipboardService, generateDocumentForFileManager, adaptSessionForMarkdown } from './output';
+import { modelDownloadManager } from './transcription/ModelDownloadManager';
+import { tierManager } from './transcription/TierManager';
+import type { WhisperModel } from './transcription/types';
 import { errorHandler } from './ErrorHandler';
 import { autoUpdaterManager } from './AutoUpdater';
 import { crashRecovery, type RecoverableFeedbackItem } from './CrashRecovery';
 import { menuManager } from './MenuManager';
 import { WindowsTaskbar, createWindowsTaskbar } from './platform';
 import { PopoverManager, POPOVER_SIZES } from './windows';
+import { permissionManager } from './PermissionManager';
+
+// Guard against stdio EIO crashes when the parent terminal/PTY closes.
+type ConsoleMethod = (...args: unknown[]) => void;
+
+function wrapConsoleMethod(method: ConsoleMethod): ConsoleMethod {
+  return (...args: unknown[]) => {
+    try {
+      method(...args);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('EIO')) {
+        return;
+      }
+      throw error;
+    }
+  };
+}
+
+console.log = wrapConsoleMethod(console.log.bind(console));
+console.info = wrapConsoleMethod(console.info.bind(console));
+console.warn = wrapConsoleMethod(console.warn.bind(console));
+console.error = wrapConsoleMethod(console.error.bind(console));
 
 // =============================================================================
 // Module State
@@ -80,15 +106,18 @@ let settingsManager: SettingsManager | null = null;
 let isQuitting = false;
 let hasCompletedOnboarding = false;
 
-// API key service (using keytar for secure storage)
-let keytar: typeof import('keytar') | null = null;
-const KEYTAR_SERVICE = 'feedbackflow';
-
-// Cleanup functions for intelligent capture
-let intelligentCaptureCleanup: (() => void) | null = null;
-
 // Windows taskbar integration (Windows only)
 let windowsTaskbar: WindowsTaskbar | null = null;
+
+interface RecordingArtifact {
+  tempPath: string;
+  mimeType: string;
+  bytesWritten: number;
+  writeChain: Promise<void>;
+}
+
+const activeScreenRecordings = new Map<string, RecordingArtifact>();
+const finalizedScreenRecordings = new Map<string, Omit<RecordingArtifact, 'writeChain'>>();
 
 // =============================================================================
 // Window Management
@@ -216,6 +245,13 @@ function handleSessionStateChange(state: SessionState, session: Session | null):
 
   // Update tray icon
   trayManager.setState(mapToTrayState(state));
+
+  const keepVisibleOnBlur =
+    state === 'starting' ||
+    state === 'recording' ||
+    state === 'stopping' ||
+    state === 'processing';
+  popover?.setKeepVisibleOnBlur(keepVisibleOnBlur);
 
   // Update Windows taskbar (if on Windows)
   windowsTaskbar?.updateSessionState(state);
@@ -433,31 +469,19 @@ async function handleToggleRecording(): Promise<void> {
     // Stop recording
     await stopSession();
   } else if (currentState === 'idle') {
-    // Show window to select source
-    showWindow();
-    mainWindow?.webContents.send('feedbackflow:show-window-selector');
+    const result = await startSession();
+    if (!result.success && result.error) {
+      showErrorNotification('Unable to Start Recording', result.error);
+    }
   }
 }
 
 async function handleManualScreenshot(): Promise<void> {
-  if (sessionController.getState() !== 'recording') {
-    console.warn('[Main] Cannot take screenshot - not recording');
-    return;
-  }
-
-  const session = sessionController.getSession();
-  if (!session) return;
-
   try {
-    const result = await screenCapture.capture(session.sourceId);
-    mainWindow?.webContents.send(IPC_CHANNELS.SCREENSHOT_CAPTURED, {
-      id: result.id,
-      timestamp: Date.now(),
-      count: session.screenshotBuffer.length + 1,
-      width: result.width,
-      height: result.height,
-      trigger: 'manual',
-    });
+    const screenshot = await sessionController.captureManualScreenshot();
+    if (!screenshot && sessionController.getState() !== 'recording') {
+      console.warn('[Main] Cannot take screenshot - not recording');
+    }
   } catch (error) {
     console.error('[Main] Manual screenshot failed:', error);
   }
@@ -468,61 +492,158 @@ async function handleManualScreenshot(): Promise<void> {
 // =============================================================================
 
 /**
- * Start a recording session with intelligent capture
+ * Resolve the default capture source for zero-friction recording start.
+ * Prefers the primary display to match what users are actively looking at.
  */
-async function startSession(sourceId: string, sourceName?: string): Promise<{
+async function resolveDefaultCaptureSource(): Promise<{ sourceId: string; sourceName: string }> {
+  const sources = await desktopCapturer.getSources({
+    types: ['screen'],
+    thumbnailSize: { width: 1, height: 1 },
+  });
+
+  if (!sources.length) {
+    throw new Error('No screen capture source is available.');
+  }
+
+  const primaryDisplayId = String(screen.getPrimaryDisplay().id);
+  const preferredSource = sources.find((source) => source.display_id === primaryDisplayId);
+  const fallbackSource = sources.find((source) => source.id.startsWith('screen')) || sources[0];
+  const selected = preferredSource || fallbackSource;
+
+  return {
+    sourceId: selected.id,
+    sourceName: selected.name || 'Main Display',
+  };
+}
+
+function extensionFromMimeType(mimeType?: string): string {
+  const normalized = (mimeType || '').toLowerCase();
+  if (normalized.includes('mp4')) {
+    return '.mp4';
+  }
+  if (normalized.includes('quicktime') || normalized.includes('mov')) {
+    return '.mov';
+  }
+  return '.webm';
+}
+
+async function finalizeScreenRecording(sessionId: string): Promise<{
+  tempPath: string;
+  mimeType: string;
+  bytesWritten: number;
+} | null> {
+  const active = activeScreenRecordings.get(sessionId);
+  if (active) {
+    try {
+      await active.writeChain;
+    } catch (error) {
+      console.warn('[Main] Screen recording write chain failed during finalize:', error);
+    }
+
+    activeScreenRecordings.delete(sessionId);
+    finalizedScreenRecordings.set(sessionId, {
+      tempPath: active.tempPath,
+      mimeType: active.mimeType,
+      bytesWritten: active.bytesWritten,
+    });
+  }
+
+  return finalizedScreenRecordings.get(sessionId) || null;
+}
+
+async function attachRecordingToSessionOutput(
+  sessionId: string,
+  sessionDir: string,
+  markdownPath: string
+): Promise<{ path: string; mimeType: string; bytesWritten: number } | undefined> {
+  const artifact = await finalizeScreenRecording(sessionId);
+  if (!artifact || artifact.bytesWritten <= 0) {
+    return undefined;
+  }
+
+  const extension = extname(artifact.tempPath) || extensionFromMimeType(artifact.mimeType);
+  const finalPath = join(sessionDir, `session-recording${extension}`);
+
+  try {
+    await fs.copyFile(artifact.tempPath, finalPath);
+
+    // Append recording link to the report for agent context replay.
+    let markdown = await fs.readFile(markdownPath, 'utf-8');
+    if (!markdown.includes('## Session Recording')) {
+      markdown += `\n## Session Recording\n- [Open full recording](./${basename(finalPath)})\n`;
+      await fs.writeFile(markdownPath, markdown, 'utf-8');
+    }
+
+    return {
+      path: finalPath,
+      mimeType: artifact.mimeType,
+      bytesWritten: artifact.bytesWritten,
+    };
+  } catch (error) {
+    console.warn('[Main] Failed to attach session recording to output:', error);
+    return undefined;
+  } finally {
+    finalizedScreenRecordings.delete(sessionId);
+    await fs.unlink(artifact.tempPath).catch(() => {
+      // Best-effort cleanup for temp artifacts.
+    });
+  }
+}
+
+/**
+ * Start a recording session.
+ */
+async function startSession(sourceId?: string, sourceName?: string): Promise<{
   success: boolean;
   sessionId?: string;
   error?: string;
 }> {
   try {
-    // Get API key (optional - TierManager handles tier selection)
-    const apiKey = await getApiKey('deepgram');
+    const [hasMicrophonePermission, hasScreenPermission] = await Promise.all([
+      checkPermission('microphone'),
+      checkPermission('screen'),
+    ]);
 
-    // Configure transcription service if API key exists (for Deepgram tier)
-    // If no key, TierManager will fall back to local Whisper automatically
-    if (apiKey && !transcriptionService.isConnected()) {
-      transcriptionService.configure(apiKey);
+    if (!hasMicrophonePermission) {
+      await requestPermission('microphone');
+    }
+    if (!hasScreenPermission) {
+      await requestPermission('screen');
     }
 
-    // Configure session controller with transcription (optional API key)
-    if (apiKey) {
-      sessionController.configureTranscription(apiKey);
+    const [microphoneGranted, screenGranted] = await Promise.all([
+      checkPermission('microphone'),
+      checkPermission('screen'),
+    ]);
+
+    if (!microphoneGranted || !screenGranted) {
+      return {
+        success: false,
+        error:
+          'Microphone and screen recording permissions are required. Enable both in macOS System Settings, then retry.',
+      };
     }
 
-    // Initialize intelligent capture for this session
-    intelligentCapture.initialize(transcriptionService, screenCapture, hotkeyManager);
-    intelligentCapture.setSourceId(sourceId);
+    const transcriptionReady = await tierManager.hasTranscriptionCapability();
+    if (!transcriptionReady) {
+      return {
+        success: false,
+        error:
+          'No transcription engine is ready. Add a Deepgram API key (BYOK/Premium) or download a local Whisper model before starting.',
+      };
+    }
+
+    let resolvedSourceId = sourceId;
+    let resolvedSourceName = sourceName;
+
+    if (!resolvedSourceId) {
+      const defaultSource = await resolveDefaultCaptureSource();
+      resolvedSourceId = defaultSource.sourceId;
+      resolvedSourceName = defaultSource.sourceName;
+    }
 
     // Start the session
-    await sessionController.start(sourceId, sourceName);
-
-    // Start intelligent capture
-    intelligentCapture.start();
-
-    // Subscribe to intelligent capture screenshots
-    const unsubScreenshot = intelligentCapture.onScreenshot((screenshot, decision) => {
-      console.log(`[Main] Intelligent capture: ${decision.trigger}, ${decision.transcriptWindow.length} transcripts`);
-      mainWindow?.webContents.send(IPC_CHANNELS.SCREENSHOT_CAPTURED, {
-        id: screenshot.id,
-        timestamp: screenshot.timestamp,
-        count: sessionController.getStatus().screenshotCount,
-        width: screenshot.width,
-        height: screenshot.height,
-        trigger: decision.trigger,
-      });
-    });
-
-    const unsubError = intelligentCapture.onError((error, trigger) => {
-      console.error(`[Main] Intelligent capture error (${trigger}):`, error);
-    });
-
-    // Store cleanup functions
-    intelligentCaptureCleanup = () => {
-      unsubScreenshot();
-      unsubError();
-      intelligentCapture.stop();
-    };
+    await sessionController.start(resolvedSourceId, resolvedSourceName);
 
     const session = sessionController.getSession();
 
@@ -535,7 +656,7 @@ async function startSession(sourceId: string, sourceName?: string): Promise<{
         feedbackItems: [],
         transcriptionBuffer: '',
         sourceId: session.sourceId,
-        sourceName: sourceName || 'Unknown Source',
+        sourceName: resolvedSourceName || 'Unknown Source',
         screenshotCount: 0,
         metadata: {
           appVersion: app.getVersion(),
@@ -546,7 +667,7 @@ async function startSession(sourceId: string, sourceName?: string): Promise<{
     }
 
     // Show recording notification
-    showSuccessNotification('Recording Started', 'Speak and FeedbackFlow will capture your feedback.');
+    showSuccessNotification('Recording Started', 'Speak naturally. Pause, hotkey, or voice command will capture screenshots.');
 
     return {
       success: true,
@@ -571,13 +692,22 @@ async function stopSession(): Promise<{
   reportPath?: string;
   error?: string;
 }> {
-  try {
-    // Stop intelligent capture first
-    if (intelligentCaptureCleanup) {
-      intelligentCaptureCleanup();
-      intelligentCaptureCleanup = null;
+  let stoppedSessionId: string | null = null;
+
+  const cleanupRecordingArtifacts = async (sessionId: string): Promise<void> => {
+    const artifact = await finalizeScreenRecording(sessionId).catch(() => null);
+    if (!artifact?.tempPath) {
+      finalizedScreenRecordings.delete(sessionId);
+      return;
     }
 
+    await fs.unlink(artifact.tempPath).catch(() => {
+      // Best-effort cleanup of orphaned temp recordings.
+    });
+    finalizedScreenRecordings.delete(sessionId);
+  };
+
+  try {
     // Set Windows taskbar to processing state with indeterminate progress
     windowsTaskbar?.setProgress(-1);
 
@@ -594,6 +724,7 @@ async function stopSession(): Promise<{
         error: 'No active session to stop',
       };
     }
+    stoppedSessionId = session.id;
 
     // Update progress: generating document (33%)
     windowsTaskbar?.setProgress(0.33);
@@ -609,16 +740,38 @@ async function stopSession(): Promise<{
 
     // Save to file system
     const saveResult = await fileManager.saveSession(session, document);
+    if (!saveResult.success) {
+      await cleanupRecordingArtifacts(session.id);
+      windowsTaskbar?.clearProgress();
+      return {
+        success: false,
+        error: saveResult.error || 'Unable to save session report.',
+      };
+    }
+
+    const recordingArtifact = await attachRecordingToSessionOutput(
+      session.id,
+      saveResult.sessionDir,
+      saveResult.markdownPath
+    );
+
+    if (recordingArtifact) {
+      sessionController.setSessionMetadata({
+        recordingPath: recordingArtifact.path,
+        recordingMimeType: recordingArtifact.mimeType,
+        recordingBytes: recordingArtifact.bytesWritten,
+      });
+    }
+
+    const markdownForPayload = await fs
+      .readFile(saveResult.markdownPath, 'utf-8')
+      .catch(() => document.content);
 
     // Update progress: copying to clipboard (90%)
     windowsTaskbar?.setProgress(0.9);
 
-    // Copy summary to clipboard
-    const settings = settingsManager?.getAll() || DEFAULT_SETTINGS;
-    if (settings.autoClipboard !== false) {
-      const clipboardSummary = generateClipboardSummary(session, session.metadata?.sourceName);
-      await clipboardService.copyWithNotification(clipboardSummary, 'Feedback Captured!');
-    }
+    // Copy markdown report path to clipboard (the bridge into AI agents)
+    await clipboardService.copy(saveResult.markdownPath);
 
     // Complete progress and flash taskbar
     windowsTaskbar?.setProgress(1);
@@ -629,18 +782,25 @@ async function stopSession(): Promise<{
       windowsTaskbar?.clearProgress();
     }, 1000);
 
+    // Build the review session for the SessionReview component
+    const reviewSession = adaptSessionForMarkdown(session);
+
     // Notify renderer
     mainWindow?.webContents.send(IPC_CHANNELS.SESSION_COMPLETE, serializeSession(session));
     mainWindow?.webContents.send(IPC_CHANNELS.OUTPUT_READY, {
-      markdown: document.content,
+      markdown: markdownForPayload,
       sessionId: session.id,
+      path: saveResult.markdownPath,
       reportPath: saveResult.markdownPath,
+      sessionDir: saveResult.sessionDir,
+      recordingPath: recordingArtifact?.path,
+      reviewSession,
     });
 
     // Show completion notification
     showSuccessNotification(
       'Feedback Captured!',
-      `${session.feedbackItems.length} items saved. Summary copied to clipboard.`
+      `${session.feedbackItems.length} items saved. Report path copied to clipboard.`
     );
 
     return {
@@ -649,6 +809,9 @@ async function stopSession(): Promise<{
       reportPath: saveResult.markdownPath,
     };
   } catch (error) {
+    if (stoppedSessionId) {
+      await cleanupRecordingArtifacts(stoppedSessionId);
+    }
     console.error('[Main] Failed to stop session:', error);
     windowsTaskbar?.clearProgress();
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -663,13 +826,140 @@ async function stopSession(): Promise<{
  * Cancel session without saving
  */
 function cancelSession(): { success: boolean } {
-  if (intelligentCaptureCleanup) {
-    intelligentCaptureCleanup();
-    intelligentCaptureCleanup = null;
-  }
+  const currentSessionId = sessionController.getSession()?.id;
   sessionController.cancel();
   crashRecovery.stopTracking();
+
+  if (currentSessionId) {
+    void finalizeScreenRecording(currentSessionId).then(async (artifact) => {
+      if (artifact?.tempPath) {
+        await fs.unlink(artifact.tempPath).catch(() => {
+          // Best-effort cleanup for canceled session recordings.
+        });
+      }
+      finalizedScreenRecordings.delete(currentSessionId);
+    });
+  }
+
   return { success: true };
+}
+
+interface ListedSessionMetadata {
+  sessionId: string;
+  startTime: number;
+  endTime?: number;
+  itemCount: number;
+  screenshotCount: number;
+  source?: {
+    id: string;
+    name?: string;
+  };
+}
+
+interface SessionHistoryItem {
+  id: string;
+  startTime: number;
+  endTime: number;
+  itemCount: number;
+  screenshotCount: number;
+  sourceName: string;
+  firstThumbnail?: string;
+  folder: string;
+  transcriptionPreview?: string;
+}
+
+function extractPreviewFromMarkdown(content: string): string | undefined {
+  const blockMatch = content.match(/#### Feedback\s*\n> ([\s\S]*?)(?:\n\n|\n---|$)/);
+  const fallbackLine = content.split('\n').find((line) => line.startsWith('> '));
+  const rawPreview = blockMatch?.[1] || fallbackLine?.replace(/^>\s*/, '');
+
+  if (!rawPreview) {
+    return undefined;
+  }
+
+  const singleLine = rawPreview.replace(/\n>\s*/g, ' ').replace(/\s+/g, ' ').trim();
+  return singleLine.slice(0, 220);
+}
+
+async function resolveSessionThumbnail(sessionDir: string): Promise<string | undefined> {
+  const screenshotsDir = join(sessionDir, 'screenshots');
+
+  try {
+    const files = await fs.readdir(screenshotsDir);
+    const firstImage = files
+      .filter((file) => /\.(png|jpe?g|webp)$/i.test(file))
+      .sort()[0];
+
+    if (!firstImage) {
+      return undefined;
+    }
+
+    return join(screenshotsDir, firstImage);
+  } catch {
+    return undefined;
+  }
+}
+
+async function buildSessionHistoryItem(
+  dir: string,
+  metadata: ListedSessionMetadata
+): Promise<SessionHistoryItem> {
+  const markdownPath = join(dir, 'feedback-report.md');
+
+  let transcriptionPreview: string | undefined;
+  try {
+    const markdown = await fs.readFile(markdownPath, 'utf-8');
+    transcriptionPreview = extractPreviewFromMarkdown(markdown);
+  } catch {
+    transcriptionPreview = undefined;
+  }
+
+  return {
+    id: metadata.sessionId,
+    startTime: metadata.startTime,
+    endTime: metadata.endTime || metadata.startTime,
+    itemCount: metadata.itemCount || 0,
+    screenshotCount: metadata.screenshotCount || 0,
+    sourceName: metadata.source?.name || 'Feedback Session',
+    firstThumbnail: await resolveSessionThumbnail(dir),
+    folder: dir,
+    transcriptionPreview,
+  };
+}
+
+async function listSessionHistoryItems(): Promise<SessionHistoryItem[]> {
+  const sessions = await fileManager.listSessions();
+  const items = await Promise.all(
+    sessions.map(({ dir, metadata }) =>
+      buildSessionHistoryItem(dir, metadata as ListedSessionMetadata)
+    )
+  );
+  return items.sort((a, b) => b.startTime - a.startTime);
+}
+
+async function getSessionHistoryItem(sessionId: string): Promise<SessionHistoryItem | null> {
+  const sessions = await listSessionHistoryItems();
+  return sessions.find((session) => session.id === sessionId) || null;
+}
+
+async function exportSessionFolders(sessionIds: string[]): Promise<string> {
+  const sessions = await listSessionHistoryItems();
+  const selected = sessions.filter((session) => sessionIds.includes(session.id));
+
+  if (!selected.length) {
+    throw new Error('No sessions found to export.');
+  }
+
+  const exportRoot = join(fileManager.getOutputDirectory(), 'exports');
+  const bundleDir = join(exportRoot, `bundle-${Date.now()}`);
+  await fs.mkdir(bundleDir, { recursive: true });
+
+  for (const session of selected) {
+    const destination = join(bundleDir, basename(session.folder));
+    await fs.cp(session.folder, destination, { recursive: true });
+  }
+
+  return bundleDir;
 }
 
 // =============================================================================
@@ -682,8 +972,8 @@ function setupIPC(): void {
   // ---------------------------------------------------------------------------
 
   // Start session with intelligent capture
-  ipcMain.handle(IPC_CHANNELS.SESSION_START, async (_, sourceId: string, sourceName?: string) => {
-    console.log(`[Main] Starting session for source: ${sourceId}`);
+  ipcMain.handle(IPC_CHANNELS.SESSION_START, async (_, sourceId?: string, sourceName?: string) => {
+    console.log('[Main] Starting session');
     return startSession(sourceId, sourceName);
   });
 
@@ -712,7 +1002,7 @@ function setupIPC(): void {
 
   // Legacy session handlers (for backwards compatibility)
   ipcMain.handle(IPC_CHANNELS.START_SESSION, async (_, sourceId?: string) => {
-    return startSession(sourceId || 'screen:0:0');
+    return startSession(sourceId);
   });
 
   ipcMain.handle(IPC_CHANNELS.STOP_SESSION, async () => {
@@ -747,9 +1037,111 @@ function setupIPC(): void {
 
   // Trigger manual screenshot
   ipcMain.handle(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT, async () => {
-    await handleManualScreenshot();
-    return { success: true };
+    const screenshot = await sessionController.captureManualScreenshot();
+    return { success: !!screenshot };
   });
+
+  // Start persisted screen recording for the active session
+  ipcMain.handle(
+    IPC_CHANNELS.SCREEN_RECORDING_START,
+    async (_, sessionId: string, mimeType: string): Promise<{ success: boolean; path?: string; error?: string }> => {
+      try {
+        const currentSession = sessionController.getSession();
+        if (!currentSession || currentSession.id !== sessionId) {
+          return { success: false, error: 'No matching active session for screen recording.' };
+        }
+
+        const extension = extensionFromMimeType(mimeType);
+        const recordingsDir = join(app.getPath('temp'), 'feedbackflow-recordings');
+        await fs.mkdir(recordingsDir, { recursive: true });
+
+        const tempPath = join(recordingsDir, `${sessionId}${extension}`);
+        await fs.writeFile(tempPath, Buffer.alloc(0));
+
+        activeScreenRecordings.set(sessionId, {
+          tempPath,
+          mimeType: mimeType || 'video/webm',
+          bytesWritten: 0,
+          writeChain: Promise.resolve(),
+        });
+
+        return { success: true, path: tempPath };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to initialize screen recording.',
+        };
+      }
+    }
+  );
+
+  // Append screen recording chunk data
+  ipcMain.handle(
+    IPC_CHANNELS.SCREEN_RECORDING_CHUNK,
+    async (
+      _,
+      sessionId: string,
+      chunk: Uint8Array | ArrayBuffer
+    ): Promise<{ success: boolean; error?: string }> => {
+      const recording = activeScreenRecordings.get(sessionId);
+      if (!recording) {
+        return { success: false, error: 'No active recording writer for this session.' };
+      }
+
+      let buffer: Buffer;
+      if (chunk instanceof ArrayBuffer) {
+        buffer = Buffer.from(chunk);
+      } else if (ArrayBuffer.isView(chunk)) {
+        buffer = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+      } else {
+        return { success: false, error: 'Unsupported recording chunk format.' };
+      }
+
+      recording.writeChain = recording.writeChain
+        .then(() => fs.appendFile(recording.tempPath, buffer))
+        .then(() => {
+          recording.bytesWritten += buffer.byteLength;
+        });
+
+      try {
+        await recording.writeChain;
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to append recording chunk.',
+        };
+      }
+    }
+  );
+
+  // Finalize persisted screen recording
+  ipcMain.handle(
+    IPC_CHANNELS.SCREEN_RECORDING_STOP,
+    async (
+      _,
+      sessionId: string
+    ): Promise<{ success: boolean; path?: string; bytes?: number; mimeType?: string; error?: string }> => {
+      try {
+        const artifact = await finalizeScreenRecording(sessionId);
+        if (!artifact) {
+          return { success: true };
+        }
+
+        return {
+          success: true,
+          path: artifact.tempPath,
+          bytes: artifact.bytesWritten,
+          mimeType: artifact.mimeType,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to finalize screen recording.',
+        };
+      }
+    }
+  );
 
   // ---------------------------------------------------------------------------
   // Audio Channels
@@ -793,6 +1185,108 @@ function setupIPC(): void {
     }
   );
 
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SELECT_DIRECTORY, async (): Promise<string | null> => {
+    const options: Electron.OpenDialogOptions = {
+      title: 'Select Feedback Output Folder',
+      buttonLabel: 'Use Folder',
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    const selected = result.filePaths[0];
+    if (settingsManager) {
+      settingsManager.update({ outputDirectory: selected });
+    }
+
+    return selected;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_CLEAR_ALL_DATA, async (): Promise<void> => {
+    if (!settingsManager) {
+      return;
+    }
+
+    const outputDirectory = settingsManager.get('outputDirectory');
+    await fs.rm(outputDirectory, { recursive: true, force: true }).catch(() => {
+      // Ignore missing directories.
+    });
+
+    await settingsManager.deleteApiKey('deepgram').catch(() => {
+      // Ignore missing keychain entries.
+    });
+
+    settingsManager.reset();
+    crashRecovery.discardIncompleteSession();
+    crashRecovery.clearCrashLogs();
+    sessionController.reset();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_EXPORT, async (): Promise<void> => {
+    if (!settingsManager) {
+      return;
+    }
+
+    const options: Electron.SaveDialogOptions = {
+      title: 'Export FeedbackFlow Settings',
+      defaultPath: join(app.getPath('documents'), 'feedbackflow-settings.json'),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    };
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
+
+    if (result.canceled || !result.filePath) {
+      return;
+    }
+
+    const payload = JSON.stringify(settingsManager.getAll(), null, 2);
+    await fs.writeFile(result.filePath, payload, 'utf-8');
+  });
+
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_IMPORT, async (): Promise<AppSettings | null> => {
+    if (!settingsManager) {
+      return null;
+    }
+
+    const options: Electron.OpenDialogOptions = {
+      title: 'Import FeedbackFlow Settings',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, options)
+      : await dialog.showOpenDialog(options);
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    const raw = await fs.readFile(result.filePaths[0], 'utf-8');
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Invalid settings file format.');
+    }
+
+    const entries = Object.entries(parsed as Record<string, unknown>);
+    const allowedKeys = new Set(Object.keys(DEFAULT_SETTINGS));
+    const sanitized: Partial<AppSettings> = {};
+
+    for (const [key, value] of entries) {
+      if (!allowedKeys.has(key)) {
+        continue;
+      }
+      (sanitized as Record<string, unknown>)[key] = value;
+    }
+
+    return settingsManager.update(sanitized);
+  });
+
   // Legacy settings handlers
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
     return settingsManager?.getAll() ?? { ...DEFAULT_SETTINGS };
@@ -820,14 +1314,45 @@ function setupIPC(): void {
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_GET_API_KEY,
     async (_, service: string): Promise<string | null> => {
-      return getApiKey(service);
+      if (!settingsManager) {
+        return null;
+      }
+      return settingsManager.getApiKey(service);
     }
   );
 
   ipcMain.handle(
     IPC_CHANNELS.SETTINGS_SET_API_KEY,
     async (_, service: string, key: string): Promise<boolean> => {
-      return setApiKey(service, key);
+      if (!settingsManager) {
+        return false;
+      }
+
+      await settingsManager.setApiKey(service, key);
+      return true;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.SETTINGS_DELETE_API_KEY,
+    async (_, service: string): Promise<boolean> => {
+      if (!settingsManager) {
+        return false;
+      }
+
+      await settingsManager.deleteApiKey(service);
+      return true;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.SETTINGS_HAS_API_KEY,
+    async (_, service: string): Promise<boolean> => {
+      if (!settingsManager) {
+        return false;
+      }
+
+      return settingsManager.hasApiKey(service);
     }
   );
 
@@ -911,10 +1436,108 @@ function setupIPC(): void {
     }
   });
 
+  ipcMain.handle(IPC_CHANNELS.OUTPUT_LIST_SESSIONS, async () => {
+    try {
+      return await listSessionHistoryItems();
+    } catch (error) {
+      console.error('[Main] Failed to list sessions:', error);
+      return [];
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.OUTPUT_GET_SESSION_METADATA, async (_, sessionId: string) => {
+    try {
+      return await getSessionHistoryItem(sessionId);
+    } catch (error) {
+      console.error('[Main] Failed to get session metadata:', error);
+      return null;
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.OUTPUT_DELETE_SESSION, async (_, sessionId: string) => {
+    try {
+      const session = await getSessionHistoryItem(sessionId);
+      if (!session) {
+        return { success: false, error: 'Session not found' };
+      }
+
+      await fs.rm(session.folder, { recursive: true, force: true });
+      return { success: true };
+    } catch (error) {
+      console.error('[Main] Failed to delete session:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.OUTPUT_DELETE_SESSIONS, async (_, sessionIds: string[]) => {
+    const deleted: string[] = [];
+    const failed: string[] = [];
+
+    for (const sessionId of sessionIds) {
+      try {
+        const session = await getSessionHistoryItem(sessionId);
+        if (!session) {
+          failed.push(sessionId);
+          continue;
+        }
+
+        await fs.rm(session.folder, { recursive: true, force: true });
+        deleted.push(sessionId);
+      } catch {
+        failed.push(sessionId);
+      }
+    }
+
+    return {
+      success: failed.length === 0,
+      deleted,
+      failed,
+    };
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.OUTPUT_EXPORT_SESSION,
+    async (_, sessionId: string, format: 'markdown' | 'json' | 'pdf' = 'markdown') => {
+      try {
+        // TODO: For json/pdf formats, reconstruct Session from disk and use exportService.export()
+        // For now, all formats fall through to folder export which includes pre-generated markdown
+        console.log(`[Main] Exporting session ${sessionId} as ${format}`);
+        const exportPath = await exportSessionFolders([sessionId]);
+        return { success: true, path: exportPath };
+      } catch (error) {
+        console.error('[Main] Failed to export session:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.OUTPUT_EXPORT_SESSIONS,
+    async (_, sessionIds: string[], format: 'markdown' | 'json' | 'pdf' = 'markdown') => {
+      try {
+        // TODO: For json/pdf formats, reconstruct Sessions from disk and use exportService.export()
+        console.log(`[Main] Exporting ${sessionIds.length} sessions as ${format}`);
+        const exportPath = await exportSessionFolders(sessionIds);
+        return { success: true, path: exportPath };
+      } catch (error) {
+        console.error('[Main] Failed to export sessions:', error);
+        return { success: false, error: (error as Error).message };
+      }
+    }
+  );
+
   // Legacy clipboard handler
   ipcMain.handle(IPC_CHANNELS.COPY_TO_CLIPBOARD, async (_, text: string) => {
     const success = await clipboardService.copyWithNotification(text);
     return { success };
+  });
+
+  // ---------------------------------------------------------------------------
+  // App Version Handler
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('feedbackflow:app:version', () => {
+    return app.getVersion();
   });
 
   // ---------------------------------------------------------------------------
@@ -1093,6 +1716,169 @@ function setupIPC(): void {
       return { success: true };
     }
   );
+
+  // ---------------------------------------------------------------------------
+  // Transcription Tier Control Channels
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle(
+    IPC_CHANNELS.TRANSCRIPTION_GET_TIER_STATUSES,
+    async (): Promise<TranscriptionTierStatus[]> => {
+      const statuses = await tierManager.getTierStatuses();
+
+      return statuses.map((status) => {
+        if (tierManager.tierProvidesTranscription(status.tier)) {
+          return status;
+        }
+
+        return {
+          ...status,
+          available: false,
+          reason: 'Not supported for narrated feedback reports',
+        };
+      });
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.TRANSCRIPTION_GET_CURRENT_TIER,
+    async (): Promise<UiTranscriptionTier | null> => {
+      const preferred = tierManager.getPreferredTier();
+      if (preferred !== 'auto') {
+        return preferred;
+      }
+
+      const active = tierManager.getCurrentTier();
+      if (active) {
+        return active;
+      }
+
+      const best = await tierManager.selectBestTier();
+      if (tierManager.tierProvidesTranscription(best)) {
+        return best;
+      }
+
+      return null;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.TRANSCRIPTION_SET_TIER,
+    (_, tier: UiTranscriptionTier): { success: boolean; error?: string } => {
+      try {
+        tierManager.setPreferredTier(tier);
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set transcription tier.',
+        };
+      }
+    }
+  );
+
+  // ---------------------------------------------------------------------------
+  // Whisper Model Channels
+  // ---------------------------------------------------------------------------
+
+  // Check if any Whisper model is downloaded
+  ipcMain.handle(IPC_CHANNELS.WHISPER_CHECK_MODEL, () => {
+    const hasAnyModel = modelDownloadManager.hasAnyModel();
+    const downloadedModels: string[] = [];
+    const models: WhisperModel[] = ['tiny', 'base', 'small', 'medium', 'large'];
+
+    for (const model of models) {
+      if (modelDownloadManager.isModelDownloaded(model)) {
+        downloadedModels.push(model);
+      }
+    }
+
+    const defaultModel = hasAnyModel ? modelDownloadManager.getDefaultModel() : null;
+    const recommendedModel = 'small'; // Good balance of quality and size
+    const recommendedInfo = modelDownloadManager.getModelInfo('small');
+
+    return {
+      hasAnyModel,
+      defaultModel,
+      downloadedModels,
+      recommendedModel,
+      recommendedModelSizeMB: recommendedInfo.sizeMB,
+    };
+  });
+
+  // Check if we have transcription capability (Deepgram or Whisper)
+  ipcMain.handle(IPC_CHANNELS.WHISPER_HAS_TRANSCRIPTION_CAPABILITY, async () => {
+    return tierManager.hasTranscriptionCapability();
+  });
+
+  // Get available models with their info
+  ipcMain.handle(IPC_CHANNELS.WHISPER_GET_AVAILABLE_MODELS, () => {
+    const models = modelDownloadManager.getAvailableModels();
+    return models.map((info) => ({
+      name: info.name,
+      filename: info.filename,
+      sizeMB: info.sizeMB,
+      ramRequired: info.ramRequired,
+      quality: info.quality,
+      isDownloaded: modelDownloadManager.isModelDownloaded(info.name as WhisperModel),
+    }));
+  });
+
+  // Download a Whisper model
+  ipcMain.handle(IPC_CHANNELS.WHISPER_DOWNLOAD_MODEL, async (_, model: WhisperModel) => {
+    try {
+      // Set up progress listener to forward to renderer
+      const unsubProgress = modelDownloadManager.onProgress((progress) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.WHISPER_DOWNLOAD_PROGRESS, {
+          model: progress.model,
+          downloadedBytes: progress.downloadedBytes,
+          totalBytes: progress.totalBytes,
+          percent: progress.percent,
+          speedBps: progress.speedBps,
+          estimatedSecondsRemaining: progress.estimatedSecondsRemaining,
+        });
+      });
+
+      // Set up completion listener
+      const unsubComplete = modelDownloadManager.onComplete((result) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.WHISPER_DOWNLOAD_COMPLETE, {
+          model: result.model,
+          path: result.path,
+        });
+        unsubProgress();
+        unsubComplete();
+        unsubError();
+      });
+
+      // Set up error listener
+      const unsubError = modelDownloadManager.onError((error, errorModel) => {
+        mainWindow?.webContents.send(IPC_CHANNELS.WHISPER_DOWNLOAD_ERROR, {
+          model: errorModel,
+          error: error.message,
+        });
+        unsubProgress();
+        unsubComplete();
+        unsubError();
+      });
+
+      // Start the download
+      const result = await modelDownloadManager.downloadModel(model);
+
+      return { success: result.success };
+    } catch (error) {
+      console.error('[Main] Failed to download Whisper model:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  });
+
+  // Cancel a Whisper model download
+  ipcMain.handle(IPC_CHANNELS.WHISPER_CANCEL_DOWNLOAD, (_, model: WhisperModel) => {
+    modelDownloadManager.cancelDownload(model);
+    return { success: true };
+  });
 }
 
 // =============================================================================
@@ -1100,95 +1886,47 @@ function setupIPC(): void {
 // =============================================================================
 
 async function checkPermission(type: PermissionType): Promise<boolean> {
-  if (process.platform !== 'darwin') {
-    // Windows/Linux don't have the same permission system
-    return true;
-  }
-
-  switch (type) {
-    case 'microphone':
-      return systemPreferences.getMediaAccessStatus('microphone') === 'granted';
-    case 'screen':
-      return systemPreferences.getMediaAccessStatus('screen') === 'granted';
-    case 'accessibility':
-      return systemPreferences.isTrustedAccessibilityClient(false);
-    default:
-      return false;
-  }
+  return permissionManager.isGranted(type);
 }
 
 async function requestPermission(type: PermissionType): Promise<boolean> {
+  return permissionManager.requestPermission(type);
+}
+
+/**
+ * Check all permissions on startup and show dialog if any are missing
+ * This runs after the window is ready to ensure dialogs are properly parented
+ */
+async function checkStartupPermissions(): Promise<void> {
   if (process.platform !== 'darwin') {
-    return true;
+    // Only macOS has these system-level permissions
+    return;
   }
 
-  switch (type) {
-    case 'microphone':
-      return await systemPreferences.askForMediaAccess('microphone');
-    case 'screen':
-      // Screen recording permission is handled by opening System Preferences
-      if (systemPreferences.getMediaAccessStatus('screen') !== 'granted') {
-        shell.openExternal(
-          'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
-        );
-        return false;
-      }
-      return true;
-    case 'accessibility':
-      // Accessibility requires manual enablement
-      systemPreferences.isTrustedAccessibilityClient(true);
-      return systemPreferences.isTrustedAccessibilityClient(false);
-    default:
-      return false;
-  }
-}
+  const result = await permissionManager.checkAllPermissions();
 
-// =============================================================================
-// API Key Helpers (Secure Storage)
-// =============================================================================
+  if (!result.allGranted && result.missing.length > 0) {
+    // Log which permissions are missing
+    errorHandler.log('warn', 'Missing required permissions on startup', {
+      component: 'Main',
+      operation: 'checkStartupPermissions',
+      data: {
+        missing: result.missing,
+        state: result.state,
+      },
+    });
 
-async function initKeytar(): Promise<void> {
-  try {
-    keytar = await import('keytar');
-    console.log('[Main] Keytar initialized for secure API key storage');
-  } catch (error) {
-    console.warn('[Main] Keytar not available, falling back to settings storage');
-    keytar = null;
-  }
-}
-
-async function getApiKey(service: string): Promise<string | null> {
-  if (keytar) {
-    try {
-      return await keytar.getPassword(KEYTAR_SERVICE, service);
-    } catch (error) {
-      console.warn(`[Main] Failed to get API key from keytar for ${service}:`, error);
+    // If user hasn't completed onboarding, don't show the dialog
+    // They'll see it during onboarding instead
+    if (hasCompletedOnboarding) {
+      // Avoid blocking startup on a modal dialog; show guidance asynchronously.
+      setTimeout(() => {
+        void permissionManager.showStartupPermissionDialog(result.missing).catch((error) => {
+          console.warn('[Main] Startup permission dialog failed:', error);
+        });
+      }, 500);
     }
   }
-
-  // Fallback to settings
-  if (service === 'deepgram') {
-    return settingsManager?.get('deepgramApiKey') || null;
-  }
-  return null;
-}
-
-async function setApiKey(service: string, key: string): Promise<boolean> {
-  if (keytar) {
-    try {
-      await keytar.setPassword(KEYTAR_SERVICE, service, key);
-      return true;
-    } catch (error) {
-      console.warn(`[Main] Failed to set API key in keytar for ${service}:`, error);
-    }
-  }
-
-  // Fallback to settings
-  if (service === 'deepgram') {
-    settingsManager?.update({ deepgramApiKey: key });
-    return true;
-  }
-  return false;
 }
 
 // =============================================================================
@@ -1244,26 +1982,14 @@ app.whenReady().then(async () => {
   settingsManager = new SettingsManager();
   console.log('[Main] Settings loaded');
 
-  // 3. Initialize keytar for secure storage
-  await initKeytar();
-
-  // 4. Check for API key to determine onboarding state
-  const apiKey = await getApiKey('deepgram');
-  hasCompletedOnboarding = !!apiKey;
+  // 3. Determine onboarding state from available transcription providers
+  const hasDeepgramKey = await settingsManager.hasApiKey('deepgram');
+  const hasLocalWhisperModel = modelDownloadManager.hasAnyModel();
+  hasCompletedOnboarding = hasDeepgramKey || hasLocalWhisperModel;
 
   // 5. Initialize session controller
   await sessionController.initialize();
   console.log('[Main] Session controller initialized');
-
-  // 6. Configure transcription service if API key exists
-  if (apiKey) {
-    try {
-      transcriptionService.configure(apiKey);
-      console.log('[Main] Transcription service configured');
-    } catch (error) {
-      console.error('[Main] Failed to configure transcription:', error);
-    }
-  }
 
   // 7. Initialize tray manager FIRST (needed for popover positioning)
   trayManager.initialize();
@@ -1310,6 +2036,9 @@ app.whenReady().then(async () => {
 
   // Set crash recovery main window
   crashRecovery.setMainWindow(mainWindow!);
+
+  // Set permission manager main window
+  permissionManager.setMainWindow(mainWindow!);
 
   // 9. Wire up tray click to toggle popover
   trayManager.onClick(handleTrayClick);
@@ -1375,6 +2104,13 @@ app.whenReady().then(async () => {
     console.log('[Main] Auto-updater skipped (development mode)');
   }
 
+  // 13. Check permissions on startup (macOS only)
+  // Delay slightly to ensure window is fully ready
+  setTimeout(async () => {
+    await checkStartupPermissions();
+    console.log('[Main] Startup permission check complete');
+  }, 1000);
+
   // Handle macOS dock click (fallback, dock is hidden in menu bar mode)
   app.on('activate', () => {
     // In menu bar mode, show the popover
@@ -1413,12 +2149,21 @@ app.on('will-quit', async () => {
 
   // Stop any active session
   if (sessionController.getState() === 'recording') {
-    if (intelligentCaptureCleanup) {
-      intelligentCaptureCleanup();
-      intelligentCaptureCleanup = null;
-    }
     sessionController.cancel();
   }
+
+  // Best-effort cleanup of temporary recording artifacts.
+  for (const [sessionId] of activeScreenRecordings) {
+    const artifact = await finalizeScreenRecording(sessionId).catch(() => null);
+    if (artifact?.tempPath) {
+      await fs.unlink(artifact.tempPath).catch(() => {});
+    }
+    finalizedScreenRecordings.delete(sessionId);
+  }
+  for (const artifact of finalizedScreenRecordings.values()) {
+    await fs.unlink(artifact.tempPath).catch(() => {});
+  }
+  finalizedScreenRecordings.clear();
 
   // Cleanup services
   hotkeyManager.unregisterAll();
