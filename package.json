@@ -1,6 +1,6 @@
 {
   "name": "feedbackflow",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Menu bar app for voice feedback capture with local AI transcription",
   "main": "./out/main/index.js",
   "author": "Eddie San Juan",
