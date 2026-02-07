@@ -40,7 +40,7 @@ export const AppWrapper: React.FC = () => {
   useEffect(() => {
     if (shouldShowDialog) {
       // Resize to accommodate the download dialog
-      window.feedbackflow?.popover?.resize?.(420, 580).catch(() => {
+      window.feedbackflow?.popover?.resize?.(420, 780).catch(() => {
         // Ignore errors - popover resize is optional
       });
     }

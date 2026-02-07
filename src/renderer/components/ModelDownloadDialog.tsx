@@ -590,6 +590,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     flexDirection: 'column',
     alignItems: 'center',
     textAlign: 'center',
+    overflowY: 'auto',
   },
 
   illustrationContainer: {
