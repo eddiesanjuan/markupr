@@ -1,86 +1,16 @@
 # =============================================================================
-# CODEOWNERS for FeedbackFlow
+# CODEOWNERS for markupr (low-noise)
 # =============================================================================
-# These owners will be requested for review when someone opens a pull request
-# that modifies code that they own.
-#
-# Order matters: later rules override earlier rules.
-# =============================================================================
+# Intentionally scoped to runtime/security-critical areas.
+# Dependency/workflow/docs-only PRs are not auto-assigned by CODEOWNERS.
 
-# Default owners for everything in the repo
-*                           @eddiesanjuan
-
-# =============================================================================
-# Core Application
-# =============================================================================
-
-# Main process (Electron)
+# Core runtime
 /src/main/                  @eddiesanjuan
-
-# Renderer process (React UI)
 /src/renderer/              @eddiesanjuan
-
-# Preload scripts
 /src/preload/               @eddiesanjuan
-
-# Shared types and utilities
 /src/shared/                @eddiesanjuan
 
-# =============================================================================
-# Build & Configuration
-# =============================================================================
-
-# Build configuration
+# Distribution and security-sensitive files
 electron-builder.yml        @eddiesanjuan
-vite.config.ts              @eddiesanjuan
-tsconfig.json               @eddiesanjuan
-tailwind.config.js          @eddiesanjuan
-
-# Package management
-package.json                @eddiesanjuan
-package-lock.json           @eddiesanjuan
-
-# =============================================================================
-# CI/CD & DevOps
-# =============================================================================
-
-# GitHub workflows
-/.github/workflows/         @eddiesanjuan
-
-# GitHub configuration
-/.github/                   @eddiesanjuan
-
-# =============================================================================
-# Documentation
-# =============================================================================
-
-# Documentation files
-README.md                   @eddiesanjuan
-CLAUDE.md                   @eddiesanjuan
-LICENSE                     @eddiesanjuan
-/docs/                      @eddiesanjuan
-
-# =============================================================================
-# Tests
-# =============================================================================
-
-# All test files
-/tests/                     @eddiesanjuan
-*.test.ts                   @eddiesanjuan
-*.test.tsx                  @eddiesanjuan
-*.spec.ts                   @eddiesanjuan
-*.spec.tsx                  @eddiesanjuan
-
-# =============================================================================
-# Security-Sensitive Files
-# =============================================================================
-# These files require careful review as they affect security
-
-# Entitlements (macOS permissions)
 /build/entitlements*.plist  @eddiesanjuan
-
-# Signing scripts
-/scripts/notarize.js        @eddiesanjuan
-
-# Environment configuration
-.env*                       @eddiesanjuan
+/scripts/notarize.cjs       @eddiesanjuan
