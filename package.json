@@ -94,7 +94,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
-    "@deepgram/sdk": "^3.0.0",
+    "@deepgram/sdk": "^4.11.3",
     "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.7.3",
