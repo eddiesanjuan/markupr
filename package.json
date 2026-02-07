@@ -1,21 +1,21 @@
 {
-  "name": "feedbackflow",
+  "name": "markupr",
   "version": "1.2.0",
   "description": "AI-ready developer feedback capture tool with voice narration and intelligent screenshots",
   "type": "module",
   "main": "dist/main/index.mjs",
   "author": "Eddie San Juan",
   "license": "MIT",
-  "homepage": "https://feedbackflow.app",
+  "homepage": "https://markupr.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/eddiesanjuan/feedbackflow.git"
+    "url": "git+https://github.com/eddiesanjuan/markupr.git"
   },
   "bugs": {
-    "url": "https://github.com/eddiesanjuan/feedbackflow/issues"
+    "url": "https://github.com/eddiesanjuan/markupr/issues"
   },
   "keywords": [
-    "feedbackflow",
+    "markupr",
     "feedback",
     "voice",
     "transcription",
