@@ -223,7 +223,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
 
             {/* Description */}
             <p style={styles.description}>
-              FeedbackFlow needs to download a speech recognition model ({selectedModelInfo?.sizeMB || 466}MB)
+              markupr needs to download a speech recognition model ({selectedModelInfo?.sizeMB || 466}MB)
               to transcribe your voice offline. This is a one-time download.
             </p>
 
@@ -376,12 +376,12 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
             {/* Description */}
             <p style={styles.description}>
               The speech recognition model has been downloaded successfully.
-              FeedbackFlow can now transcribe your voice offline.
+              markupr can now transcribe your voice offline.
             </p>
 
             {/* Continue Button */}
             <button style={styles.successButton} onClick={onComplete}>
-              Start Using FeedbackFlow
+              Start Using markupr
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ marginLeft: 8 }}>
                 <path
                   d="M7.5 15l5-5-5-5"

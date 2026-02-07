@@ -1,9 +1,10 @@
 # electron-builder.yml
-# macOS Distribution Configuration for FeedbackFlow
+# macOS Distribution Configuration for markupr
 # Version: 0.4.0
 
-appId: com.eddiesanjuan.feedbackflow
-productName: FeedbackFlow
+appId: com.eddiesanjuan.markupr
+productName: markupr
+executableName: markupr
 copyright: Copyright 2026 Eddie San Juan
 
 directories:
@@ -70,8 +71,8 @@ dmg:
       y: 170
       type: link
       path: /Applications
-  title: "Install FeedbackFlow"
-  artifactName: "FeedbackFlow-${version}-${arch}.dmg"
+  title: "Install markupr"
+  artifactName: "markupr-${version}-${arch}.dmg"
 
 # =============================================================================
 # Windows Configuration
@@ -83,13 +84,13 @@ win:
       arch: [x64, ia32]
     - target: portable
       arch: [x64]
-  publisherName: "FeedbackFlow"
+  publisherName: "markupr"
   verifyUpdateCodeSignature: false
   # File associations
   fileAssociations:
-    - ext: feedbackflow
-      name: FeedbackFlow Session
-      description: FeedbackFlow feedback session file
+    - ext: markupr
+      name: markupr Session
+      description: markupr feedback session file
       icon: build/icon.ico
       role: Editor
 
@@ -105,8 +106,8 @@ nsis:
   license: LICENSE
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "FeedbackFlow"
-  artifactName: "FeedbackFlow-Setup-${version}.exe"
+  shortcutName: "markupr"
+  artifactName: "markupr-Setup-${version}.exe"
   include: build/installer.nsh
   deleteAppDataOnUninstall: false
 

@@ -25,7 +25,7 @@ import type { ImageOptimizeOptions } from './types';
 // System Prompt (from AI_PIPELINE_DESIGN.md)
 // =============================================================================
 
-const SYSTEM_PROMPT = `You are FeedbackFlow's AI analysis engine. You receive a developer's voice-narrated feedback session: a transcript of everything they said while reviewing software, paired with screenshots captured at natural pause points.
+const SYSTEM_PROMPT = `You are markupr's AI analysis engine. You receive a developer's voice-narrated feedback session: a transcript of everything they said while reviewing software, paired with screenshots captured at natural pause points.
 
 Your job is to transform this raw narration into a structured, actionable feedback document.
 
@@ -199,12 +199,31 @@ export class ClaudeAnalyzer {
       const userContent = buildUserContent(session, optimizedImages);
 
       // Call Claude API
-      const response = await this.client.messages.create({
-        model: this.options.model,
-        max_tokens: this.options.maxTokens,
-        temperature: this.options.temperature,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userContent }],
+      let timeoutHandle: NodeJS.Timeout | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(
+            new AIPipelineError(
+              `Claude API request timed out after ${this.options.timeoutMs}ms`,
+              'API_TIMEOUT',
+            ),
+          );
+        }, this.options.timeoutMs);
+      });
+
+      const response = await Promise.race([
+        this.client.messages.create({
+          model: this.options.model,
+          max_tokens: this.options.maxTokens,
+          temperature: this.options.temperature,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+        timeoutPromise,
+      ]).finally(() => {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
       });
 
       // Extract text from response
@@ -318,4 +337,3 @@ function validateFeedbackItem(raw: Record<string, unknown>): AIAnalysisResult['i
     area: String(raw.area ?? 'General'),
   };
 }
-

@@ -16,15 +16,15 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, error }) => {
   const getColor = (): string => {
     switch (status) {
       case 'recording':
-        return '#ef4444';
+        return '#ff3b30';
       case 'processing':
-        return '#f59e0b';
+        return '#ff9f0a';
       case 'complete':
-        return '#10b981';
+        return '#34c759';
       case 'error':
-        return '#ef4444';
+        return '#ff3b30';
       default:
-        return '#6b7280';
+        return '#8e8e93';
     }
   };
 
@@ -75,14 +75,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12,
   },
   dot: {
-    width: 12,
-    height: 12,
+    width: 10,
+    height: 10,
     borderRadius: '50%',
     transition: 'all 0.2s ease',
   },
   text: {
-    color: '#f3f4f6',
-    fontSize: 14,
+    color: '#1d1d1f',
+    fontSize: 13,
     fontWeight: 500,
   },
 };

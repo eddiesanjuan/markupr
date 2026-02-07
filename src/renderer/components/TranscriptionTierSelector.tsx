@@ -247,7 +247,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
       <div style={styles.header}>
         <h3 style={styles.title}>Transcription Service</h3>
         <p style={styles.subtitle}>
-          Choose how FeedbackFlow transcribes your voice. Local options work without an internet connection.
+          Choose how markupr transcribes your voice. Local options work without an internet connection.
         </p>
       </div>
 

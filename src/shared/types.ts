@@ -142,10 +142,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // General
   outputDirectory: '', // Set dynamically by SettingsManager
   launchAtLogin: false,
-  checkForUpdates: true,
+  checkForUpdates: false,
 
   // Recording
-  defaultCountdown: 3,
+  defaultCountdown: 0,
   showTranscriptionPreview: true,
   showAudioWaveform: true,
 
@@ -513,6 +513,8 @@ export interface OutputReadyPayload {
   reportPath?: string;
   sessionDir?: string;
   recordingPath?: string;
+  audioPath?: string;
+  audioDurationMs?: number;
   /** Epoch ms when video recording started, for computing video offsets from transcript timestamps */
   videoStartTime?: number;
   /** The full review session for SessionReview component */
@@ -711,6 +713,9 @@ export interface SessionMetadata {
   recordingPath?: string;
   recordingMimeType?: string;
   recordingBytes?: number;
+  audioPath?: string;
+  audioBytes?: number;
+  audioDurationMs?: number;
   /** Epoch ms when video recording started, for computing video offsets from transcript timestamps */
   videoStartTime?: number;
 }

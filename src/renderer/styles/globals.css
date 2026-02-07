@@ -6,16 +6,6 @@
  */
 
 /* ============================================================================
-   Font Imports
-   ============================================================================ */
-
-/* Inter - Primary UI font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-/* JetBrains Mono - Monospace font (optional, for code) */
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
-
-/* ============================================================================
    CSS Reset & Base
    ============================================================================ */
 
@@ -39,8 +29,7 @@ html {
 
 body {
   min-height: 100vh;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+  font-family: 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -146,7 +135,7 @@ h6 {
 .tracking-wider { letter-spacing: 0.05em; }
 
 .font-mono {
-  font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, monospace;
+  font-family: 'SF Mono', Menlo, Monaco, monospace;
 }
 
 /* ============================================================================

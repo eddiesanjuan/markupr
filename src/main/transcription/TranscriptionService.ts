@@ -50,6 +50,18 @@ export interface TranscriptionServiceConfig {
   channels: number;
 }
 
+export interface ApiKeyValidationResult {
+  valid: boolean;
+  reason?: string;
+}
+
+export interface PrerecordedTranscriptSegment {
+  text: string;
+  startTime: number;
+  endTime: number;
+  confidence: number;
+}
+
 type TranscriptCallback = (result: TranscriptResult) => void;
 type UtteranceEndCallback = (timestamp: number) => void;
 type ErrorCallback = (error: Error) => void;
@@ -151,6 +163,98 @@ export class TranscriptionService {
    */
   isConfigured(): boolean {
     return this.client !== null && this.apiKey !== '';
+  }
+
+  /**
+   * Validate a Deepgram API key against the Manage API.
+   */
+  async validateApiKey(apiKey: string, timeoutMs: number = 5000): Promise<ApiKeyValidationResult> {
+    const normalizedKey = apiKey.trim();
+    if (!normalizedKey) {
+      return { valid: false, reason: 'No API key configured' };
+    }
+
+    if (normalizedKey.length < 20) {
+      return { valid: false, reason: 'API key format looks invalid' };
+    }
+
+    try {
+      const client = createClient(normalizedKey);
+      const response = await this.withTimeout(
+        client.manage.getProjects(),
+        timeoutMs,
+        'Deepgram API key validation timed out'
+      );
+
+      if (response.error) {
+        const manageError = this.formatDeepgramError(response.error);
+
+        // Some keys may lack Manage API scope while still being valid for listen APIs.
+        // Probe the prerecorded endpoint before declaring the key invalid.
+        if (this.isScopeRestrictionError(manageError)) {
+          return this.probeListenApi(client, timeoutMs);
+        }
+
+        return { valid: false, reason: manageError };
+      }
+
+      const projects = (response.result as { projects?: unknown[] } | null)?.projects;
+      if (!Array.isArray(projects)) {
+        return {
+          valid: false,
+          reason: 'Deepgram validation returned an unexpected response',
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      return { valid: false, reason: this.normalizeError(error).message };
+    }
+  }
+
+  /**
+   * Transcribe a full recorded audio buffer using Deepgram prerecorded API.
+   */
+  async transcribePrerecordedAudio(
+    audioBuffer: Buffer,
+    options: {
+      apiKey?: string;
+      timeoutMs?: number;
+      model?: string;
+      language?: string;
+      smartFormat?: boolean;
+      punctuate?: boolean;
+    } = {}
+  ): Promise<PrerecordedTranscriptSegment[]> {
+    if (!audioBuffer || audioBuffer.byteLength === 0) {
+      return [];
+    }
+
+    const resolvedApiKey = options.apiKey?.trim() || this.apiKey;
+    if (!resolvedApiKey) {
+      throw new Error('Deepgram API key not configured');
+    }
+
+    const client = this.client && this.apiKey === resolvedApiKey ? this.client : createClient(resolvedApiKey);
+    const timeoutMs = options.timeoutMs ?? 60000;
+
+    const response = await this.withTimeout(
+      client.listen.prerecorded.transcribeFile(audioBuffer, {
+        model: options.model ?? this.config.model,
+        language: options.language ?? this.config.language,
+        smart_format: options.smartFormat ?? true,
+        punctuate: options.punctuate ?? true,
+        utterances: true,
+      }),
+      timeoutMs,
+      'Deepgram prerecorded transcription timed out'
+    );
+
+    if (response.error) {
+      throw new Error(`Deepgram prerecorded transcription failed: ${this.formatDeepgramError(response.error)}`);
+    }
+
+    return this.parsePrerecordedSegments(response.result);
   }
 
   /**
@@ -626,6 +730,164 @@ export class TranscriptionService {
       return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     }
     return data;
+  }
+
+  private parsePrerecordedSegments(result: unknown): PrerecordedTranscriptSegment[] {
+    const payload = result as {
+      results?: {
+        utterances?: Array<{
+          transcript?: string;
+          start?: number;
+          end?: number;
+          confidence?: number;
+        }>;
+        channels?: Array<{
+          alternatives?: Array<{
+            transcript?: string;
+            confidence?: number;
+            words?: Array<{ start?: number; end?: number }>;
+          }>;
+        }>;
+      };
+    };
+
+    const utterances = payload.results?.utterances;
+    if (Array.isArray(utterances) && utterances.length > 0) {
+      return utterances
+        .map((utterance) => ({
+          text: (utterance.transcript ?? '').trim(),
+          startTime: typeof utterance.start === 'number' ? utterance.start : 0,
+          endTime: typeof utterance.end === 'number' ? utterance.end : 0,
+          confidence: typeof utterance.confidence === 'number' ? utterance.confidence : 0.85,
+        }))
+        .filter((segment) => segment.text.length > 0);
+    }
+
+    const alternative = payload.results?.channels?.[0]?.alternatives?.[0];
+    if (!alternative?.transcript?.trim()) {
+      return [];
+    }
+
+    const words = Array.isArray(alternative.words) ? alternative.words : [];
+    const firstWord = words[0];
+    const lastWord = words[words.length - 1];
+    const startTime = typeof firstWord?.start === 'number' ? firstWord.start : 0;
+    const endTime = typeof lastWord?.end === 'number' ? lastWord.end : startTime;
+
+    return [
+      {
+        text: alternative.transcript.trim(),
+        startTime,
+        endTime,
+        confidence: typeof alternative.confidence === 'number' ? alternative.confidence : 0.85,
+      },
+    ];
+  }
+
+  private formatDeepgramError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (typeof error === 'object' && error !== null) {
+      const maybeMessage = (error as { message?: unknown }).message;
+      if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
+        return maybeMessage;
+      }
+      try {
+        return JSON.stringify(error);
+      } catch {
+        return String(error);
+      }
+    }
+    return String(error);
+  }
+
+  private isScopeRestrictionError(message: string): boolean {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('forbidden') ||
+      normalized.includes('permission') ||
+      normalized.includes('scope') ||
+      normalized.includes('not allowed')
+    );
+  }
+
+  private async probeListenApi(
+    client: DeepgramClient,
+    timeoutMs: number
+  ): Promise<ApiKeyValidationResult> {
+    try {
+      const probeAudio = this.buildSilentPcm16Wav(16000, 0.2);
+      const response = await this.withTimeout(
+        client.listen.prerecorded.transcribeFile(probeAudio, {
+          model: this.config.model,
+          language: this.config.language,
+          punctuate: false,
+          smart_format: false,
+        }),
+        timeoutMs,
+        'Deepgram listen API probe timed out'
+      );
+
+      if (response.error) {
+        return { valid: false, reason: this.formatDeepgramError(response.error) };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      return { valid: false, reason: this.normalizeError(error).message };
+    }
+  }
+
+  private buildSilentPcm16Wav(sampleRate: number, durationSeconds: number): Buffer {
+    const sampleCount = Math.max(1, Math.floor(sampleRate * durationSeconds));
+    const bytesPerSample = 2;
+    const channels = 1;
+    const blockAlign = channels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = sampleCount * bytesPerSample;
+    const buffer = Buffer.alloc(44 + dataSize);
+
+    buffer.write('RIFF', 0, 'ascii');
+    buffer.writeUInt32LE(36 + dataSize, 4);
+    buffer.write('WAVE', 8, 'ascii');
+    buffer.write('fmt ', 12, 'ascii');
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20); // PCM
+    buffer.writeUInt16LE(channels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(byteRate, 28);
+    buffer.writeUInt16LE(blockAlign, 32);
+    buffer.writeUInt16LE(16, 34);
+    buffer.write('data', 36, 'ascii');
+    buffer.writeUInt32LE(dataSize, 40);
+
+    return buffer;
+  }
+
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    timeoutMessage: string
+  ): Promise<T> {
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error(timeoutMessage));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
   }
 
   private normalizeError(error: unknown): Error {

@@ -17,8 +17,9 @@ import { BrowserWindow } from 'electron';
 import { randomUUID } from 'crypto';
 import { audioCapture, type AudioChunk } from './audio/AudioCapture';
 import { screenCapture } from './capture/ScreenCapture';
-import { tierManager } from './transcription';
+import { tierManager, whisperService, transcriptionService } from './transcription';
 import type { TranscriptEvent, TranscriptionTier } from './transcription/types';
+import { getSettingsManager } from './settings';
 import { IPC_CHANNELS } from '../shared/types';
 import { errorHandler } from './ErrorHandler';
 // Note: CrashRecovery module runs independently for crash logging.
@@ -50,7 +51,7 @@ export const STATE_TIMEOUTS: Record<SessionState, number | null> = {
   starting: 5_000,         // 5 seconds to initialize
   recording: 30 * 60_000,  // 30 minutes max recording
   stopping: 3_000,         // 3 seconds to stop services
-  processing: 10_000,      // 10 seconds to process
+  processing: 60_000,      // 60 seconds to process
   complete: 30_000,        // 30 seconds to show completion
   error: 5_000,            // 5 seconds to show error
 } as const;
@@ -91,6 +92,9 @@ export interface SessionMetadata {
   recordingPath?: string;
   recordingMimeType?: string;
   recordingBytes?: number;
+  audioPath?: string;
+  audioBytes?: number;
+  audioDurationMs?: number;
 }
 
 export interface Session {
@@ -238,7 +242,6 @@ export class SessionController {
   private pendingScreenshots: Screenshot[] = [];
   private screenshotCaptureInFlight = false;
   private lastScreenshotCapturedAt = 0;
-  private handlingFatalTranscriptionLoss = false;
 
   // Configuration constants
   private readonly AUTO_SAVE_INTERVAL_MS = 5000;       // 5 seconds (per spec)
@@ -676,15 +679,14 @@ export class SessionController {
       'TierManager.start()'
     );
 
-    // Require a real transcription tier (Deepgram/Whisper) for feedback quality.
-    if (!tierManager.tierProvidesTranscription(selectedTier)) {
-      const message =
-        'No transcription tier is active. Add a Deepgram API key (BYOK/Premium) or download a local Whisper model before starting.';
-      console.warn(`[SessionController] ${message} Selected tier: "${selectedTier}".`);
-      throw new Error(message);
+    if (tierManager.tierProvidesTranscription(selectedTier)) {
+      console.log(`[SessionController] Transcription tier active: ${selectedTier}`);
+    } else {
+      console.warn(
+        `[SessionController] Started without live transcription (tier: "${selectedTier}"). ` +
+        'Session recording will continue and post-session transcript recovery will be attempted from captured audio.'
+      );
     }
-
-    console.log(`[SessionController] Transcription tier active: ${selectedTier}`);
 
     // Check if we still have time
     const elapsed2 = Date.now() - startTime;
@@ -745,10 +747,19 @@ export class SessionController {
     }
     this.session.state = 'processing';
 
+    // If live streaming transcripts were unavailable, run a post-session Whisper
+    // fallback with retries before matching pending screenshots.
+    await this.withTimeout(
+      this.recoverTranscriptFromCapturedAudio(),
+      Math.floor(STATE_TIMEOUTS.processing! * 0.6),
+      undefined,
+      'recoverTranscriptFromCapturedAudio'
+    );
+
     // Process pending screenshots with timeout
     await this.withTimeout(
       this.processPendingScreenshotsAsync(),
-      STATE_TIMEOUTS.processing! / 2, // Use half the processing timeout
+      Math.floor(STATE_TIMEOUTS.processing! * 0.35),
       undefined,
       'processPendingScreenshots'
     );
@@ -803,6 +814,7 @@ export class SessionController {
 
     // Force cleanup (don't wait for async)
     this.cleanupServicesForced();
+    this.audioCaptureService.clearCapturedAudio();
 
     // Clear session
     this.session = null;
@@ -863,6 +875,28 @@ export class SessionController {
 
     this.persistState();
     return true;
+  }
+
+  /**
+   * Export the captured microphone audio for the most recent session.
+   */
+  async exportCapturedAudioWav(
+    outputPath: string,
+  ): Promise<{ path: string; bytesWritten: number; durationMs: number } | null> {
+    const exported = await this.audioCaptureService.exportCapturedAudioWav(outputPath);
+    if (!exported) {
+      return null;
+    }
+
+    return {
+      path: outputPath,
+      bytesWritten: exported.bytesWritten,
+      durationMs: exported.durationMs,
+    };
+  }
+
+  clearCapturedAudio(): void {
+    this.audioCaptureService.clearCapturedAudio();
   }
 
   /**
@@ -989,7 +1023,7 @@ export class SessionController {
 
   /**
    * Enforce transcription availability during active recording.
-   * If failover lands on a non-transcribing tier, end the session with a clear error.
+   * If failover lands on a non-transcribing tier, keep recording and recover transcript post-session.
    */
   private async handleTranscriptionTierChange(
     fromTier: TranscriptionTier,
@@ -1001,35 +1035,247 @@ export class SessionController {
       return;
     }
 
-    if (this.state !== 'recording' || !this.session || this.handlingFatalTranscriptionLoss) {
+    if (this.state !== 'recording' || !this.session) {
       return;
     }
 
     const message =
       `Live transcription became unavailable (${fromTier} -> ${toTier}). ${reason}. ` +
-      'Add a Deepgram API key (BYOK/Premium) or download a Whisper model, then start a new session.';
+      'Session recording will continue. A post-session transcription recovery pass will retry from captured audio.';
 
-    console.error(`[SessionController] ${message}`);
-    this.emitToRenderer(IPC_CHANNELS.SESSION_ERROR, {
-      service: 'transcription',
-      message,
-      tier: toTier,
-    });
-    this.events?.onError(new Error(message));
+    console.warn(`[SessionController] ${message}`);
+  }
 
-    this.handlingFatalTranscriptionLoss = true;
-    try {
-      await this.cleanupServicesAsync();
-      this.pendingScreenshots = [];
-      this.session = null;
-      store.set('currentSession', null);
-
-      if (!this.transition('error')) {
-        this.transitionForced('error');
-      }
-    } finally {
-      this.handlingFatalTranscriptionLoss = false;
+  /**
+   * Run a post-session transcription recovery pass when live transcription produced no final output.
+   * Uses local Whisper and retries automatically for transient failures.
+   */
+  private async recoverTranscriptFromCapturedAudio(): Promise<void> {
+    if (!this.session) {
+      return;
     }
+
+    const hasFinalTranscript = this.session.transcriptBuffer.some(
+      (entry) => entry.isFinal && entry.text.trim().length > 0,
+    );
+    const hasUnmatchedScreenshots = this.pendingScreenshots.length > 0;
+    if (hasFinalTranscript && !hasUnmatchedScreenshots) {
+      return;
+    }
+
+    // Use captured in-memory audio (float32 PCM) to reconstruct missing transcript.
+    const mergedAudio = this.audioCaptureService.getCapturedAudioBuffer();
+    if (!mergedAudio || mergedAudio.byteLength === 0) {
+      console.warn('[SessionController] Post-session transcription recovery skipped: no captured audio buffers.');
+      return;
+    }
+
+    const audioSamples = new Float32Array(
+      mergedAudio.buffer,
+      mergedAudio.byteOffset,
+      mergedAudio.byteLength / 4,
+    );
+    if (audioSamples.length === 0) {
+      return;
+    }
+
+    const sessionStartSec = this.session.startTime / 1000;
+
+    if (whisperService.isModelAvailable()) {
+      const whisperRecovered = await this.recoverTranscriptWithWhisper(
+        audioSamples,
+        sessionStartSec,
+        3
+      );
+      if (whisperRecovered.length > 0) {
+        this.appendRecoveredTranscriptEvents(whisperRecovered);
+        return;
+      }
+    } else {
+      console.warn(
+        '[SessionController] Post-session Whisper recovery skipped: no local model available.',
+      );
+    }
+
+    const deepgramApiKey = await this.getDeepgramApiKey();
+    if (deepgramApiKey) {
+      const deepgramRecovered = await this.recoverTranscriptWithDeepgram(
+        audioSamples,
+        sessionStartSec,
+        deepgramApiKey,
+        2
+      );
+      if (deepgramRecovered.length > 0) {
+        this.appendRecoveredTranscriptEvents(deepgramRecovered);
+        return;
+      }
+    } else {
+      console.warn(
+        '[SessionController] Post-session Deepgram recovery skipped: API key not configured.',
+      );
+    }
+
+    console.warn(
+      '[SessionController] Post-session transcription recovery exhausted all providers without transcript output.',
+    );
+  }
+
+  private appendRecoveredTranscriptEvents(events: TranscriptEvent[]): void {
+    if (!this.session || events.length === 0) {
+      return;
+    }
+
+    this.session.transcriptBuffer.push(...events);
+    this.session.transcriptBuffer.sort((a, b) => a.timestamp - b.timestamp);
+    if (this.session.transcriptBuffer.length > this.MAX_TRANSCRIPT_BUFFER_EVENTS) {
+      this.session.transcriptBuffer.splice(
+        0,
+        this.session.transcriptBuffer.length - this.MAX_TRANSCRIPT_BUFFER_EVENTS,
+      );
+    }
+
+    for (const event of events) {
+      this.tryMatchTranscriptToScreenshot(event);
+    }
+  }
+
+  private async recoverTranscriptWithWhisper(
+    audioSamples: Float32Array,
+    sessionStartSec: number,
+    maxAttempts: number,
+  ): Promise<TranscriptEvent[]> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const recoveredSegments = await whisperService.transcribeSamples(
+          audioSamples,
+          sessionStartSec,
+        );
+
+        const recoveredEvents: TranscriptEvent[] = recoveredSegments
+          .map((segment) => ({
+            text: segment.text,
+            isFinal: true,
+            confidence: segment.confidence,
+            timestamp: this.normalizeTranscriptTimestamp(segment.startTime),
+            tier: 'whisper' as const,
+          }))
+          .filter((segment) => segment.text.trim().length > 0);
+
+        if (recoveredEvents.length === 0) {
+          throw new Error('No transcript text recovered from captured audio');
+        }
+
+        console.log(
+          `[SessionController] Recovered ${recoveredEvents.length} transcript segments via Whisper (attempt ${attempt}/${maxAttempts}).`,
+        );
+        return recoveredEvents;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[SessionController] Whisper recovery attempt ${attempt}/${maxAttempts} failed: ${message}`,
+        );
+
+        if (attempt < maxAttempts) {
+          const delayMs = 400 * attempt;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    return [];
+  }
+
+  private async recoverTranscriptWithDeepgram(
+    audioSamples: Float32Array,
+    sessionStartSec: number,
+    apiKey: string,
+    maxAttempts: number,
+  ): Promise<TranscriptEvent[]> {
+    const wavBuffer = this.encodeFloat32Pcm16Wav(audioSamples, 16000, 1);
+    const audioDurationSec = audioSamples.length / 16000;
+    const timeoutMs = Math.min(10 * 60_000, Math.max(60_000, Math.round(audioDurationSec * 2000)));
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const segments = await transcriptionService.transcribePrerecordedAudio(wavBuffer, {
+          apiKey,
+          timeoutMs,
+        });
+
+        const recoveredEvents: TranscriptEvent[] = segments
+          .map((segment) => ({
+            text: segment.text,
+            isFinal: true,
+            confidence: segment.confidence,
+            timestamp: this.normalizeTranscriptTimestamp(sessionStartSec + segment.startTime),
+            tier: 'deepgram' as const,
+          }))
+          .filter((segment) => segment.text.trim().length > 0);
+
+        if (recoveredEvents.length === 0) {
+          throw new Error('No transcript text recovered from prerecorded transcription');
+        }
+
+        console.log(
+          `[SessionController] Recovered ${recoveredEvents.length} transcript segments via Deepgram prerecorded (attempt ${attempt}/${maxAttempts}).`,
+        );
+        return recoveredEvents;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[SessionController] Deepgram recovery attempt ${attempt}/${maxAttempts} failed: ${message}`,
+        );
+
+        if (attempt < maxAttempts) {
+          const delayMs = 500 * attempt;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    return [];
+  }
+
+  private async getDeepgramApiKey(): Promise<string | null> {
+    try {
+      const settings = getSettingsManager();
+      const apiKey = await settings.getApiKey('deepgram');
+      const normalized = apiKey?.trim();
+      return normalized && normalized.length > 0 ? normalized : null;
+    } catch (error) {
+      console.warn('[SessionController] Failed to read Deepgram API key for recovery:', error);
+      return null;
+    }
+  }
+
+  private encodeFloat32Pcm16Wav(samples: Float32Array, sampleRate: number, channels: number): Buffer {
+    const bytesPerSample = 2;
+    const blockAlign = channels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = samples.length * bytesPerSample;
+    const buffer = Buffer.alloc(44 + dataSize);
+
+    buffer.write('RIFF', 0, 'ascii');
+    buffer.writeUInt32LE(36 + dataSize, 4);
+    buffer.write('WAVE', 8, 'ascii');
+    buffer.write('fmt ', 12, 'ascii');
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(channels, 22);
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(byteRate, 28);
+    buffer.writeUInt16LE(blockAlign, 32);
+    buffer.writeUInt16LE(16, 34);
+    buffer.write('data', 36, 'ascii');
+    buffer.writeUInt32LE(dataSize, 40);
+
+    for (let i = 0; i < samples.length; i++) {
+      const clamped = Math.max(-1, Math.min(1, samples[i]));
+      const int16 = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
+      buffer.writeInt16LE(int16, 44 + i * 2);
+    }
+
+    return buffer;
   }
 
   /**

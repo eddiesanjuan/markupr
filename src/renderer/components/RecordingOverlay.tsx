@@ -32,7 +32,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   duration,
   screenshotCount,
   onStop,
-  isDarkMode = true,
+  isDarkMode = false,
 }) => {
   const [position, setPosition] = useState<Position>(DEFAULT_POSITION);
   const [isDragging, setIsDragging] = useState(false);
@@ -154,8 +154,8 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
     border: isDarkMode ? 'rgba(75, 85, 99, 0.5)' : 'rgba(209, 213, 219, 0.8)',
     text: isDarkMode ? '#f3f4f6' : '#1f2937',
     textMuted: isDarkMode ? '#9ca3af' : '#6b7280',
-    stopBg: '#dc2626',
-    stopHover: '#b91c1c',
+    stopBg: '#ff3b30',
+    stopHover: '#d92f25',
     badgeBg: '#10b981',
     recordingDot: '#ef4444',
   };
@@ -173,17 +173,6 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
             50% {
               opacity: 0.6;
               transform: scale(0.95);
-            }
-          }
-
-          @keyframes feedbackflow-ping {
-            0% {
-              transform: scale(1);
-              opacity: 0.75;
-            }
-            75%, 100% {
-              transform: scale(2);
-              opacity: 0;
             }
           }
 
@@ -205,16 +194,6 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
             }
           }
 
-          @keyframes feedbackflow-glow {
-            0%, 100% {
-              box-shadow: 0 0 4px rgba(239, 68, 68, 0.4),
-                          0 0 8px rgba(239, 68, 68, 0.2);
-            }
-            50% {
-              box-shadow: 0 0 8px rgba(239, 68, 68, 0.6),
-                          0 0 16px rgba(239, 68, 68, 0.3);
-            }
-          }
         `}
       </style>
 
@@ -232,8 +211,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           backgroundColor: theme.bg,
           borderRadius: 20,
           boxShadow: `
-            0 4px 6px -1px rgba(0, 0, 0, 0.1),
-            0 2px 4px -1px rgba(0, 0, 0, 0.06),
+            0 8px 16px rgba(20, 20, 22, 0.1),
             0 0 0 1px ${theme.border}
           `,
           backdropFilter: 'blur(12px)',
@@ -241,25 +219,22 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           cursor: isDragging ? 'grabbing' : 'grab',
           userSelect: 'none',
           transition: isDragging ? 'none' : 'box-shadow 0.2s ease',
-          animation: 'feedbackflow-glow 2s ease-in-out infinite',
           // Electron-specific: prevent window drag
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties & { WebkitAppRegion?: string }}
         onMouseDown={handleMouseDown}
       >
-        {/* Pulsing red recording dot */}
+        {/* Recording dot */}
         <div style={{ position: 'relative', width: 10, height: 10 }}>
-          {/* Ping animation (outer ring) */}
           <div
             style={{
               position: 'absolute',
               inset: 0,
-              backgroundColor: theme.recordingDot,
+              border: `2px solid ${theme.recordingDot}`,
               borderRadius: '50%',
-              animation: 'feedbackflow-ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite',
+              opacity: 0.25,
             }}
           />
-          {/* Solid dot with pulse */}
           <div
             style={{
               position: 'relative',
@@ -325,6 +300,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
         {/* Stop button */}
         <button
+          type="button"
           onClick={onStop}
           style={{
             padding: '4px 10px',
@@ -341,17 +317,17 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = theme.stopHover;
-            e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = theme.stopBg;
             e.currentTarget.style.transform = 'scale(1)';
           }}
           onMouseDown={(e) => {
-            e.currentTarget.style.transform = 'scale(0.95)';
+            e.currentTarget.style.transform = 'translateY(0)';
           }}
           onMouseUp={(e) => {
-            e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.transform = 'translateY(-1px)';
           }}
         >
           Stop

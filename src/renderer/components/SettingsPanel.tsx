@@ -1,5 +1,5 @@
 /**
- * FeedbackFlow Settings Panel
+ * markupr Settings Panel
  *
  * A comprehensive, native macOS-style settings experience with:
  * - Tabbed interface (General, Recording, Appearance, Hotkeys, Advanced)
@@ -342,16 +342,17 @@ const KeyRecorder: React.FC<{
 }> = ({ label, description, value, onChange, conflict }) => {
   const [recording, setRecording] = useState(false);
   const inputRef = useRef<HTMLButtonElement>(null);
+  const isMac = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
 
   const formatHotkey = useCallback((hotkey: string): string => {
     return hotkey
-      .replace('CommandOrControl', process.platform === 'darwin' ? 'Cmd' : 'Ctrl')
+      .replace('CommandOrControl', isMac ? 'Cmd' : 'Ctrl')
       .replace('Command', 'Cmd')
       .replace('Control', 'Ctrl')
-      .replace('Alt', process.platform === 'darwin' ? 'Option' : 'Alt')
+      .replace('Alt', isMac ? 'Option' : 'Alt')
       .replace('Shift', 'Shift')
       .replace(/\+/g, ' + ');
-  }, []);
+  }, [isMac]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -650,7 +651,7 @@ const GeneralTab: React.FC<{
     <SettingsSection title="Startup">
       <ToggleSetting
         label="Launch at Login"
-        description="Start FeedbackFlow automatically when you log in"
+        description="Start markupr automatically when you log in"
         value={settings.launchAtLogin}
         onChange={(value) => onSettingChange('launchAtLogin', value)}
       />
@@ -758,7 +759,7 @@ const AppearanceTab: React.FC<{
   <div style={styles.tabContent}>
     <SettingsSection
       title="Theme"
-      description="Choose how FeedbackFlow looks"
+      description="Choose how markupr looks"
       onReset={onResetSection}
     >
       <DropdownSetting
@@ -848,7 +849,7 @@ const HotkeysTab: React.FC<{
     <div style={styles.tabContent}>
       <SettingsSection
         title="Keyboard Shortcuts"
-        description="Customize global hotkeys for FeedbackFlow"
+        description="Customize global hotkeys for markupr"
         onReset={onResetSection}
       >
         <KeyRecorder
@@ -1035,6 +1036,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const [currentTier, setCurrentTier] = useState<TranscriptionTier | null>('whisper');
   const [appVersion, setAppVersion] = useState('');
+  const [isCompact, setIsCompact] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 760
+  );
 
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -1307,6 +1311,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
     }
   }, [isOpen]);
 
+  // Responsive layout for narrow popover widths
+  useEffect(() => {
+    const onResize = () => {
+      setIsCompact(window.innerWidth < 760);
+    };
+
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   // Render tab content
   const renderTabContent = useMemo(() => {
     switch (activeTab) {
@@ -1415,14 +1430,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         </div>
 
         {/* Content */}
-        <div style={styles.content}>
+        <div
+          style={{
+            ...styles.content,
+            flexDirection: isCompact ? 'column' : 'row',
+          }}
+        >
           {/* Side Tabs */}
-          <nav style={styles.sidebar}>
+          <nav
+            style={{
+              ...styles.sidebar,
+              ...(isCompact ? styles.sidebarCompact : {}),
+            }}
+          >
             {TABS.map((tab) => (
               <button
                 key={tab.id}
                 style={{
                   ...styles.tabButton,
+                  ...(isCompact ? styles.tabButtonCompact : {}),
                   backgroundColor: activeTab === tab.id ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
                   color: activeTab === tab.id ? '#3B82F6' : '#9ca3af',
                   borderColor: activeTab === tab.id ? 'rgba(59, 130, 246, 0.3)' : 'transparent',
@@ -1437,14 +1463,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </nav>
 
           {/* Tab Content */}
-          <div style={styles.tabPanel}>{renderTabContent}</div>
+          <div
+            style={{
+              ...styles.tabPanel,
+              ...(isCompact ? styles.tabPanelCompact : {}),
+            }}
+          >
+            {renderTabContent}
+          </div>
         </div>
 
         {/* Footer */}
         <div style={styles.footer}>
           <div style={styles.footerLeft}>
             <span style={styles.footerText}>
-              FeedbackFlow {appVersion ? `v${appVersion}` : ''} {hasChanges && <span style={styles.savedIndicator}>Changes saved</span>}
+              markupr {appVersion ? `v${appVersion}` : ''} {hasChanges && <span style={styles.savedIndicator}>Changes saved</span>}
             </span>
             <DonateButton />
           </div>
@@ -1545,13 +1578,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 100,
-    padding: 24,
+    padding: 12,
   },
 
   backdrop: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.34)',
     backdropFilter: 'blur(4px)',
     WebkitBackdropFilter: 'blur(4px)',
   },
@@ -1559,11 +1592,11 @@ const styles: Record<string, ExtendedCSSProperties> = {
   panel: {
     position: 'relative',
     width: '100%',
-    maxWidth: 800,
-    maxHeight: '90vh',
-    backgroundColor: 'rgba(17, 24, 39, 0.98)',
+    maxWidth: 940,
+    maxHeight: '92vh',
+    backgroundColor: 'rgba(249, 249, 251, 0.98)',
     borderRadius: 16,
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 24px 56px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(60, 60, 67, 0.2)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -1577,14 +1610,14 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '20px 24px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    borderBottom: '1px solid rgba(60, 60, 67, 0.2)',
     WebkitAppRegion: 'drag',
   },
 
   headerTitle: {
     fontSize: 18,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     margin: 0,
   },
 
@@ -1597,7 +1630,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 8,
-    color: '#9ca3af',
+    color: '#6e6e73',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     WebkitAppRegion: 'no-drag',
@@ -1608,16 +1641,28 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     flex: 1,
     overflow: 'hidden',
+    minHeight: 0,
   },
 
   // Sidebar
   sidebar: {
-    width: 180,
+    width: 200,
     padding: '16px 12px',
-    borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRight: '1px solid rgba(60, 60, 67, 0.2)',
     display: 'flex',
     flexDirection: 'column',
     gap: 4,
+    flexShrink: 0,
+  },
+
+  sidebarCompact: {
+    width: '100%',
+    borderRight: 'none',
+    borderBottom: '1px solid rgba(60, 60, 67, 0.2)',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    padding: '12px',
   },
 
   tabButton: {
@@ -1629,12 +1674,18 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: '1px solid transparent',
     borderRadius: 8,
-    color: '#9ca3af',
+    color: '#6e6e73',
     fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
     transition: 'all 0.15s ease',
     textAlign: 'left',
+  },
+
+  tabButtonCompact: {
+    width: 'auto',
+    flex: '1 1 calc(50% - 6px)',
+    justifyContent: 'center',
   },
 
   tabLabel: {
@@ -1646,6 +1697,11 @@ const styles: Record<string, ExtendedCSSProperties> = {
     flex: 1,
     overflow: 'auto',
     padding: 24,
+    minHeight: 0,
+  },
+
+  tabPanelCompact: {
+    padding: 16,
   },
 
   tabContent: {
@@ -1671,7 +1727,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   sectionTitle: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: '#3a3a3c',
     margin: 0,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
@@ -1679,7 +1735,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   sectionDescription: {
     fontSize: 13,
-    color: '#6b7280',
+    color: '#6e6e73',
     marginTop: 2,
   },
 
@@ -1687,10 +1743,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
     borderRadius: 12,
     padding: 16,
-    border: '1px solid rgba(255, 255, 255, 0.05)',
+    border: '1px solid rgba(60, 60, 67, 0.18)',
   },
 
   resetSectionButton: {
@@ -1700,9 +1756,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    border: '1px solid #374151',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 6,
-    color: '#6b7280',
+    color: '#6e6e73',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
     flexShrink: 0,
@@ -1711,10 +1767,11 @@ const styles: Record<string, ExtendedCSSProperties> = {
   // Setting Row
   settingRow: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 16,
     minHeight: 40,
+    flexWrap: 'wrap',
   },
 
   settingRowVertical: {
@@ -1733,12 +1790,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
   settingLabel: {
     fontSize: 14,
     fontWeight: 500,
-    color: '#f3f4f6',
+    color: '#1d1d1f',
   },
 
   settingDescription: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#6e6e73',
     lineHeight: 1.4,
   },
 
@@ -1768,15 +1825,16 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   // Select
   select: {
-    minWidth: 140,
+    minWidth: 180,
     padding: '8px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    border: '1px solid #374151',
+    backgroundColor: '#ffffff',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     fontSize: 13,
     cursor: 'pointer',
     transition: 'border-color 0.2s ease',
+    maxWidth: '100%',
   },
 
   // Slider
@@ -1784,7 +1842,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    minWidth: 180,
+    minWidth: 220,
+    maxWidth: 320,
+    width: '100%',
   },
 
   sliderValue: {
@@ -1808,29 +1868,30 @@ const styles: Record<string, ExtendedCSSProperties> = {
   directoryPicker: {
     display: 'flex',
     gap: 8,
-    minWidth: 280,
-    maxWidth: 320,
+    minWidth: 0,
+    width: '100%',
   },
 
   directoryInput: {
     flex: 1,
     padding: '8px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    border: '1px solid #374151',
+    backgroundColor: '#ffffff',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     fontSize: 13,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    minWidth: 0,
   },
 
   browseButton: {
     padding: '8px 12px',
-    backgroundColor: '#374151',
-    border: '1px solid #4b5563',
+    backgroundColor: '#f2f2f7',
+    border: '1px solid rgba(60, 60, 67, 0.28)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1842,10 +1903,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   keyRecorder: {
     minWidth: 140,
     padding: '8px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    border: '1px solid #374151',
+    backgroundColor: '#ffffff',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     fontSize: 13,
     cursor: 'pointer',
     transition: 'all 0.15s ease',
@@ -1902,7 +1963,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 32,
     height: 32,
     borderRadius: '50%',
-    border: '2px solid #374151',
+    border: '2px solid rgba(60, 60, 67, 0.3)',
     backgroundColor: 'transparent',
     cursor: 'pointer',
   },
@@ -1916,6 +1977,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   apiKeyContainer: {
     display: 'flex',
     gap: 8,
+    flexWrap: 'wrap',
   },
 
   apiKeyInputWrapper: {
@@ -1928,10 +1990,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   apiKeyInput: {
     width: '100%',
     padding: '10px 40px 10px 12px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    border: '1px solid #374151',
+    backgroundColor: '#ffffff',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     fontSize: 13,
     transition: 'border-color 0.2s ease',
   },
@@ -1947,7 +2009,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 4,
-    color: '#6b7280',
+    color: '#6e6e73',
     cursor: 'pointer',
     transition: 'color 0.15s ease',
   },
@@ -1988,7 +2050,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'flex-start',
     gap: 12,
     padding: 12,
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    backgroundColor: 'rgba(10, 132, 255, 0.08)',
     borderRadius: 8,
     border: '1px solid rgba(59, 130, 246, 0.2)',
     marginBottom: 12,
@@ -1998,13 +2060,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'block',
     fontSize: 14,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: '#1d1d1f',
   },
 
   serviceDescription: {
     display: 'block',
     fontSize: 12,
-    color: '#9ca3af',
+    color: '#3a3a3c',
     marginTop: 2,
     lineHeight: 1.4,
   },
@@ -2012,10 +2074,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   // Buttons
   secondaryButton: {
     padding: '8px 16px',
-    backgroundColor: '#374151',
-    border: '1px solid #4b5563',
+    backgroundColor: '#f2f2f7',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: '#1d1d1f',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -2037,7 +2099,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   // Theme Preview
   themePreview: {
     padding: 16,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: 'rgba(118, 118, 128, 0.12)',
     borderRadius: 8,
   },
 
@@ -2096,19 +2158,19 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   hotkeyRefLabel: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: '#3a3a3c',
   },
 
   kbd: {
     display: 'inline-block',
     padding: '4px 10px',
-    backgroundColor: '#1f2937',
+    backgroundColor: '#f2f2f7',
     borderRadius: 6,
-    border: '1px solid #374151',
+    border: '1px solid rgba(60, 60, 67, 0.26)',
     fontSize: 12,
     fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
-    color: '#f9fafb',
-    boxShadow: '0 2px 0 #000',
+    color: '#1d1d1f',
+    boxShadow: '0 1px 0 rgba(60, 60, 67, 0.22)',
   },
 
   // Footer
@@ -2117,19 +2179,22 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '16px 24px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'rgba(17, 24, 39, 0.5)',
+    borderTop: '1px solid rgba(60, 60, 67, 0.2)',
+    backgroundColor: 'rgba(246, 246, 248, 0.92)',
+    flexWrap: 'wrap',
+    gap: 10,
   },
 
   footerLeft: {
     display: 'flex',
     alignItems: 'center',
     gap: 16,
+    flexWrap: 'wrap',
   },
 
   footerText: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#6e6e73',
   },
 
   savedIndicator: {
@@ -2140,9 +2205,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
   resetAllButton: {
     padding: '8px 16px',
     backgroundColor: 'transparent',
-    border: '1px solid #374151',
+    border: '1px solid rgba(60, 60, 67, 0.3)',
     borderRadius: 8,
-    color: '#9ca3af',
+    color: '#3a3a3c',
     fontSize: 12,
     fontWeight: 500,
     cursor: 'pointer',

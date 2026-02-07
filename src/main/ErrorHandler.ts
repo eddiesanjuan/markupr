@@ -1,5 +1,5 @@
 /**
- * ErrorHandler - Centralized Error Management for FeedbackFlow
+ * ErrorHandler - Centralized Error Management for markupr
  *
  * Provides:
  * - Categorized error handling (permission, API key, network, capture, critical)
@@ -66,7 +66,7 @@ class ErrorHandler {
   private isInitialized: boolean = false;
 
   constructor() {
-    this.logPath = path.join(app.getPath('logs'), 'feedbackflow.log');
+    this.logPath = path.join(app.getPath('logs'), 'markupr.log');
   }
 
   /**
@@ -114,7 +114,7 @@ class ErrorHandler {
     const messages = {
       microphone: {
         title: 'Microphone Access Required',
-        message: 'FeedbackFlow needs microphone access to capture your voice feedback.',
+        message: 'markupr needs microphone access to capture your voice feedback.',
         detail:
           'Click "Open Settings" to grant microphone permission in System Settings.' +
           '\n\nAfter enabling, you may need to restart the app.',
@@ -122,7 +122,7 @@ class ErrorHandler {
       },
       screen: {
         title: 'Screen Recording Required',
-        message: 'FeedbackFlow needs screen recording permission to capture screenshots.',
+        message: 'markupr needs screen recording permission to capture screenshots.',
         detail:
           'Click "Open Settings" to grant screen recording permission in System Settings.' +
           '\n\nYou will need to restart the app after enabling.',
@@ -193,7 +193,7 @@ class ErrorHandler {
       title: 'API Key Required',
       message: 'Your Deepgram API key is missing or invalid.',
       detail:
-        'FeedbackFlow uses Deepgram for voice transcription. ' +
+        'markupr uses Deepgram for voice transcription. ' +
         'Please enter a valid API key in Settings.\n\n' +
         'You can get a free API key at console.deepgram.com',
       buttons: ['Open Settings', 'OK'],
@@ -450,7 +450,7 @@ class ErrorHandler {
     // Also show system notification if supported
     if (Notification.isSupported()) {
       new Notification({
-        title: `FeedbackFlow: ${title}`,
+        title: `markupr: ${title}`,
         body: message,
         silent: true,
       }).show();

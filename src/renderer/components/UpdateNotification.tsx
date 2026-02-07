@@ -1,5 +1,5 @@
 /**
- * FeedbackFlow - Update Notification Component
+ * markupr - Update Notification Component
  *
  * Shows update status notifications to the user with:
  * - Update available banner with release notes
@@ -35,26 +35,45 @@ export function UpdateNotification(): React.ReactElement | null {
 
   // Subscribe to update status events
   useEffect(() => {
-    const unsubscribe = window.feedbackflow.updates.onStatus((status: UpdateStatusPayload) => {
-      setUpdate({
-        status: status.status,
-        version: status.version,
-        releaseNotes: status.releaseNotes,
-        percent: status.percent,
-        message: status.message,
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    const init = async (): Promise<void> => {
+      try {
+        const checkForUpdates = await window.feedbackflow.settings.get('checkForUpdates');
+        if (!checkForUpdates || !isMounted) {
+          setIsDismissed(true);
+          return;
+        }
+      } catch {
+        // If settings can't be read, keep default behavior.
+      }
+
+      unsubscribe = window.feedbackflow.updates.onStatus((status: UpdateStatusPayload) => {
+        setUpdate({
+          status: status.status,
+          version: status.version,
+          releaseNotes: status.releaseNotes,
+          percent: status.percent,
+          message: status.message,
+        });
+
+        // Auto-expand for important states
+        if (status.status === 'available' || status.status === 'ready') {
+          setIsExpanded(true);
+          setIsDismissed(false);
+        }
       });
 
-      // Auto-expand for important states
-      if (status.status === 'available' || status.status === 'ready') {
-        setIsExpanded(true);
-        setIsDismissed(false);
-      }
-    });
+      window.feedbackflow.updates.check();
+    };
 
-    // Check for updates on mount
-    window.feedbackflow.updates.check();
+    void init();
 
-    return unsubscribe;
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
   }, []);
 
   // Handle download button click
@@ -232,7 +251,7 @@ export function UpdateNotification(): React.ReactElement | null {
           </div>
 
           <p className="text-sm text-white/90 mb-4">
-            Restart FeedbackFlow to apply the update. Your work will be saved.
+            Restart markupr to apply the update. Your work will be saved.
           </p>
 
           <button

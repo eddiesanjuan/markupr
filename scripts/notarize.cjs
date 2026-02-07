@@ -1,7 +1,7 @@
 /**
  * notarize.js
  *
- * Apple Notarization script for FeedbackFlow
+ * Apple Notarization script for markupr
  * This script runs automatically after code signing via electron-builder
  *
  * Handles notarization for:
@@ -95,10 +95,10 @@ async function notarizeArtifact(artifactPath, appBundleId) {
  */
 exports.default = async function notarizing(context) {
   const { electronPlatformName, appOutDir } = context;
-  const appBundleId = 'com.eddiesanjuan.feedbackflow';
+  const appBundleId = 'com.eddiesanjuan.markupr';
 
   log.divider();
-  log.info('FeedbackFlow Notarization');
+  log.info('markupr Notarization');
   log.divider();
 
   // Only notarize on macOS

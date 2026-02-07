@@ -53,6 +53,9 @@ const TIMER_SCREENSHOT_INTERVAL_MS = 10000;
 
 // Max failovers before forcing timer-only
 const MAX_FAILOVERS = 3;
+
+// Cache Deepgram key validation briefly to avoid excessive network calls.
+const DEEPGRAM_VALIDATION_CACHE_TTL_MS = 5 * 60 * 1000;
 type PreferredTier = 'auto' | TranscriptionTier;
 
 // ============================================================================
@@ -70,6 +73,14 @@ export class TierManager extends EventEmitter {
 
   // Timer-only mode
   private timerInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Deepgram API key validation cache
+  private deepgramValidationCache: {
+    fingerprint: string;
+    checkedAt: number;
+    available: boolean;
+    reason?: string;
+  } | null = null;
 
   // Callbacks
   private transcriptCallbacks: TranscriptCallback[] = [];
@@ -390,8 +401,13 @@ export class TierManager extends EventEmitter {
       }
 
       const normalizedKey = apiKey.trim();
-      if (normalizedKey.length < 16) {
-        return { tier: 'deepgram', available: false, reason: 'API key format looks invalid' };
+      const validation = await this.validateDeepgramAvailability(normalizedKey);
+      if (!validation.available) {
+        return {
+          tier: 'deepgram',
+          available: false,
+          reason: validation.reason ?? 'Deepgram API key validation failed',
+        };
       }
 
       return { tier: 'deepgram', available: true };
@@ -582,6 +598,47 @@ export class TierManager extends EventEmitter {
     this.log(`Stopped tier: ${this.currentTier}`);
   }
 
+  private getKeyFingerprint(apiKey: string): string {
+    const normalized = apiKey.trim();
+    if (!normalized) {
+      return 'empty';
+    }
+    return `${normalized.length}:${normalized.slice(0, 4)}:${normalized.slice(-4)}`;
+  }
+
+  private async validateDeepgramAvailability(apiKey: string): Promise<{ available: boolean; reason?: string }> {
+    const normalized = apiKey.trim();
+    if (!normalized) {
+      return { available: false, reason: 'No API key configured' };
+    }
+
+    const fingerprint = this.getKeyFingerprint(normalized);
+    const now = Date.now();
+    if (
+      this.deepgramValidationCache &&
+      this.deepgramValidationCache.fingerprint === fingerprint &&
+      now - this.deepgramValidationCache.checkedAt < DEEPGRAM_VALIDATION_CACHE_TTL_MS
+    ) {
+      return {
+        available: this.deepgramValidationCache.available,
+        reason: this.deepgramValidationCache.reason,
+      };
+    }
+
+    const validation = await deepgramService.validateApiKey(normalized, 5000);
+    this.deepgramValidationCache = {
+      fingerprint,
+      checkedAt: now,
+      available: validation.valid,
+      reason: validation.reason,
+    };
+
+    return {
+      available: validation.valid,
+      reason: validation.reason,
+    };
+  }
+
   // ============================================================================
   // Failover Handling
   // ============================================================================
@@ -598,12 +655,15 @@ export class TierManager extends EventEmitter {
       return;
     }
 
-    // Find next available tier
+    // Find next available transcription-capable tier first.
     const currentIndex = TIER_PRIORITY.indexOf(failedTier);
     const statuses = await this.getTierStatuses();
+    const remainingTiers = TIER_PRIORITY.slice(currentIndex + 1);
 
-    for (let i = currentIndex + 1; i < TIER_PRIORITY.length; i++) {
-      const nextTier = TIER_PRIORITY[i];
+    for (const nextTier of remainingTiers) {
+      if (!this.tierProvidesTranscription(nextTier)) {
+        continue;
+      }
       const status = statuses.find((s) => s.tier === nextTier);
 
       if (status?.available) {
@@ -612,7 +672,21 @@ export class TierManager extends EventEmitter {
       }
     }
 
-    // No available tiers, force timer-only
+    // If no transcription-capable fallback exists, drop to best available non-transcribing tier.
+    for (const nextTier of remainingTiers) {
+      const status = statuses.find((s) => s.tier === nextTier);
+      if (!status?.available) {
+        continue;
+      }
+
+      this.log(
+        `No transcription-capable fallback available. Switching to ${nextTier}; post-session recovery should reconstruct transcript from captured audio.`,
+      );
+      await this.performFailover(failedTier, nextTier, `${error.message} (no transcription-capable fallback)`);
+      return;
+    }
+
+    // Should be unreachable because timer-only is always available.
     await this.performFailover(failedTier, 'timer-only', 'No available fallback tiers');
   }
 

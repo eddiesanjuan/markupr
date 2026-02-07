@@ -1,5 +1,5 @@
 /**
- * FeedbackFlow Donate Button Messages
+ * markupr Donate Button Messages
  *
  * Rotating messages for the donate/support button.
  * Messages rotate on each app launch, not during a session.
@@ -10,15 +10,10 @@
  */
 export const DONATE_MESSAGES = [
   'Buy Eddie a Coffee',
-  'Buy Eddie Legos',
-  'Buy Eddie Golf Balls',
-  'Buy Eddie Tacos',
-  'Buy Eddie a Plant',
-  'Buy Eddie Socks',
-  "Fund Eddie's Caffeine Addiction",
-  'Support Open Source Chaos',
-  'Keep Eddie Coding',
-  'Taco Tuesday Sponsor',
+  'Support markupr',
+  'Keep markupr Evolving',
+  'Help Fund New Features',
+  'Sponsor Ongoing Development',
 ] as const;
 
 export type DonateMessage = (typeof DONATE_MESSAGES)[number];
@@ -31,7 +26,7 @@ export const DONATE_URL = 'https://ko-fi.com/eddiesanjuan';
 /**
  * Storage key for persisting the message index
  */
-export const DONATE_MESSAGE_INDEX_KEY = 'feedbackflow:donate-message-index';
+export const DONATE_MESSAGE_INDEX_KEY = 'markupr:donate-message-index';
 
 /**
  * Get the current donate message index from localStorage

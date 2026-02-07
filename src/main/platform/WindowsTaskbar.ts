@@ -131,7 +131,7 @@ export class WindowsTaskbar {
         {
           type: 'task',
           title: 'Open Settings',
-          description: 'Configure FeedbackFlow settings',
+          description: 'Configure markupr settings',
           program: process.execPath,
           args: '--settings',
           iconPath: process.execPath,

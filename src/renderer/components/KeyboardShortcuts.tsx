@@ -1,5 +1,5 @@
 /**
- * FeedbackFlow Keyboard Shortcuts Panel
+ * markupr Keyboard Shortcuts Panel
  *
  * A comprehensive cheatsheet and customization interface featuring:
  * - Organized shortcuts by category (Recording, Navigation, Editing, Annotation)
@@ -257,7 +257,7 @@ const DEFAULT_SHORTCUTS: Shortcut[] = [
   {
     id: 'quit-app',
     label: 'Quit',
-    description: 'Exit FeedbackFlow',
+    description: 'Exit markupr',
     keys: 'CmdOrCtrl+Q',
     category: 'Window',
     customizable: false,
@@ -294,10 +294,7 @@ const KEY_SYMBOLS: Record<string, string> = {
  * Detect if running on macOS
  */
 function isMacOS(): boolean {
-  if (typeof navigator !== 'undefined') {
-    return navigator.platform.toLowerCase().includes('mac');
-  }
-  return process.platform === 'darwin';
+  return typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('mac');
 }
 
 /**

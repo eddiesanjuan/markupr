@@ -26,7 +26,7 @@ Bug reporting tools assume something is *broken*. Development feedback captures 
 
 ## What FeedbackFlow Does
 
-FeedbackFlow is a menu bar app that lets you talk through what you see in any application and produces an organized, AI-ready document with screenshots placed exactly where they belong.
+FeedbackFlow is a menu bar app that lets you talk through what you see in any application and produces an organized, AI-ready document with screenshots/recordings placed exactly where they belong.
 
 One hotkey to start. One hotkey to stop. A markdown file with your words, your screenshots, and AI-generated structure -- ready to paste into whatever tool you use next.
 

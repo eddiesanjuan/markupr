@@ -1,5 +1,5 @@
 /**
- * PermissionManager - Centralized macOS System Permission Handling for FeedbackFlow
+ * PermissionManager - Centralized macOS System Permission Handling for markupr
  *
  * Handles:
  * - Startup permission verification
@@ -44,19 +44,19 @@ const PERMISSION_DESCRIPTIONS: Record<PermissionType, {
 }> = {
   microphone: {
     title: 'Microphone Access',
-    description: 'FeedbackFlow needs microphone access to capture your voice feedback and transcribe it in real-time.',
+    description: 'markupr needs microphone access to capture your voice feedback and transcribe it in real-time.',
     required: true,
     systemPrefsPane: 'Privacy_Microphone',
   },
   screen: {
     title: 'Screen Recording',
-    description: 'FeedbackFlow needs screen recording permission to capture screenshots when you pause speaking.',
+    description: 'markupr needs screen recording permission to capture screenshots when you pause speaking.',
     required: true,
     systemPrefsPane: 'Privacy_ScreenCapture',
   },
   accessibility: {
     title: 'Accessibility',
-    description: 'FeedbackFlow uses accessibility features for global hotkeys. This is optional but recommended.',
+    description: 'markupr uses accessibility features for global hotkeys. This is optional but recommended.',
     required: false,
     systemPrefsPane: 'Privacy_Accessibility',
   },
@@ -308,9 +308,9 @@ class PermissionManager {
         `${config.description}\n\n` +
         'To enable this permission:\n' +
         '1. Click "Open System Settings"\n' +
-        '2. Find FeedbackFlow in the list\n' +
+        '2. Find markupr in the list\n' +
         '3. Toggle it ON\n' +
-        '4. You may need to restart FeedbackFlow',
+        '4. You may need to restart markupr',
     };
 
     const { response } = this.mainWindow
@@ -341,9 +341,9 @@ class PermissionManager {
       defaultId: 0,
       cancelId: 2,
       title: 'Permissions Needed',
-      message: 'FeedbackFlow needs your permission',
+      message: 'markupr needs your permission',
       detail:
-        'To work properly, FeedbackFlow needs access to:\n' +
+        'To work properly, markupr needs access to:\n' +
         `${missingDescriptions}\n\n` +
         'Would you like to set up permissions now?',
     };

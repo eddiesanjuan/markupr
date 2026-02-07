@@ -24,7 +24,7 @@ if [[ "$RUN_DEV" -eq 0 ]]; then
   exit 0
 fi
 
-echo "==> Launching FeedbackFlow"
+echo "==> Launching markupr"
 echo "Hotkeys: Cmd+Shift+F (start/stop), Cmd+Shift+S (manual screenshot)"
 echo "Voice cue during recording: \"take screenshot\""
 npm run dev

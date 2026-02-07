@@ -110,7 +110,7 @@ export class ModelDownloadManager extends EventEmitter {
     } catch {
       // Fallback for testing or early initialization
       const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-      return join(homeDir, '.feedbackflow', 'whisper-models');
+      return join(homeDir, '.markupr', 'whisper-models');
     }
   }
 

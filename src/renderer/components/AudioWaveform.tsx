@@ -522,6 +522,8 @@ interface CompactAudioIndicatorProps {
   isVoiceActive: boolean;
   /** Accent color for active state */
   accentColor?: string;
+  /** Color for inactive bars */
+  inactiveColor?: string;
   /** Number of bars */
   barCount?: number;
 }
@@ -535,6 +537,7 @@ export function CompactAudioIndicator({
   audioLevel,
   isVoiceActive,
   accentColor = COLORS.active,
+  inactiveColor = '#c7c7cc',
   barCount = 5,
 }: CompactAudioIndicatorProps) {
   const [smoothedLevel, setSmoothedLevel] = useState(0);
@@ -597,7 +600,7 @@ export function CompactAudioIndicator({
             width: 2,
             height: bar.height,
             borderRadius: 1,
-            backgroundColor: isVoiceActive && bar.isActive ? accentColor : COLORS.inactive,
+            backgroundColor: isVoiceActive && bar.isActive ? accentColor : inactiveColor,
             opacity: bar.isActive ? 0.9 + bar.intensity * 0.1 : 0.4,
             transition: 'height 50ms ease-out, background-color 100ms ease, opacity 100ms ease',
           }}

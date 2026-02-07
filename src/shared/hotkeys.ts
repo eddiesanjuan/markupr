@@ -1,5 +1,5 @@
 /**
- * Platform-aware hotkey definitions for FeedbackFlow
+ * Platform-aware hotkey definitions for markupr
  *
  * Provides consistent hotkey handling across macOS, Windows, and Linux.
  * Uses Electron's accelerator format internally but converts to
@@ -59,7 +59,7 @@ export function isWindows(): boolean {
 // ============================================================================
 
 /**
- * All hotkey definitions for FeedbackFlow
+ * All hotkey definitions for markupr
  * Uses Electron accelerator format (CommandOrControl, Shift, Alt, etc.)
  */
 export const HOTKEYS: HotkeyDefinition[] = [
@@ -101,7 +101,7 @@ export const HOTKEYS: HotkeyDefinition[] = [
   {
     id: 'quit',
     label: 'Quit',
-    description: 'Quit FeedbackFlow',
+    description: 'Quit markupr',
     macAccelerator: 'Command+Q',
     winLinuxAccelerator: 'Alt+F4',
   },

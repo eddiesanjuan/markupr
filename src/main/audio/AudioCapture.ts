@@ -16,7 +16,7 @@ import { ipcMain, systemPreferences, BrowserWindow } from 'electron';
 import { EventEmitter } from 'events';
 import { writeFile, unlink, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { app } from 'electron';
 import { errorHandler } from '../ErrorHandler';
 import { IPC_CHANNELS } from '../../shared/types';
@@ -56,6 +56,9 @@ export interface AudioCaptureService {
   stop(): void;
   getAudioLevel(): number;
   isCapturing(): boolean;
+  getCapturedAudioBuffer(): Buffer | null;
+  exportCapturedAudioWav(filePath: string): Promise<{ bytesWritten: number; durationMs: number } | null>;
+  clearCapturedAudio(): void;
 
   // Event handlers
   onAudioChunk: (callback: (chunk: AudioChunk) => void) => () => void;
@@ -115,6 +118,10 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
   private bufferStartTime: number = 0;
   private recoveryChunks: Buffer[] = [];
   private recoveryInterval: NodeJS.Timeout | null = null;
+
+  // Full-session audio capture (used for post-session transcription + retry workflows)
+  private sessionAudioChunks: Buffer[] = [];
+  private sessionAudioBytes: number = 0;
 
   constructor(config: Partial<AudioCaptureConfig> = {}) {
     super();
@@ -290,6 +297,8 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
         ipcMain.removeListener(AUDIO_IPC_CHANNELS.CAPTURE_ERROR, errorHandler);
 
         this.capturing = true;
+        this.sessionAudioChunks = [];
+        this.sessionAudioBytes = 0;
         this.startRecoveryBuffer();
         console.log('[AudioCapture] Capture started');
         resolve();
@@ -350,6 +359,42 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
    */
   getAudioLevel(): number {
     return this.currentAudioLevel;
+  }
+
+  /**
+   * Export captured audio as a WAV file (IEEE float 32-bit PCM).
+   * Returns null when there is no audio for the current session.
+   */
+  async exportCapturedAudioWav(
+    filePath: string
+  ): Promise<{ bytesWritten: number; durationMs: number } | null> {
+    const rawAudio = this.getCapturedAudioBuffer();
+    if (!rawAudio) {
+      return null;
+    }
+
+    const wavBuffer = this.encodeFloat32Wav(
+      rawAudio,
+      this.config.sampleRate,
+      this.config.channels
+    );
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, wavBuffer);
+
+    const durationMs =
+      (rawAudio.byteLength / (this.config.channels * this.config.sampleRate * 4)) * 1000;
+    return {
+      bytesWritten: wavBuffer.byteLength,
+      durationMs,
+    };
+  }
+
+  /**
+   * Clear in-memory session audio data.
+   */
+  clearCapturedAudio(): void {
+    this.sessionAudioChunks = [];
+    this.sessionAudioBytes = 0;
   }
 
   // ==========================================================================
@@ -441,6 +486,8 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
 
     // Add to recovery buffer
     this.recoveryChunks.push(buffer);
+    this.sessionAudioChunks.push(buffer);
+    this.sessionAudioBytes += buffer.byteLength;
 
     // Emit chunk for transcription
     this.emit('audioChunk', chunk);
@@ -667,6 +714,49 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
     } catch (error) {
       console.error('[AudioCapture] Failed to clear recovery buffers:', error);
     }
+  }
+
+  /**
+   * Build a single buffer from all captured session chunks.
+   */
+  getCapturedAudioBuffer(): Buffer | null {
+    if (this.sessionAudioChunks.length === 0 || this.sessionAudioBytes === 0) {
+      return null;
+    }
+    return Buffer.concat(this.sessionAudioChunks, this.sessionAudioBytes);
+  }
+
+  /**
+   * Encode float32 PCM samples into a WAV container.
+   */
+  private encodeFloat32Wav(rawAudio: Buffer, sampleRate: number, channels: number): Buffer {
+    const bytesPerSample = 4; // Float32
+    const blockAlign = channels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = rawAudio.byteLength;
+    const riffChunkSize = 36 + dataSize;
+    const header = Buffer.alloc(44);
+
+    // RIFF header
+    header.write('RIFF', 0, 'ascii');
+    header.writeUInt32LE(riffChunkSize, 4);
+    header.write('WAVE', 8, 'ascii');
+
+    // fmt chunk
+    header.write('fmt ', 12, 'ascii');
+    header.writeUInt32LE(16, 16); // fmt chunk size
+    header.writeUInt16LE(3, 20); // IEEE float
+    header.writeUInt16LE(channels, 22);
+    header.writeUInt32LE(sampleRate, 24);
+    header.writeUInt32LE(byteRate, 28);
+    header.writeUInt16LE(blockAlign, 32);
+    header.writeUInt16LE(32, 34); // bits per sample
+
+    // data chunk
+    header.write('data', 36, 'ascii');
+    header.writeUInt32LE(dataSize, 40);
+
+    return Buffer.concat([header, rawAudio], 44 + dataSize);
   }
 }
 

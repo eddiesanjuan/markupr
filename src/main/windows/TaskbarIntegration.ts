@@ -105,7 +105,7 @@ export class TaskbarIntegration {
             {
               type: 'task',
               title: 'Open Settings',
-              description: 'Configure FeedbackFlow settings',
+              description: 'Configure markupr settings',
               program: process.execPath,
               args: '--settings',
               iconPath: process.execPath,
@@ -378,7 +378,7 @@ export class TaskbarIntegration {
   public notifyRecordingStarted(): void {
     this.showNotification({
       title: 'Recording Started',
-      body: 'FeedbackFlow is now capturing your feedback',
+      body: 'markupr is now capturing your feedback',
       silent: true,
       urgency: 'low'
     });

@@ -1,5 +1,5 @@
 /**
- * TrayManager - System tray icon management for FeedbackFlow
+ * TrayManager - System tray icon management for markupr
  *
  * Handles:
  * - 5 visual states: idle, recording, processing, complete, error
@@ -32,11 +32,11 @@ export interface ITrayManager {
  * Tooltip messages for each tray state
  */
 const STATE_TOOLTIPS: Record<TrayState, string> = {
-  idle: 'FeedbackFlow - Ready (Cmd+Shift+F)',
-  recording: 'FeedbackFlow - Recording... (Cmd+Shift+F to stop)',
-  processing: 'FeedbackFlow - Processing...',
-  complete: 'FeedbackFlow - Feedback captured!',
-  error: 'FeedbackFlow - Error (click for details)',
+  idle: 'markupr - Ready (Cmd+Shift+F)',
+  recording: 'markupr - Recording... (Cmd+Shift+F to stop)',
+  processing: 'markupr - Processing...',
+  complete: 'markupr - Feedback captured!',
+  error: 'markupr - Error (click for details)',
 };
 
 /**
@@ -251,12 +251,12 @@ class TrayManagerImpl implements ITrayManager {
       },
       { type: 'separator' },
       {
-        label: 'About FeedbackFlow',
+        label: 'About markupr',
         role: 'about',
       },
       { type: 'separator' },
       {
-        label: 'Quit FeedbackFlow',
+        label: 'Quit markupr',
         accelerator: 'CmdOrCtrl+Q',
         click: () => {
           app.quit();

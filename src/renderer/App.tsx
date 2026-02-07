@@ -86,6 +86,19 @@ function mapPopoverState(state: SessionState): 'idle' | 'recording' | 'processin
   return 'idle';
 }
 
+function mapOverlaySize(view: AppView): { width: number; height: number } {
+  switch (view) {
+    case 'settings':
+      return { width: 920, height: 760 };
+    case 'history':
+      return { width: 920, height: 760 };
+    case 'shortcuts':
+      return { width: 720, height: 720 };
+    default:
+      return { width: 0, height: 0 };
+  }
+}
+
 // ============================================================================
 // App Component
 // ============================================================================
@@ -96,11 +109,10 @@ const App: React.FC = () => {
   // ---------------------------------------------------------------------------
   const [state, setState] = useState<SessionState>('idle');
   const [duration, setDuration] = useState(0);
-  const [transcriptEntries, setTranscriptEntries] = useState<string[]>([]);
-  const [liveInterimTranscript, setLiveInterimTranscript] = useState('');
   const [screenshotCount, setScreenshotCount] = useState(0);
   const [reportPath, setReportPath] = useState<string | null>(null);
   const [recordingPath, setRecordingPath] = useState<string | null>(null);
+  const [audioPath, setAudioPath] = useState<string | null>(null);
   const [sessionDir, setSessionDir] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasTranscriptionCapability, setHasTranscriptionCapability] = useState<boolean | null>(null);
@@ -108,8 +120,6 @@ const App: React.FC = () => {
   const [reviewSession, setReviewSession] = useState<ReviewSession | null>(null);
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
   const [lastCapture, setLastCapture] = useState<LastCapture | null>(null);
-  const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
-  const shouldAutoScrollRef = useRef(true);
   const screenRecorderRef = useRef(getScreenRecordingRenderer());
 
   // ---------------------------------------------------------------------------
@@ -239,11 +249,9 @@ const App: React.FC = () => {
         setErrorMessage(null);
         setReportPath(null);
         setRecordingPath(null);
+        setAudioPath(null);
         setSessionDir(null);
         setReviewSession(null);
-        setTranscriptEntries([]);
-        setLiveInterimTranscript('');
-        shouldAutoScrollRef.current = true;
         // Dismiss overlays when recording starts
         setCurrentView('main');
         setShowCountdown(false);
@@ -259,25 +267,6 @@ const App: React.FC = () => {
       setState(status.state);
     });
 
-    const unsubChunk = window.feedbackflow.transcript.onChunk((chunk) => {
-      if (chunk.text.trim()) {
-        setLiveInterimTranscript(chunk.text.trim());
-      }
-    });
-
-    const unsubFinal = window.feedbackflow.transcript.onFinal((finalChunk) => {
-      const text = finalChunk.text.trim();
-      if (!text) return;
-
-      setLiveInterimTranscript('');
-      setTranscriptEntries((prev) => {
-        if (prev[prev.length - 1] === text) {
-          return prev;
-        }
-        return [...prev, text];
-      });
-    });
-
     const unsubScreenshot = window.feedbackflow.capture.onScreenshot((payload) => {
       setScreenshotCount(payload.count);
       setLastCapture({
@@ -291,10 +280,10 @@ const App: React.FC = () => {
       setErrorMessage(null);
       setReportPath(payload.path || payload.reportPath || null);
       setRecordingPath(payload.recordingPath || null);
+      setAudioPath(payload.audioPath || null);
       setSessionDir(payload.sessionDir || null);
       setReviewSession(payload.reviewSession || null);
       setDuration(0);
-      setLiveInterimTranscript('');
       loadRecentSessions();
     });
 
@@ -312,8 +301,6 @@ const App: React.FC = () => {
       mounted = false;
       unsubState();
       unsubStatus();
-      unsubChunk();
-      unsubFinal();
       unsubScreenshot();
       unsubReady();
       unsubSessionError();
@@ -374,22 +361,21 @@ const App: React.FC = () => {
   }, []);
 
   // ---------------------------------------------------------------------------
-  // Auto-scroll transcript (existing)
+  // Popover resize on state/view change
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const container = transcriptScrollRef.current;
-    if (!container || !shouldAutoScrollRef.current) return;
-    container.scrollTop = container.scrollHeight;
-  }, [transcriptEntries, liveInterimTranscript]);
+    if (currentView !== 'main') {
+      const { width, height } = mapOverlaySize(currentView);
+      window.feedbackflow.popover.resize(width, height).catch(() => {
+        // Popover controls are optional in non-popover mode.
+      });
+      return;
+    }
 
-  // ---------------------------------------------------------------------------
-  // Popover resize on state change (existing)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
     window.feedbackflow.popover.resizeToState(mapPopoverState(state)).catch(() => {
       // Popover controls are optional in non-popover mode.
     });
-  }, [state]);
+  }, [state, currentView]);
 
   // ---------------------------------------------------------------------------
   // Status copy text (existing)
@@ -399,12 +385,12 @@ const App: React.FC = () => {
       case 'starting':
         return {
           title: 'Preparing Session',
-          detail: 'Initializing microphone and transcription stack.',
+          detail: 'Initializing microphone capture and session recording.',
         };
       case 'recording':
         return {
           title: 'Recording Live',
-          detail: 'Talk while testing. Pauses, hotkey, and voice cues can trigger captures.',
+          detail: 'Speak while testing. Transcript is generated after you stop recording.',
         };
       case 'stopping':
       case 'processing':
@@ -427,7 +413,7 @@ const App: React.FC = () => {
           title: 'Ready To Capture',
           detail:
             hasTranscriptionCapability === false
-              ? 'Transcription unavailable. Download a Whisper model, then start.'
+              ? 'Recording works now. Add Whisper or Deepgram for automatic transcript generation after stop.'
               : 'Press Cmd+Shift+F to start a fresh feedback pass.',
         };
     }
@@ -466,12 +452,10 @@ const App: React.FC = () => {
         return;
       }
 
-      setTranscriptEntries([]);
-      setLiveInterimTranscript('');
-      shouldAutoScrollRef.current = true;
       setScreenshotCount(0);
       setLastCapture(null);
       setRecordingPath(null);
+      setAudioPath(null);
       setErrorMessage(null);
 
       const result = await window.feedbackflow.session.start();
@@ -497,12 +481,10 @@ const App: React.FC = () => {
     setShowCountdown(false);
     setIsMutating(true);
     try {
-      setTranscriptEntries([]);
-      setLiveInterimTranscript('');
-      shouldAutoScrollRef.current = true;
       setScreenshotCount(0);
       setLastCapture(null);
       setRecordingPath(null);
+      setAudioPath(null);
       setErrorMessage(null);
 
       const result = await window.feedbackflow.session.start();
@@ -550,6 +532,11 @@ const App: React.FC = () => {
     await window.feedbackflow.copyToClipboard(recordingPath);
   }, [recordingPath]);
 
+  const handleCopyAudioPath = useCallback(async () => {
+    if (!audioPath) return;
+    await window.feedbackflow.copyToClipboard(audioPath);
+  }, [audioPath]);
+
   const handleOpenRecent = useCallback(async (session: RecentSession) => {
     await window.feedbackflow.output.openFolder(session.folder);
   }, []);
@@ -567,17 +554,6 @@ const App: React.FC = () => {
   const handleDiscardSession = useCallback(() => {
     discardSession();
   }, [discardSession]);
-
-  const handleTranscriptScroll = useCallback(() => {
-    const container = transcriptScrollRef.current;
-    if (!container) {
-      return;
-    }
-
-    const distanceFromBottom =
-      container.scrollHeight - (container.scrollTop + container.clientHeight);
-    shouldAutoScrollRef.current = distanceFromBottom <= 24;
-  }, []);
 
   // ---------------------------------------------------------------------------
   // New view handlers
@@ -694,7 +670,7 @@ const App: React.FC = () => {
               error={errorMessage}
             />
             <div>
-              <p className="ff-shell__eyebrow">FeedbackFlow</p>
+              <p className="ff-shell__eyebrow">markupr</p>
               <h1 className="ff-shell__title">{statusCopy.title}</h1>
             </div>
           </div>
@@ -703,10 +679,11 @@ const App: React.FC = () => {
               className="ff-shell__quiet-btn"
               onClick={() => setCurrentView('settings')}
               type="button"
+              aria-label="Open Settings"
               title="Settings"
               style={{ fontSize: 16 }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                 <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" />
                 <path d="M13.178 9.689a1.2 1.2 0 00.24 1.324l.043.044a1.455 1.455 0 11-2.058 2.058l-.044-.044a1.2 1.2 0 00-1.324-.24 1.2 1.2 0 00-.727 1.098v.122a1.455 1.455 0 01-2.91 0v-.065a1.2 1.2 0 00-.785-1.097 1.2 1.2 0 00-1.324.24l-.044.043a1.455 1.455 0 11-2.058-2.058l.044-.044a1.2 1.2 0 00.24-1.324 1.2 1.2 0 00-1.098-.727h-.122a1.455 1.455 0 010-2.91h.065a1.2 1.2 0 001.097-.785 1.2 1.2 0 00-.24-1.324l-.043-.044A1.455 1.455 0 114.187 1.84l.044.044a1.2 1.2 0 001.324.24h.058a1.2 1.2 0 00.727-1.098V.904a1.455 1.455 0 012.91 0v.065a1.2 1.2 0 00.727 1.097 1.2 1.2 0 001.324-.24l.044-.043a1.455 1.455 0 112.058 2.058l-.044.044a1.2 1.2 0 00-.24 1.324v.058a1.2 1.2 0 001.098.727h.122a1.455 1.455 0 010 2.91h-.065a1.2 1.2 0 00-1.097.727z" />
               </svg>
@@ -715,10 +692,11 @@ const App: React.FC = () => {
               className="ff-shell__quiet-btn"
               onClick={() => setCurrentView('history')}
               type="button"
+              aria-label="Open Session History"
               title="Session History"
               style={{ fontSize: 16 }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
                 <path d="M8 1.455A6.545 6.545 0 1014.545 8" />
                 <path d="M8 4v4l2.5 2.5" />
               </svg>
@@ -740,6 +718,7 @@ const App: React.FC = () => {
           <RecordingOverlay
             duration={Math.floor(duration / 1000)}
             screenshotCount={screenshotCount}
+            isDarkMode={false}
             onStop={async () => {
               const result = await window.feedbackflow.session.stop();
               if (!result.success) {
@@ -756,6 +735,8 @@ const App: React.FC = () => {
             <CompactAudioIndicator
               audioLevel={audioLevel}
               isVoiceActive={isVoiceActive}
+              accentColor="#0a84ff"
+              inactiveColor="#c7c7cc"
             />
           </div>
         )}
@@ -783,8 +764,8 @@ const App: React.FC = () => {
         <section className="ff-shell__meta">
           <span>{formatDuration(duration)}</span>
           <span>{screenshotCount} screenshots</span>
-          <span className={hasTranscriptionCapability ? 'is-ready' : 'is-missing'}>
-            {hasTranscriptionCapability ? 'Transcription Ready' : 'Transcription Missing'}
+          <span className={hasTranscriptionCapability ? 'is-ready' : 'is-optional'}>
+            {hasTranscriptionCapability ? 'Transcript Enabled' : 'Transcript Optional'}
           </span>
           {lastCapture && (
             <span title={new Date(lastCapture.timestamp).toLocaleString()}>
@@ -795,26 +776,10 @@ const App: React.FC = () => {
 
         {state === 'recording' && (
           <section className="ff-shell__transcript">
-            <p className="ff-shell__transcript-label">Live Transcript</p>
-            <div
-              className="ff-shell__transcript-scroll"
-              ref={transcriptScrollRef}
-              onScroll={handleTranscriptScroll}
-            >
-              {transcriptEntries.map((entry, index) => (
-                <p key={`${entry}-${index}`} className="ff-shell__transcript-line">
-                  {entry}
-                </p>
-              ))}
-              {liveInterimTranscript && (
-                <p className="ff-shell__transcript-interim">{liveInterimTranscript}</p>
-              )}
-              {transcriptEntries.length === 0 && !liveInterimTranscript && (
-                <p className="ff-shell__transcript-placeholder">
-                  Listening for speech...
-                </p>
-              )}
-            </div>
+            <p className="ff-shell__transcript-label">Narration Capture</p>
+            <p className="ff-shell__transcript-line">
+              Audio is recording now. Transcript generation runs automatically when you stop.
+            </p>
           </section>
         )}
 
@@ -847,6 +812,20 @@ const App: React.FC = () => {
                 <div className="ff-shell__report-actions">
                   <button type="button" onClick={handleCopyRecordingPath}>
                     Copy Recording Path
+                  </button>
+                  <button type="button" onClick={handleOpenReportFolder}>
+                    Open Folder
+                  </button>
+                </div>
+              </>
+            )}
+            {audioPath && (
+              <>
+                <p className="ff-shell__report-label">Narration Audio</p>
+                <code className="ff-shell__path">{audioPath}</code>
+                <div className="ff-shell__report-actions">
+                  <button type="button" onClick={handleCopyAudioPath}>
+                    Copy Audio Path
                   </button>
                   <button type="button" onClick={handleOpenReportFolder}>
                     Open Folder
@@ -900,12 +879,12 @@ const App: React.FC = () => {
 
         <footer className="ff-shell__footer">
           <p>
-            Voice cue: say &quot;take screenshot&quot; while recording.
+            Mic activity is monitored live; narration is transcribed after recording completes.
           </p>
           <p>
             Global hotkey: <ToggleRecordingHint inline /> starts or stops the loop.
           </p>
-          <DonateButton style={{ marginTop: 4 }} />
+          <DonateButton className="ff-shell__donate" />
         </footer>
       </main>
     </div>

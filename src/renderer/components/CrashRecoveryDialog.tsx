@@ -1,7 +1,7 @@
 /**
  * CrashRecoveryDialog - Recovery UI for incomplete sessions
  *
- * Shows when FeedbackFlow detects an incomplete session from a previous
+ * Shows when markupr detects an incomplete session from a previous
  * crash or abnormal exit. Offers the user the choice to recover or discard.
  */
 
@@ -182,7 +182,7 @@ export function CrashRecoveryDialog({
           id="recovery-description"
           className="text-gray-400 text-center mb-4"
         >
-          FeedbackFlow found an incomplete session from{' '}
+          markupr found an incomplete session from{' '}
           <span className="text-white font-medium">{formattedTime} ago</span>.
         </p>
 

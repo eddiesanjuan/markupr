@@ -24,6 +24,8 @@ type UpdateCheckResult = electronUpdater.UpdateCheckResult;
 type UpdateInfo = electronUpdater.UpdateInfo;
 type ProgressInfo = electronUpdater.ProgressInfo;
 import { BrowserWindow, ipcMain, app } from 'electron';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import electronLog from 'electron-log';
 const log = electronLog.default ?? electronLog;
 import { IPC_CHANNELS, type UpdateStatusPayload, type UpdateStatusType } from '../shared/types';
@@ -48,6 +50,7 @@ class AutoUpdaterManager {
   private mainWindow: BrowserWindow | null = null;
   private state: UpdateManagerState;
   private initialized = false;
+  private updaterAvailable = false;
 
   constructor() {
     this.state = {
@@ -67,6 +70,16 @@ class AutoUpdaterManager {
 
     this.mainWindow = window;
     this.initialized = true;
+    this.updaterAvailable = this.canUseUpdater();
+
+    // Set up IPC handlers even if updater is unavailable, so renderer calls remain safe.
+    this.setupIPCHandlers();
+
+    if (!this.updaterAvailable) {
+      log.info('[AutoUpdater] Updater disabled (unpackaged app or missing app-update.yml)');
+      this.updateState('not-available');
+      return;
+    }
 
     // Configure logging
     log.transports.file.level = 'info';
@@ -81,9 +94,6 @@ class AutoUpdaterManager {
 
     // Set up event handlers
     this.setupEventHandlers();
-
-    // Set up IPC handlers
-    this.setupIPCHandlers();
 
     // Check for updates on startup (with delay to not slow app launch)
     setTimeout(() => {
@@ -145,6 +155,12 @@ class AutoUpdaterManager {
 
     // Error handling
     autoUpdater.on('error', (error: Error) => {
+      if (this.shouldSuppressUpdateError(error)) {
+        log.warn('[AutoUpdater] Suppressing expected updater error:', error.message);
+        this.updateState('not-available');
+        return;
+      }
+
       log.error('[AutoUpdater] Error:', error);
       this.sendStatus('error', {
         message: error.message,
@@ -176,11 +192,22 @@ class AutoUpdaterManager {
    * Check for available updates
    */
   async checkForUpdates(): Promise<UpdateCheckResult | null> {
+    if (!this.updaterAvailable) {
+      this.updateState('not-available');
+      return null;
+    }
+
     try {
       log.info('[AutoUpdater] Manual check for updates');
       const result = await autoUpdater.checkForUpdates();
       return result;
     } catch (error) {
+      if (error instanceof Error && this.shouldSuppressUpdateError(error)) {
+        log.warn('[AutoUpdater] Update check skipped:', error.message);
+        this.updateState('not-available');
+        return null;
+      }
+
       log.error('[AutoUpdater] Check for updates failed:', error);
       this.sendStatus('error', {
         message: error instanceof Error ? error.message : 'Failed to check for updates',
@@ -193,6 +220,11 @@ class AutoUpdaterManager {
    * Download the available update
    */
   async downloadUpdate(): Promise<void> {
+    if (!this.updaterAvailable) {
+      this.updateState('not-available');
+      return;
+    }
+
     try {
       log.info('[AutoUpdater] Starting download');
       this.updateState('downloading');
@@ -209,6 +241,11 @@ class AutoUpdaterManager {
    * Install the downloaded update (quits app and installs)
    */
   installUpdate(): void {
+    if (!this.updaterAvailable) {
+      this.updateState('not-available');
+      return;
+    }
+
     log.info('[AutoUpdater] Installing update and restarting');
     // Quit and install
     // isSilent: false - show installer UI
@@ -257,6 +294,27 @@ class AutoUpdaterManager {
     }
 
     return null;
+  }
+
+  /**
+   * Electron auto-updater requires a packaged app and app-update.yml.
+   * Local --dir installs and dev runs do not have updater metadata.
+   */
+  private canUseUpdater(): boolean {
+    if (!app.isPackaged) {
+      return false;
+    }
+
+    const configPath = join(process.resourcesPath, 'app-update.yml');
+    return existsSync(configPath);
+  }
+
+  /**
+   * Suppress known local-install update errors (not actionable for users).
+   */
+  private shouldSuppressUpdateError(error: Error): boolean {
+    const message = error.message.toLowerCase();
+    return message.includes('app-update.yml') || message.includes('latest.yml') || message.includes('enoent');
   }
 
   /**

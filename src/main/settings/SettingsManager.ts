@@ -1,5 +1,5 @@
 /**
- * SettingsManager - Secure Settings Storage for FeedbackFlow
+ * SettingsManager - Secure Settings Storage for markupr
  *
  * Handles:
  * - Persistent settings storage with electron-store (schema validated)
@@ -114,8 +114,8 @@ export interface ISettingsManager {
 // Constants
 // ============================================================================
 
-const KEYTAR_SERVICE = 'com.feedbackflow.app';
-const LEGACY_KEYTAR_SERVICES = ['feedbackflow'] as const;
+const KEYTAR_SERVICE = 'com.markupr.app';
+const LEGACY_KEYTAR_SERVICES = ['com.feedbackflow.app', 'feedbackflow'] as const;
 const SETTINGS_VERSION = 2;
 
 /**
@@ -133,10 +133,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   // General
   outputDirectory: '', // Set dynamically in constructor
   launchAtLogin: false,
-  checkForUpdates: true,
+  checkForUpdates: false,
 
   // Recording
-  defaultCountdown: 3,
+  defaultCountdown: 0,
   showTranscriptionPreview: true,
   showAudioWaveform: true,
 
@@ -236,7 +236,7 @@ export class SettingsManager implements ISettingsManager {
 
     return {
       ...DEFAULT_SETTINGS,
-      outputDirectory: join(documentsPath, 'FeedbackFlow'),
+      outputDirectory: join(documentsPath, 'markupr'),
     };
   }
 

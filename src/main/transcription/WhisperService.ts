@@ -105,7 +105,7 @@ export class WhisperService extends EventEmitter {
       return join(app.getPath('userData'), 'whisper-models');
     } catch {
       const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-      return join(homeDir, '.feedbackflow', 'whisper-models');
+      return join(homeDir, '.markupr', 'whisper-models');
     }
   }
 
@@ -297,6 +297,43 @@ export class WhisperService extends EventEmitter {
    */
   getConfig(): WhisperConfig {
     return { ...this.config };
+  }
+
+  /**
+   * Transcribe a complete Float32 buffer in one pass.
+   * Useful for post-session retry workflows when live streaming failed.
+   */
+  async transcribeSamples(
+    samples: Float32Array,
+    startTimeSec: number
+  ): Promise<WhisperTranscriptResult[]> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    if (!this.whisperModule) {
+      throw new Error('Whisper module not loaded');
+    }
+
+    const result = await this.whisperModule.whisper(samples, {
+      modelPath: this.config.modelPath,
+      language: this.config.language,
+      threads: this.config.threads,
+      translate: this.config.translateToEnglish,
+    });
+
+    if (!result || result.length === 0) {
+      return [];
+    }
+
+    return result
+      .map((segment) => ({
+        text: segment.text.trim(),
+        startTime: startTimeSec + segment.start,
+        endTime: startTimeSec + segment.end,
+        confidence: 0.9,
+      }))
+      .filter((segment) => segment.text.length > 0);
   }
 
   // ============================================================================

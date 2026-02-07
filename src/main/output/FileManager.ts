@@ -5,7 +5,7 @@
  * - Saving feedback documents to organized folder structure
  * - Saving screenshots alongside Markdown
  * - File naming and conflict resolution
- * - Default output: ~/Documents/FeedbackFlow/
+ * - Default output: ~/Documents/markupr/
  * - Custom output directory support
  */
 
@@ -66,10 +66,10 @@ export class FileManager {
   private outputDirectory: string;
 
   constructor() {
-    // Default: ~/Documents/FeedbackFlow/
+    // Default: ~/Documents/markupr/
     this.outputDirectory = path.join(
       app.getPath('documents'),
-      'FeedbackFlow'
+      'markupr'
     );
   }
 

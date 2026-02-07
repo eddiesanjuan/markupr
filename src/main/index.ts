@@ -1,7 +1,7 @@
 /**
- * FeedbackFlow - Main Process Entry Point
+ * markupr - Main Process Entry Point
  *
- * This is the orchestration heart of FeedbackFlow. It:
+ * This is the orchestration heart of markupr. It:
  * - Initializes all services in the correct order
  * - Wires up the complete session lifecycle
  * - Manages IPC communication with renderer
@@ -39,6 +39,9 @@ import { fileURLToPath } from 'url';
 if (process.platform === 'darwin') {
   app.dock.hide();
 }
+
+// Ensure runtime app identity uses the shipped product name.
+app.setName('markupr');
 
 // ESM compatibility - __dirname doesn't exist in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -120,6 +123,75 @@ interface RecordingArtifact {
 
 const activeScreenRecordings = new Map<string, RecordingArtifact>();
 const finalizedScreenRecordings = new Map<string, Omit<RecordingArtifact, 'writeChain'>>();
+const DEV_RENDERER_URL = 'http://localhost:5173';
+const DEV_RENDERER_LOAD_RETRIES = 10;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function attachRendererDiagnostics(window: BrowserWindow, label: string): void {
+  window.on('unresponsive', () => {
+    console.error(`[Main] ${label} window became unresponsive`);
+  });
+
+  window.on('responsive', () => {
+    console.log(`[Main] ${label} window responsive again`);
+  });
+
+  window.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[Main] ${label} renderer process gone`, details);
+  });
+
+  window.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (!isMainFrame) {
+        return;
+      }
+      console.error(
+        `[Main] ${label} failed to load renderer (${errorCode}): ${errorDescription} (${validatedURL})`,
+      );
+    },
+  );
+}
+
+async function loadRendererIntoWindow(window: BrowserWindow, label: string): Promise<void> {
+  if (process.env.NODE_ENV !== 'development') {
+    await window.loadFile(join(__dirname, '../renderer/index.html'));
+    return;
+  }
+
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= DEV_RENDERER_LOAD_RETRIES; attempt++) {
+    try {
+      await window.loadURL(DEV_RENDERER_URL);
+      window.webContents.openDevTools({ mode: 'detach' });
+      return;
+    } catch (error) {
+      lastError = error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[Main] ${label} renderer load attempt ${attempt}/${DEV_RENDERER_LOAD_RETRIES} failed: ${errorMessage}`,
+      );
+      await sleep(250 * attempt);
+    }
+  }
+
+  const finalMessage =
+    lastError instanceof Error ? lastError.message : 'Unknown renderer load failure';
+  await window.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(`
+      <html>
+        <body style="margin:0;padding:20px;background:#121212;color:#f5f5f5;font-family:-apple-system,system-ui,sans-serif;">
+          <h2 style="margin:0 0 12px 0;">markupr failed to load</h2>
+          <p style="margin:0 0 8px 0;">Dev renderer did not become reachable at ${DEV_RENDERER_URL}.</p>
+          <p style="margin:0;color:#b3b3b3;">${finalMessage}</p>
+        </body>
+      </html>
+    `)}`,
+  );
+}
 
 // =============================================================================
 // Window Management
@@ -149,13 +221,8 @@ function createWindow(): void {
     },
   });
 
-  // Load the renderer
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
-  }
+  attachRendererDiagnostics(mainWindow, 'Main');
+  void loadRendererIntoWindow(mainWindow, 'Main');
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {
@@ -314,7 +381,7 @@ function handleSessionError(error: Error): void {
 
   // Update tray to error state
   trayManager.setState('error');
-  trayManager.setTooltip(`FeedbackFlow - Error: ${error.message}`);
+  trayManager.setTooltip(`markupr - Error: ${error.message}`);
 
   // Notify renderer
   mainWindow?.webContents.send(IPC_CHANNELS.SESSION_ERROR, {
@@ -595,6 +662,33 @@ async function attachRecordingToSessionOutput(
   }
 }
 
+async function attachAudioToSessionOutput(
+  sessionDir: string,
+  markdownPath: string
+): Promise<{ path: string; bytesWritten: number; durationMs: number } | undefined> {
+  const finalPath = join(sessionDir, 'session-audio.wav');
+
+  try {
+    const exported = await sessionController.exportCapturedAudioWav(finalPath);
+    if (!exported || exported.bytesWritten <= 0) {
+      return undefined;
+    }
+
+    let markdown = await fs.readFile(markdownPath, 'utf-8');
+    if (!markdown.includes('## Session Audio')) {
+      markdown += `\n## Session Audio\n- [Open narration audio](./${basename(finalPath)})\n`;
+      await fs.writeFile(markdownPath, markdown, 'utf-8');
+    }
+
+    return exported;
+  } catch (error) {
+    console.warn('[Main] Failed to attach session audio to output:', error);
+    return undefined;
+  } finally {
+    sessionController.clearCapturedAudio();
+  }
+}
+
 /**
  * Start a recording session.
  */
@@ -626,15 +720,6 @@ async function startSession(sourceId?: string, sourceName?: string): Promise<{
         success: false,
         error:
           'Microphone and screen recording permissions are required. Enable both in macOS System Settings, then retry.',
-      };
-    }
-
-    const transcriptionReady = await tierManager.hasTranscriptionCapability();
-    if (!transcriptionReady) {
-      return {
-        success: false,
-        error:
-          'No transcription engine is ready. Add a Deepgram API key (BYOK/Premium) or download a local Whisper model before starting.',
       };
     }
 
@@ -756,6 +841,7 @@ async function stopSession(): Promise<{
     const saveResult = await fileManager.saveSession(session, document);
     if (!saveResult.success) {
       await cleanupRecordingArtifacts(session.id);
+      sessionController.clearCapturedAudio();
       windowsTaskbar?.clearProgress();
       return {
         success: false,
@@ -769,11 +855,23 @@ async function stopSession(): Promise<{
       saveResult.markdownPath
     );
 
+    const audioArtifact = await attachAudioToSessionOutput(
+      saveResult.sessionDir,
+      saveResult.markdownPath
+    );
+
     if (recordingArtifact) {
       sessionController.setSessionMetadata({
         recordingPath: recordingArtifact.path,
         recordingMimeType: recordingArtifact.mimeType,
         recordingBytes: recordingArtifact.bytesWritten,
+      });
+    }
+    if (audioArtifact) {
+      sessionController.setSessionMetadata({
+        audioPath: audioArtifact.path,
+        audioBytes: audioArtifact.bytesWritten,
+        audioDurationMs: audioArtifact.durationMs,
       });
     }
 
@@ -808,6 +906,8 @@ async function stopSession(): Promise<{
       reportPath: saveResult.markdownPath,
       sessionDir: saveResult.sessionDir,
       recordingPath: recordingArtifact?.path,
+      audioPath: audioArtifact?.path,
+      audioDurationMs: audioArtifact?.durationMs,
       videoStartTime: recordingArtifact?.startTime,
       reviewSession,
     });
@@ -827,6 +927,7 @@ async function stopSession(): Promise<{
     if (stoppedSessionId) {
       await cleanupRecordingArtifacts(stoppedSessionId);
     }
+    sessionController.clearCapturedAudio();
     console.error('[Main] Failed to stop session:', error);
     windowsTaskbar?.clearProgress();
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1249,7 +1350,7 @@ function setupIPC(): void {
     }
 
     const options: Electron.SaveDialogOptions = {
-      title: 'Export FeedbackFlow Settings',
+      title: 'Export markupr Settings',
       defaultPath: join(app.getPath('documents'), 'feedbackflow-settings.json'),
       filters: [{ name: 'JSON', extensions: ['json'] }],
     };
@@ -1271,7 +1372,7 @@ function setupIPC(): void {
     }
 
     const options: Electron.OpenDialogOptions = {
-      title: 'Import FeedbackFlow Settings',
+      title: 'Import markupr Settings',
       properties: ['openFile'],
       filters: [{ name: 'JSON', extensions: ['json'] }],
     };
@@ -2032,14 +2133,8 @@ app.whenReady().then(async () => {
     mainWindow = popoverWindow; // Assign to mainWindow for compatibility
     sessionController.setMainWindow(popoverWindow);
 
-    // Load renderer
-    if (process.env.NODE_ENV === 'development') {
-      popoverWindow.loadURL('http://localhost:5173');
-      // Open DevTools in detached mode for debugging
-      popoverWindow.webContents.openDevTools({ mode: 'detach' });
-    } else {
-      popoverWindow.loadFile(join(__dirname, '../renderer/index.html'));
-    }
+    attachRendererDiagnostics(popoverWindow, 'Popover');
+    void loadRendererIntoWindow(popoverWindow, 'Popover');
 
     // Check if onboarding needed after window is ready
     popoverWindow.once('ready-to-show', () => {
@@ -2152,7 +2247,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  console.log('[Main] FeedbackFlow initialization complete');
+  console.log('[Main] markupr initialization complete');
 });
 
 // Handle all windows closed
@@ -2210,7 +2305,7 @@ app.on('will-quit', async () => {
 process.on('uncaughtException', (error) => {
   console.error('[Main] Uncaught exception:', error);
   try {
-    showErrorNotification('FeedbackFlow Error', error.message);
+    showErrorNotification('markupr Error', error.message);
   } catch {
     // Ignore notification errors
   }

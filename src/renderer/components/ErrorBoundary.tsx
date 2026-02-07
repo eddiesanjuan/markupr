@@ -102,7 +102,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </p>
 
             {/* Error details (collapsible in dev) */}
-            {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
+            {this.state.errorInfo && (
               <details style={styles.details}>
                 <summary style={styles.summary}>Error Details</summary>
                 <pre style={styles.stackTrace}>

@@ -1,5 +1,5 @@
 /**
- * ExportService - Multi-Format Export for FeedbackFlow
+ * ExportService - Multi-Format Export for markupr
  *
  * Supports:
  * - Markdown (default, via MarkdownGenerator)
@@ -331,7 +331,7 @@ class ExportServiceImpl {
 
     return {
       version: '1.0',
-      generator: `FeedbackFlow v${app.getVersion()}`,
+      generator: `markupr v${app.getVersion()}`,
       exportedAt: new Date().toISOString(),
       session: {
         id: session.id,

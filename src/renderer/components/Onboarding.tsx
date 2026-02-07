@@ -1,5 +1,5 @@
 /**
- * FeedbackFlow Onboarding Wizard
+ * markupr Onboarding Wizard
  *
  * The first impression that makes users say "wow".
  *
@@ -316,7 +316,7 @@ const WelcomeStep: React.FC<{ onNext: () => void; onSkip: () => void }> = ({
       </div>
 
       {/* Title */}
-      <h1 style={styles.title}>Welcome to FeedbackFlow</h1>
+      <h1 style={styles.title}>Welcome to markupr</h1>
 
       {/* Tagline */}
       <p style={styles.tagline}>
@@ -425,7 +425,7 @@ const MicrophoneStep: React.FC<{
 
       {/* Explanation */}
       <p style={styles.stepDescription}>
-        FeedbackFlow needs microphone access to transcribe your voice narration as you
+        markupr needs microphone access to transcribe your voice narration as you
         walk through your feedback. Your audio is processed locally and securely.
       </p>
 
@@ -453,7 +453,7 @@ const MicrophoneStep: React.FC<{
           </div>
           <ol style={styles.instructionList}>
             <li>Click &quot;Open System Settings&quot; below</li>
-            <li>Find &quot;FeedbackFlow&quot; in the list</li>
+            <li>Find &quot;markupr&quot; in the list</li>
             <li>Toggle the switch ON</li>
             <li>Click &quot;Check Again&quot; to verify</li>
           </ol>
@@ -606,7 +606,7 @@ const ScreenRecordingStep: React.FC<{
 
       {/* Explanation */}
       <p style={styles.stepDescription}>
-        FeedbackFlow captures screenshots when you pause while speaking, automatically
+        markupr captures screenshots when you pause while speaking, automatically
         documenting what you&apos;re looking at. Grant screen recording permission to enable
         this feature.
       </p>
@@ -627,12 +627,12 @@ const ScreenRecordingStep: React.FC<{
           </div>
           <ol style={styles.instructionList}>
             <li>Click &quot;Open System Settings&quot; below</li>
-            <li>Find &quot;FeedbackFlow&quot; in the list</li>
+            <li>Find &quot;markupr&quot; in the list</li>
             <li>Toggle the switch ON</li>
             <li>Click &quot;Check Again&quot; to verify</li>
           </ol>
           <p style={styles.instructionNote}>
-            Note: You may need to restart FeedbackFlow after enabling.
+            Note: You may need to restart markupr after enabling.
           </p>
         </div>
       )}
@@ -692,7 +692,7 @@ const ScreenRecordingStep: React.FC<{
               strokeLinecap="round"
             />
           </svg>
-          <span>Screen recording enabled! FeedbackFlow can now capture screenshots.</span>
+          <span>Screen recording enabled! markupr can now capture screenshots.</span>
         </div>
       )}
 
@@ -789,7 +789,7 @@ const ApiKeyStep: React.FC<{
 
       {/* Explanation */}
       <p style={styles.stepDescription}>
-        FeedbackFlow uses Deepgram for real-time voice transcription. Get a free API key
+        markupr uses Deepgram for real-time voice transcription. Get a free API key
         at{' '}
         <a
           href="https://deepgram.com"
@@ -969,7 +969,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 
         {/* Summary */}
         <p style={styles.stepDescription}>
-          FeedbackFlow is ready to capture your feedback. Press{' '}
+          markupr is ready to capture your feedback. Press{' '}
           <kbd style={styles.kbd}>Cmd+Shift+F</kbd> to start recording, and speak
           naturally as you walk through your feedback.
         </p>

@@ -39,7 +39,7 @@ window.addEventListener('unhandledrejection', (event) => {
 const root = createRoot(container);
 root.render(
   <React.StrictMode>
-    <ThemeProvider defaultMode="dark" defaultAccentColor="blue">
+    <ThemeProvider defaultMode="light" defaultAccentColor="blue">
       <ErrorBoundary
         onError={(error, errorInfo) => {
           console.error('[App ErrorBoundary]', error, errorInfo);
