@@ -1,10 +1,9 @@
 /**
  * Shared Types for Transcription Services
  *
- * Common types used across all transcription tiers:
- * - Tier 1: Local Whisper
- * - Tier 2: macOS Dictation
- * - Tier 3: Timer-only
+ * Available tiers (post-process architecture):
+ * - Tier 1: Local Whisper (post-session batch transcription)
+ * - Tier 2: Timer-only (fallback, no transcription)
  */
 
 // ============================================================================
@@ -14,7 +13,7 @@
 /**
  * Available transcription tiers in priority order
  */
-export type TranscriptionTier = 'whisper' | 'macos-dictation' | 'timer-only';
+export type TranscriptionTier = 'whisper' | 'timer-only';
 
 /**
  * Whisper model sizes available for download
@@ -125,24 +124,6 @@ export interface DownloadResult {
 }
 
 // ============================================================================
-// Silence Detection Types
-// ============================================================================
-
-/**
- * Configuration for silence detection
- */
-export interface SilenceDetectorConfig {
-  /** RMS threshold below which audio is considered silence (0-1) */
-  silenceThreshold: number;
-  /** Minimum silence duration to trigger event (ms) */
-  silenceDurationMs: number;
-  /** Minimum time between silence events (ms) */
-  debounceDurationMs: number;
-  /** Sample rate of incoming audio */
-  sampleRate: number;
-}
-
-// ============================================================================
 // Callback Types
 // ============================================================================
 
@@ -152,4 +133,3 @@ export type TierChangeCallback = (oldTier: TranscriptionTier, newTier: Transcrip
 export type ErrorCallback = (error: Error, tier?: TranscriptionTier) => void;
 export type ProgressCallback = (progress: DownloadProgress) => void;
 export type CompleteCallback = (result: DownloadResult) => void;
-export type SilenceCallback = (timestamp: number) => void;

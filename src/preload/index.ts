@@ -35,6 +35,7 @@ import {
   type TranscriptionTier,
   type TranscriptionTierStatus,
   type ApiKeyValidationResult,
+  type ProcessingProgressPayload,
 } from '../shared/types';
 
 // =============================================================================
@@ -359,6 +360,21 @@ const markuprApi = {
       confidence: number;
       timestamp: number;
     }>(IPC_CHANNELS.TRANSCRIPTION_FINAL),
+  },
+
+  // ===========================================================================
+  // Processing Pipeline API (Main -> Renderer events)
+  // ===========================================================================
+  processing: {
+    /**
+     * Subscribe to post-process pipeline progress updates
+     */
+    onProgress: createEventSubscriber<ProcessingProgressPayload>(IPC_CHANNELS.PROCESSING_PROGRESS),
+
+    /**
+     * Subscribe to post-process pipeline completion
+     */
+    onComplete: createEventSubscriber<OutputReadyPayload>(IPC_CHANNELS.PROCESSING_COMPLETE),
   },
 
   // ===========================================================================

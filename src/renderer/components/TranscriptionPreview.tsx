@@ -1,457 +1,173 @@
 /**
- * Transcription Preview Component
+ * Transcript Results Viewer
  *
- * A real-time transcription overlay showing live subtitles during recording.
+ * Displays completed transcript segments after post-processing.
+ * This replaces the previous real-time subtitle overlay with a static
+ * display of finalized transcript content.
  *
  * Features:
- * - Words appear as they're transcribed with smooth fade-in
- * - Auto-hide after 3 seconds of silence
- * - Position options: bottom-center, bottom-left, bottom-right
- * - Premium typography with backdrop blur
- * - Visual distinction between interim and final transcripts
+ * - Static display of completed transcript segments
+ * - Scrollable container for long transcripts
+ * - Position options retained for layout flexibility
+ * - Premium typography with optional dark mode
  */
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { TranscriptChunkPayload } from '../../shared/types';
+import React, { useMemo } from 'react';
+
+export interface TranscriptSegment {
+  /** Unique identifier for the segment */
+  id: string;
+  /** The transcribed text */
+  text: string;
+  /** Start time in milliseconds (relative to session start) */
+  startTime: number;
+  /** End time in milliseconds (relative to session start) */
+  endTime: number;
+  /** Transcription confidence (0-1) */
+  confidence: number;
+}
 
 export interface TranscriptionPreviewProps {
-  /** Current live transcript data */
-  transcript: TranscriptChunkPayload | null;
-  /** Position of the overlay on screen */
-  position?: 'bottom-center' | 'bottom-left' | 'bottom-right';
-  /** Whether the overlay is visible (user preference) */
+  /** Completed transcript segments to display */
+  segments: TranscriptSegment[];
+  /** Whether the component is visible */
   isVisible: boolean;
   /** Callback when user toggles visibility */
   onToggle?: () => void;
   /** Whether to use dark mode styling */
   isDarkMode?: boolean;
+  /** Maximum height before scrolling (px) */
+  maxHeight?: number;
 }
 
-interface AnimatedWord {
-  text: string;
-  id: string;
-  timestamp: number;
+function formatTimestamp(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
-
-// Time in ms before the overlay fades out after no new text
-const HIDE_DELAY_MS = 3000;
-// Maximum characters to display in the overlay
-const MAX_DISPLAY_CHARS = 150;
-// Animation timings
-const FADE_IN_MS = 200;
-const FADE_OUT_MS = 500;
 
 export const TranscriptionPreview: React.FC<TranscriptionPreviewProps> = ({
-  transcript,
-  position = 'bottom-center',
+  segments,
   isVisible,
   onToggle,
-  isDarkMode = true,
+  isDarkMode = false,
+  maxHeight = 300,
 }) => {
-  const [displayText, setDisplayText] = useState('');
-  const [isShowing, setIsShowing] = useState(false);
-  const [words, setWords] = useState<AnimatedWord[]>([]);
-  const hideTimeoutRef = useRef<NodeJS.Timeout>();
-  const lastUpdateRef = useRef<number>(0);
-  const wordIdCounter = useRef(0);
+  const theme = useMemo(
+    () => ({
+      bg: isDarkMode ? 'rgba(0, 0, 0, 0.80)' : 'rgba(255, 255, 255, 0.94)',
+      text: isDarkMode ? '#ffffff' : '#1d1d1f',
+      textMuted: isDarkMode ? 'rgba(255, 255, 255, 0.55)' : '#6e6e73',
+      border: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(60, 60, 67, 0.15)',
+      timestampBg: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(120, 120, 128, 0.08)',
+    }),
+    [isDarkMode]
+  );
 
-  // Memoize position styles
-  const positionStyles = useMemo(() => {
-    const baseStyles: React.CSSProperties = {
-      position: 'fixed',
-      zIndex: 9998, // Below recording overlay (9999)
-    };
-
-    switch (position) {
-      case 'bottom-center':
-        return {
-          ...baseStyles,
-          bottom: 32,
-          left: '50%',
-          transform: 'translateX(-50%)',
-        };
-      case 'bottom-left':
-        return {
-          ...baseStyles,
-          bottom: 32,
-          left: 32,
-        };
-      case 'bottom-right':
-        return {
-          ...baseStyles,
-          bottom: 32,
-          right: 32,
-        };
-      default:
-        return {
-          ...baseStyles,
-          bottom: 32,
-          left: '50%',
-          transform: 'translateX(-50%)',
-        };
-    }
-  }, [position]);
-
-  // Process incoming transcript
-  useEffect(() => {
-    if (!transcript?.text) return;
-
-    const now = Date.now();
-    lastUpdateRef.current = now;
-
-    // Update display text (truncate if needed)
-    const text = transcript.text;
-    const truncatedText =
-      text.length > MAX_DISPLAY_CHARS
-        ? '...' + text.slice(-MAX_DISPLAY_CHARS)
-        : text;
-    setDisplayText(truncatedText);
-
-    // Parse words for animation if available
-    if (transcript.words && transcript.words.length > 0) {
-      const newWords: AnimatedWord[] = transcript.words.map((w) => ({
-        text: w.word,
-        id: `word-${wordIdCounter.current++}`,
-        timestamp: now,
-      }));
-      setWords(newWords);
-    }
-
-    // Show the overlay
-    setIsShowing(true);
-
-    // Reset hide timer
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-
-    hideTimeoutRef.current = setTimeout(() => {
-      setIsShowing(false);
-    }, HIDE_DELAY_MS);
-
-    return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, [transcript]);
-
-  // Clear timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Don't render if visibility is disabled or no text
-  if (!isVisible || !displayText) return null;
-
-  // Theme colors
-  const theme = {
-    bg: isDarkMode ? 'rgba(0, 0, 0, 0.80)' : 'rgba(255, 255, 255, 0.90)',
-    text: isDarkMode ? '#ffffff' : '#1f2937',
-    textInterim: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(31, 41, 55, 0.7)',
-    border: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-    shadow: isDarkMode
-      ? '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)'
-      : '0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)',
-  };
+  if (!isVisible || segments.length === 0) return null;
 
   return (
-    <>
-      {/* Keyframe animations */}
-      <style>
-        {`
-          @keyframes markupr-subtitle-fade-in {
-            0% {
-              opacity: 0;
-              transform: translateY(8px);
-            }
-            100% {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
-
-          @keyframes markupr-subtitle-fade-out {
-            0% {
-              opacity: 1;
-              transform: translateY(0);
-            }
-            100% {
-              opacity: 0;
-              transform: translateY(8px);
-            }
-          }
-
-          @keyframes markupr-word-pop {
-            0% {
-              opacity: 0;
-              transform: scale(0.9);
-            }
-            50% {
-              opacity: 1;
-              transform: scale(1.02);
-            }
-            100% {
-              opacity: 1;
-              transform: scale(1);
-            }
-          }
-
-          .markupr-subtitle-container {
-            animation: markupr-subtitle-fade-in ${FADE_IN_MS}ms ease-out forwards;
-          }
-
-          .markupr-subtitle-container.hiding {
-            animation: markupr-subtitle-fade-out ${FADE_OUT_MS}ms ease-out forwards;
-          }
-
-          .markupr-word {
-            display: inline-block;
-            animation: markupr-word-pop ${FADE_IN_MS}ms ease-out forwards;
-          }
-        `}
-      </style>
+    <div
+      style={{
+        borderRadius: 12,
+        border: `1px solid ${theme.border}`,
+        backgroundColor: theme.bg,
+        overflow: 'hidden',
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      }}
+      role="region"
+      aria-label="Transcript results"
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 14px',
+          borderBottom: `1px solid ${theme.border}`,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            color: theme.textMuted,
+          }}
+        >
+          Transcript ({segments.length} segment{segments.length !== 1 ? 's' : ''})
+        </span>
+        {onToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            style={{
+              fontSize: 11,
+              color: theme.textMuted,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px 6px',
+            }}
+          >
+            Hide
+          </button>
+        )}
+      </div>
 
       <div
-        className={`markupr-subtitle-container ${!isShowing ? 'hiding' : ''}`}
         style={{
-          ...positionStyles,
-          maxWidth: 640,
-          padding: '14px 24px',
-          backgroundColor: theme.bg,
-          borderRadius: 16,
-          boxShadow: theme.shadow,
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: `1px solid ${theme.border}`,
-          // Typography - premium subtitle feel
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-          fontSize: 18,
-          fontWeight: 500,
-          lineHeight: 1.5,
-          letterSpacing: '-0.01em',
-          textAlign: position === 'bottom-center' ? 'center' : 'left',
-          color: transcript?.isFinal ? theme.text : theme.textInterim,
-          // Text shadow for readability over any background
-          textShadow: isDarkMode
-            ? '0 1px 2px rgba(0, 0, 0, 0.3)'
-            : '0 1px 2px rgba(255, 255, 255, 0.5)',
-          // Prevent window drag on Electron
-          WebkitAppRegion: 'no-drag',
-          // Smooth transition for color changes
-          transition: `color ${FADE_IN_MS}ms ease`,
-          // Pointer events
-          pointerEvents: 'none',
-        } as React.CSSProperties & { WebkitAppRegion?: string }}
-        role="status"
-        aria-live="polite"
-        aria-label="Live transcription"
+          maxHeight,
+          overflowY: 'auto',
+          padding: '8px 14px 12px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}
       >
-        {displayText}
+        {segments.map((segment) => (
+          <div key={segment.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 500,
+                color: theme.textMuted,
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+                padding: '3px 6px',
+                borderRadius: 4,
+                backgroundColor: theme.timestampBg,
+                flexShrink: 0,
+                marginTop: 2,
+              }}
+            >
+              {formatTimestamp(segment.startTime)}
+            </span>
+            <p
+              style={{
+                fontSize: 13,
+                lineHeight: 1.45,
+                color: theme.text,
+                margin: 0,
+              }}
+            >
+              {segment.text}
+            </p>
+          </div>
+        ))}
       </div>
-    </>
+    </div>
   );
 };
 
 /**
- * Word-by-word animated variant for premium feel
- * Use this when you want each word to animate in separately
+ * Legacy alias - TranscriptionPreviewAnimated is no longer used.
+ * Kept as a re-export of the static viewer for backwards compatibility
+ * with any imports that reference it.
  */
-export const TranscriptionPreviewAnimated: React.FC<TranscriptionPreviewProps> = ({
-  transcript,
-  position = 'bottom-center',
-  isVisible,
-  isDarkMode = true,
-}) => {
-  const [words, setWords] = useState<AnimatedWord[]>([]);
-  const [isShowing, setIsShowing] = useState(false);
-  const hideTimeoutRef = useRef<NodeJS.Timeout>();
-  const wordIdCounter = useRef(0);
-  const previousTextRef = useRef('');
-
-  // Memoize position styles
-  const positionStyles = useMemo(() => {
-    const baseStyles: React.CSSProperties = {
-      position: 'fixed',
-      zIndex: 9998,
-    };
-
-    switch (position) {
-      case 'bottom-center':
-        return { ...baseStyles, bottom: 32, left: '50%', transform: 'translateX(-50%)' };
-      case 'bottom-left':
-        return { ...baseStyles, bottom: 32, left: 32 };
-      case 'bottom-right':
-        return { ...baseStyles, bottom: 32, right: 32 };
-      default:
-        return { ...baseStyles, bottom: 32, left: '50%', transform: 'translateX(-50%)' };
-    }
-  }, [position]);
-
-  // Process incoming transcript with word-by-word animation
-  useEffect(() => {
-    if (!transcript?.text) return;
-
-    const currentText = transcript.text;
-    const previousText = previousTextRef.current;
-
-    // Find new words by comparing with previous text
-    if (currentText !== previousText) {
-      const currentWords = currentText.split(/\s+/).filter(Boolean);
-      const previousWords = previousText.split(/\s+/).filter(Boolean);
-
-      // Keep existing words, add new ones
-      const newWords = currentWords.slice(previousWords.length);
-
-      if (newWords.length > 0) {
-        const now = Date.now();
-        const animatedNewWords: AnimatedWord[] = newWords.map((word, index) => ({
-          text: word,
-          id: `word-${wordIdCounter.current++}`,
-          timestamp: now + index * 50, // Stagger animation
-        }));
-
-        setWords((prev) => {
-          // Limit total words to prevent overflow
-          const maxWords = 30;
-          const combined = [...prev, ...animatedNewWords];
-          return combined.slice(-maxWords);
-        });
-      }
-
-      previousTextRef.current = currentText;
-    }
-
-    // Show overlay
-    setIsShowing(true);
-
-    // Reset hide timer
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-    }
-
-    hideTimeoutRef.current = setTimeout(() => {
-      setIsShowing(false);
-      // Clear words after fade out
-      setTimeout(() => {
-        setWords([]);
-        previousTextRef.current = '';
-      }, FADE_OUT_MS);
-    }, HIDE_DELAY_MS);
-
-    return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, [transcript]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  if (!isVisible || words.length === 0) return null;
-
-  const theme = {
-    bg: isDarkMode ? 'rgba(0, 0, 0, 0.80)' : 'rgba(255, 255, 255, 0.90)',
-    text: isDarkMode ? '#ffffff' : '#1f2937',
-    textInterim: isDarkMode ? 'rgba(255, 255, 255, 0.7)' : 'rgba(31, 41, 55, 0.7)',
-    border: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-    shadow: isDarkMode
-      ? '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05)'
-      : '0 8px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)',
-  };
-
-  return (
-    <>
-      <style>
-        {`
-          @keyframes markupr-subtitle-fade-in {
-            0% { opacity: 0; transform: translateY(8px); }
-            100% { opacity: 1; transform: translateY(0); }
-          }
-
-          @keyframes markupr-subtitle-fade-out {
-            0% { opacity: 1; transform: translateY(0); }
-            100% { opacity: 0; transform: translateY(8px); }
-          }
-
-          @keyframes markupr-word-pop {
-            0% { opacity: 0; transform: translateY(4px) scale(0.95); }
-            100% { opacity: 1; transform: translateY(0) scale(1); }
-          }
-
-          .markupr-subtitle-animated {
-            animation: markupr-subtitle-fade-in ${FADE_IN_MS}ms ease-out forwards;
-          }
-
-          .markupr-subtitle-animated.hiding {
-            animation: markupr-subtitle-fade-out ${FADE_OUT_MS}ms ease-out forwards;
-          }
-
-          .markupr-animated-word {
-            display: inline-block;
-            animation: markupr-word-pop ${FADE_IN_MS}ms ease-out forwards;
-            animation-fill-mode: both;
-          }
-        `}
-      </style>
-
-      <div
-        className={`markupr-subtitle-animated ${!isShowing ? 'hiding' : ''}`}
-        style={{
-          ...positionStyles,
-          maxWidth: 640,
-          padding: '14px 24px',
-          backgroundColor: theme.bg,
-          borderRadius: 16,
-          boxShadow: theme.shadow,
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: `1px solid ${theme.border}`,
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-          fontSize: 18,
-          fontWeight: 500,
-          lineHeight: 1.5,
-          letterSpacing: '-0.01em',
-          textAlign: position === 'bottom-center' ? 'center' : 'left',
-          color: transcript?.isFinal ? theme.text : theme.textInterim,
-          textShadow: isDarkMode
-            ? '0 1px 2px rgba(0, 0, 0, 0.3)'
-            : '0 1px 2px rgba(255, 255, 255, 0.5)',
-          WebkitAppRegion: 'no-drag',
-          pointerEvents: 'none',
-        } as React.CSSProperties & { WebkitAppRegion?: string }}
-        role="status"
-        aria-live="polite"
-        aria-label="Live transcription"
-      >
-        {words.map((word, index) => (
-          <span
-            key={word.id}
-            className="markupr-animated-word"
-            style={{
-              animationDelay: `${index * 30}ms`,
-              marginRight: '0.25em',
-            }}
-          >
-            {word.text}
-          </span>
-        ))}
-      </div>
-    </>
-  );
-};
+export const TranscriptionPreviewAnimated = TranscriptionPreview;
 
 export default TranscriptionPreview;

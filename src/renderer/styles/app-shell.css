@@ -490,6 +490,60 @@
   animation: ffSpinnerSpin 0.85s linear infinite;
 }
 
+/* Post-processing progress indicator */
+.ff-shell__processing {
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid rgba(10, 132, 255, 0.32);
+  background: rgba(10, 132, 255, 0.08);
+  display: grid;
+  gap: 10px;
+}
+
+.ff-shell__processing-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ff-text-primary);
+  text-align: center;
+}
+
+.ff-shell__processing-bar-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(10, 132, 255, 0.15);
+  overflow: hidden;
+}
+
+.ff-shell__processing-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #0a84ff 0%, #32a3ff 100%);
+  transition: width 300ms ease;
+  min-width: 0;
+}
+
+.ff-shell__processing-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ff-shell__processing-percent {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ff-accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+}
+
+.ff-shell__processing-step {
+  font-size: 12px;
+  color: var(--ff-text-secondary);
+  text-align: right;
+  flex: 1;
+}
+
 .ff-shell__error-guidance {
   margin-top: 8px;
   font-size: 11px;

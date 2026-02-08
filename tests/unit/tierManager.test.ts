@@ -7,7 +7,6 @@ function makeStatuses(
 ): TierStatus[] {
   const defaults: TierStatus[] = [
     { tier: 'whisper', available: false, reason: 'Model not downloaded' },
-    { tier: 'macos-dictation', available: true },
     { tier: 'timer-only', available: true },
   ];
 
@@ -40,18 +39,17 @@ describe('TierManager preference selection', () => {
     expect(selected).toBe('whisper');
   });
 
-  it('falls back automatically when preferred tier is unavailable', async () => {
+  it('falls back to timer-only when preferred tier is unavailable', async () => {
     const manager = new TierManager();
     manager.setPreferredTier('whisper');
     vi.spyOn(manager, 'getTierStatuses').mockResolvedValue(
       makeStatuses({
         whisper: { tier: 'whisper', available: false, reason: 'No model' },
-        'macos-dictation': { tier: 'macos-dictation', available: true },
       })
     );
 
     const selected = await manager.selectBestTier();
-    expect(selected).toBe('macos-dictation');
+    expect(selected).toBe('timer-only');
   });
 
   it('rejects non-transcribing preferred tiers in strict feedback mode', () => {

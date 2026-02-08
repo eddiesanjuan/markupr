@@ -56,8 +56,9 @@ export { DonateButton, default as DonateButtonDefault } from './DonateButton';
 // Session history
 export { SessionHistory } from './SessionHistory';
 
-// Transcription preview
+// Transcription preview (post-processing results viewer)
 export { TranscriptionPreview, TranscriptionPreviewAnimated } from './TranscriptionPreview';
+export type { TranscriptSegment, TranscriptionPreviewProps } from './TranscriptionPreview';
 
 // Model download dialog
 export { ModelDownloadDialog, useModelCheck } from './ModelDownloadDialog';

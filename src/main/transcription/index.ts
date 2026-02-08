@@ -1,12 +1,11 @@
 /**
  * Transcription Module
  *
- * Transcription Fallback System:
- * - Tier 1: Local Whisper (default)
- * - Tier 2: macOS Dictation (fallback)
- * - Tier 3: Timer-only (emergency)
+ * Transcription Tiers (post-process architecture):
+ * - Tier 1: Local Whisper (default, post-session batch)
+ * - Tier 2: Timer-only (fallback, no transcription)
  *
- * The TierManager orchestrates tier selection and failover.
+ * The TierManager tracks tier availability for the UI.
  * App works WITHOUT any API keys using local Whisper.
  */
 
@@ -21,9 +20,6 @@ export { TierManager, tierManager } from './TierManager';
 // ============================================================================
 // Whisper (Tier 1)
 export { WhisperService, whisperService } from './WhisperService';
-
-// Silence Detection (for non-Whisper fallback tiers)
-export { SilenceDetector, silenceDetector } from './SilenceDetector';
 
 // Model Management
 export { ModelDownloadManager, modelDownloadManager } from './ModelDownloadManager';
@@ -47,8 +43,6 @@ export type {
   ModelInfo,
   DownloadProgress,
   DownloadResult,
-  // Silence detection
-  SilenceDetectorConfig,
   // Callbacks
   TranscriptCallback,
   PauseCallback,
@@ -56,7 +50,6 @@ export type {
   ErrorCallback,
   ProgressCallback,
   CompleteCallback,
-  SilenceCallback,
 } from './types';
 
 // Re-export types from shared for convenience

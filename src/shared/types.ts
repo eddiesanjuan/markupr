@@ -384,6 +384,12 @@ export const IPC_CHANNELS = {
   WHISPER_DOWNLOAD_ERROR: 'markupr:whisper:download-error',
 
   // ---------------------------------------------------------------------------
+  // Processing Pipeline Channels (Main -> Renderer)
+  // ---------------------------------------------------------------------------
+  PROCESSING_PROGRESS: 'markupr:processing:progress',
+  PROCESSING_COMPLETE: 'markupr:processing:complete',
+
+  // ---------------------------------------------------------------------------
   // Legacy channels (backwards compatibility)
   // ---------------------------------------------------------------------------
   START_SESSION: 'session:start',
@@ -453,9 +459,17 @@ export interface ScreenshotCapturedPayload {
 }
 
 /**
+ * Processing pipeline progress payload
+ */
+export interface ProcessingProgressPayload {
+  percent: number;
+  step: string;
+}
+
+/**
  * Transcription tier identifiers used by UI and IPC.
  */
-export type TranscriptionTier = 'auto' | 'whisper' | 'macos-dictation' | 'timer-only';
+export type TranscriptionTier = 'auto' | 'whisper' | 'timer-only';
 
 /**
  * Runtime availability status for a transcription tier.

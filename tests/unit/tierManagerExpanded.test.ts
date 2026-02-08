@@ -2,9 +2,8 @@
  * TierManager Expanded Tests
  *
  * Extends the basic 4 tests with:
- * - Failover chain behavior
+ * - Failover chain behavior (whisper -> timer-only)
  * - Timer-only emergency mode
- * - macOS dictation fallback
  * - Tier quality metadata
  * - hasTranscriptionCapability checks
  * - Edge cases
@@ -19,7 +18,6 @@ function makeStatuses(
 ): TierStatus[] {
   const defaults: TierStatus[] = [
     { tier: 'whisper', available: false, reason: 'Model not downloaded' },
-    { tier: 'macos-dictation', available: true },
     { tier: 'timer-only', available: true },
   ];
 
@@ -30,11 +28,11 @@ function makeStatuses(
 }
 
 describe('TierManager failover chain', () => {
-  it('falls through entire chain when nothing is available except timer-only', async () => {
+  it('falls through to timer-only when whisper is unavailable', async () => {
     const manager = new TierManager();
     vi.spyOn(manager, 'getTierStatuses').mockResolvedValue(
       makeStatuses({
-        'macos-dictation': { tier: 'macos-dictation', available: false, reason: 'Not on macOS' },
+        whisper: { tier: 'whisper', available: false, reason: 'No model' },
       })
     );
 
@@ -42,25 +40,11 @@ describe('TierManager failover chain', () => {
     expect(selected).toBe('timer-only');
   });
 
-  it('falls back to macos-dictation when whisper is unavailable', async () => {
-    const manager = new TierManager();
-    vi.spyOn(manager, 'getTierStatuses').mockResolvedValue(
-      makeStatuses({
-        whisper: { tier: 'whisper', available: false },
-        'macos-dictation': { tier: 'macos-dictation', available: true },
-      })
-    );
-
-    const selected = await manager.selectBestTier();
-    expect(selected).toBe('macos-dictation');
-  });
-
   it('prefers Whisper in auto mode when available', async () => {
     const manager = new TierManager();
     vi.spyOn(manager, 'getTierStatuses').mockResolvedValue(
       makeStatuses({
         whisper: { tier: 'whisper', available: true },
-        'macos-dictation': { tier: 'macos-dictation', available: true },
       })
     );
 
@@ -82,9 +66,9 @@ describe('TierManager failover chain', () => {
 });
 
 describe('TierManager preference edge cases', () => {
-  it('rejects macos-dictation as preferred tier', () => {
+  it('rejects timer-only as preferred tier', () => {
     const manager = new TierManager();
-    expect(() => manager.setPreferredTier('macos-dictation')).toThrow(
+    expect(() => manager.setPreferredTier('timer-only')).toThrow(
       'does not provide transcription'
     );
   });
@@ -113,12 +97,11 @@ describe('TierManager hasTranscriptionCapability', () => {
     expect(hasCap).toBe(true);
   });
 
-  it('returns false when only timer-only and macos-dictation are available', async () => {
+  it('returns false when only timer-only is available and no OpenAI key', async () => {
     const manager = new TierManager();
     vi.spyOn(manager, 'getTierStatuses').mockResolvedValue(
       makeStatuses({
         whisper: { tier: 'whisper', available: false },
-        'macos-dictation': { tier: 'macos-dictation', available: true },
         'timer-only': { tier: 'timer-only', available: true },
       })
     );
@@ -129,18 +112,17 @@ describe('TierManager hasTranscriptionCapability', () => {
 });
 
 describe('TierManager status reporting', () => {
-  it('returns all 3 tier statuses', async () => {
+  it('returns all 2 tier statuses', async () => {
     const manager = new TierManager();
     vi.spyOn(manager, 'getTierStatuses').mockResolvedValue(
       makeStatuses({})
     );
 
     const statuses = await manager.getTierStatuses();
-    expect(statuses).toHaveLength(3);
+    expect(statuses).toHaveLength(2);
 
     const tiers = statuses.map((s) => s.tier);
     expect(tiers).toContain('whisper');
-    expect(tiers).toContain('macos-dictation');
     expect(tiers).toContain('timer-only');
   });
 

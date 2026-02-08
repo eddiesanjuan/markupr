@@ -15,8 +15,15 @@ import { EventEmitter } from 'events';
 import { basename, join } from 'path';
 import { app } from 'electron';
 import { existsSync } from 'fs';
+import { readFile, unlink } from 'fs/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
+import { randomUUID } from 'crypto';
 import * as os from 'os';
 import type { WhisperTranscriptResult, WhisperConfig, ErrorCallback } from './types';
+
+const execFileAsync = promisify(execFile);
 
 // ============================================================================
 // Types
@@ -52,6 +59,9 @@ const DEFAULT_CONFIG: WhisperConfig = {
 const CHUNK_DURATION_MS = 3000; // Process 3 seconds at a time
 const MAX_BUFFER_DURATION_MS = 30000; // Max 30 seconds before force-processing
 const MAX_BUFFER_SIZE_BYTES = 500 * 1024; // 500KB cap as per audit
+const SAMPLE_RATE = 16000; // 16kHz mono
+const FILE_CHUNK_DURATION_SEC = 30; // 30 seconds per chunk for file transcription
+const FILE_CHUNK_SAMPLES = FILE_CHUNK_DURATION_SEC * SAMPLE_RATE;
 const MODEL_MEMORY_REQUIREMENTS_BYTES: Record<string, number> = {
   'ggml-tiny.bin': 450 * 1024 * 1024,
   'ggml-base.bin': 800 * 1024 * 1024,
@@ -343,9 +353,284 @@ export class WhisperService extends EventEmitter {
       .filter((segment) => segment.text.length > 0);
   }
 
+  /**
+   * Transcribe an audio file from disk.
+   * Loads the file, converts to Float32Array at 16kHz mono, and transcribes.
+   * For large files, processes in chunks to manage memory.
+   *
+   * @param audioPath - Path to the audio file (webm, wav, ogg, m4a)
+   * @param onProgress - Optional progress callback (0-100)
+   * @returns Array of transcript results with timestamps
+   */
+  async transcribeFile(
+    audioPath: string,
+    onProgress?: (percent: number) => void
+  ): Promise<WhisperTranscriptResult[]> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    if (!existsSync(audioPath)) {
+      throw new Error(`Audio file not found: ${audioPath}`);
+    }
+
+    this.log(`Transcribing file: ${audioPath}`);
+    onProgress?.(0);
+
+    // Get Float32Array samples from the file
+    const samples = await this.loadAudioAsSamples(audioPath);
+
+    if (samples.length === 0) {
+      this.log('Audio file produced no samples');
+      onProgress?.(100);
+      return [];
+    }
+
+    // Split into 30-second chunks and transcribe each
+    const totalChunks = Math.ceil(samples.length / FILE_CHUNK_SAMPLES);
+    const results: WhisperTranscriptResult[] = [];
+
+    this.log(`Processing ${totalChunks} chunk(s) (${(samples.length / SAMPLE_RATE).toFixed(1)}s total)`);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkStart = i * FILE_CHUNK_SAMPLES;
+      const chunkEnd = Math.min(chunkStart + FILE_CHUNK_SAMPLES, samples.length);
+      const chunk = samples.subarray(chunkStart, chunkEnd);
+      const startTimeSec = chunkStart / SAMPLE_RATE;
+
+      const chunkResults = await this.transcribeSamples(chunk, startTimeSec);
+      results.push(...chunkResults);
+
+      const percent = Math.round(((i + 1) / totalChunks) * 100);
+      onProgress?.(percent);
+
+      // Yield between chunks to avoid blocking the event loop
+      if (i < totalChunks - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+
+    this.log(`Transcription complete: ${results.length} segment(s)`);
+    return results;
+  }
+
+  /**
+   * Check if ffmpeg is available on the system
+   */
+  async isFfmpegAvailable(): Promise<boolean> {
+    try {
+      await execFileAsync('ffmpeg', ['-version']);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ============================================================================
   // Private Methods
   // ============================================================================
+
+  /**
+   * Load an audio file and return Float32Array samples at 16kHz mono.
+   * WAV files are parsed directly; other formats are converted via ffmpeg.
+   */
+  private async loadAudioAsSamples(audioPath: string): Promise<Float32Array> {
+    const ext = audioPath.toLowerCase().split('.').pop() ?? '';
+
+    if (ext === 'wav') {
+      return this.parseWavFile(audioPath);
+    }
+
+    // For non-WAV formats (webm, ogg, m4a, etc.), convert via ffmpeg
+    return this.convertWithFfmpeg(audioPath);
+  }
+
+  /**
+   * Parse a WAV file and extract PCM data as Float32Array at 16kHz mono.
+   * Handles PCM float32 and PCM int16 formats.
+   */
+  private async parseWavFile(wavPath: string): Promise<Float32Array> {
+    const buffer = await readFile(wavPath);
+
+    // Validate RIFF/WAVE header
+    const riff = buffer.toString('ascii', 0, 4);
+    const wave = buffer.toString('ascii', 8, 12);
+    if (riff !== 'RIFF' || wave !== 'WAVE') {
+      throw new Error(`Invalid WAV file: missing RIFF/WAVE header in ${wavPath}`);
+    }
+
+    // Find the 'fmt ' sub-chunk
+    let offset = 12;
+    let audioFormat = 0;
+    let numChannels = 0;
+    let sampleRate = 0;
+    let bitsPerSample = 0;
+    let fmtFound = false;
+
+    while (offset < buffer.length - 8) {
+      const chunkId = buffer.toString('ascii', offset, offset + 4);
+      const chunkSize = buffer.readUInt32LE(offset + 4);
+
+      if (chunkId === 'fmt ') {
+        audioFormat = buffer.readUInt16LE(offset + 8);
+        numChannels = buffer.readUInt16LE(offset + 10);
+        sampleRate = buffer.readUInt32LE(offset + 12);
+        bitsPerSample = buffer.readUInt16LE(offset + 22);
+        fmtFound = true;
+      }
+
+      if (chunkId === 'data') {
+        if (!fmtFound) {
+          throw new Error('WAV file has data chunk before fmt chunk');
+        }
+
+        const dataStart = offset + 8;
+        const dataEnd = dataStart + chunkSize;
+        const dataSlice = buffer.subarray(dataStart, Math.min(dataEnd, buffer.length));
+
+        return this.extractWavSamples(dataSlice, audioFormat, numChannels, sampleRate, bitsPerSample);
+      }
+
+      offset += 8 + chunkSize;
+      // Chunks are word-aligned
+      if (chunkSize % 2 !== 0) {
+        offset += 1;
+      }
+    }
+
+    throw new Error(`Invalid WAV file: no data chunk found in ${wavPath}`);
+  }
+
+  /**
+   * Extract samples from WAV data chunk, converting to Float32Array at 16kHz mono.
+   */
+  private extractWavSamples(
+    data: Buffer,
+    audioFormat: number,
+    numChannels: number,
+    sampleRate: number,
+    bitsPerSample: number
+  ): Float32Array {
+    let monoFloat32: Float32Array;
+
+    if (audioFormat === 3 && bitsPerSample === 32) {
+      // PCM Float32
+      const totalSamples = Math.floor(data.length / 4);
+      const allSamples = new Float32Array(totalSamples);
+      for (let i = 0; i < totalSamples; i++) {
+        allSamples[i] = data.readFloatLE(i * 4);
+      }
+      monoFloat32 = this.mixToMono(allSamples, numChannels);
+    } else if (audioFormat === 1 && bitsPerSample === 16) {
+      // PCM Int16
+      const totalSamples = Math.floor(data.length / 2);
+      const allSamples = new Float32Array(totalSamples);
+      for (let i = 0; i < totalSamples; i++) {
+        allSamples[i] = data.readInt16LE(i * 2) / 32768.0;
+      }
+      monoFloat32 = this.mixToMono(allSamples, numChannels);
+    } else {
+      throw new Error(
+        `Unsupported WAV format: audioFormat=${audioFormat}, bitsPerSample=${bitsPerSample}. ` +
+        `Expected PCM float32 (format=3, bits=32) or PCM int16 (format=1, bits=16).`
+      );
+    }
+
+    // Resample to 16kHz if needed
+    if (sampleRate !== SAMPLE_RATE) {
+      return this.resample(monoFloat32, sampleRate, SAMPLE_RATE);
+    }
+
+    return monoFloat32;
+  }
+
+  /**
+   * Mix multi-channel audio down to mono by averaging channels.
+   */
+  private mixToMono(samples: Float32Array, numChannels: number): Float32Array {
+    if (numChannels === 1) {
+      return samples;
+    }
+
+    const monoLength = Math.floor(samples.length / numChannels);
+    const mono = new Float32Array(monoLength);
+    for (let i = 0; i < monoLength; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numChannels; ch++) {
+        sum += samples[i * numChannels + ch];
+      }
+      mono[i] = sum / numChannels;
+    }
+    return mono;
+  }
+
+  /**
+   * Simple linear resampling from one sample rate to another.
+   */
+  private resample(samples: Float32Array, fromRate: number, toRate: number): Float32Array {
+    if (fromRate === toRate) {
+      return samples;
+    }
+
+    const ratio = fromRate / toRate;
+    const outputLength = Math.floor(samples.length / ratio);
+    const output = new Float32Array(outputLength);
+
+    for (let i = 0; i < outputLength; i++) {
+      const srcIndex = i * ratio;
+      const srcIndexFloor = Math.floor(srcIndex);
+      const srcIndexCeil = Math.min(srcIndexFloor + 1, samples.length - 1);
+      const frac = srcIndex - srcIndexFloor;
+      output[i] = samples[srcIndexFloor] * (1 - frac) + samples[srcIndexCeil] * frac;
+    }
+
+    return output;
+  }
+
+  /**
+   * Convert a non-WAV audio file to 16kHz mono Float32 WAV using ffmpeg,
+   * then parse the resulting WAV.
+   */
+  private async convertWithFfmpeg(audioPath: string): Promise<Float32Array> {
+    const ffmpegAvailable = await this.isFfmpegAvailable();
+    if (!ffmpegAvailable) {
+      throw new Error(
+        'ffmpeg is not available on this system. ' +
+        'ffmpeg is required to transcribe non-WAV audio files (webm, ogg, m4a). ' +
+        'Install ffmpeg via: brew install ffmpeg (macOS) or apt install ffmpeg (Linux).'
+      );
+    }
+
+    const tempFileName = `markupr-transcode-${randomUUID()}.wav`;
+    const tempPath = join(tmpdir(), tempFileName);
+
+    try {
+      this.log(`Converting ${audioPath} to WAV via ffmpeg...`);
+
+      await execFileAsync('ffmpeg', [
+        '-i', audioPath,
+        '-ar', String(SAMPLE_RATE),
+        '-ac', '1',
+        '-f', 'wav',
+        '-acodec', 'pcm_f32le',
+        '-y',
+        tempPath,
+      ]);
+
+      this.log('ffmpeg conversion complete, parsing WAV...');
+      return await this.parseWavFile(tempPath);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to convert audio file with ffmpeg: ${msg}`);
+    } finally {
+      // Clean up temp file
+      try {
+        await unlink(tempPath);
+      } catch {
+        // Ignore cleanup errors - temp dir will be cleaned eventually
+      }
+    }
+  }
 
   /**
    * Process buffered audio through Whisper

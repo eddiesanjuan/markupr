@@ -19,6 +19,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { Session, FeedbackItem, FeedbackCategory, FeedbackSeverity } from './MarkdownGenerator';
 import { markdownGenerator } from './MarkdownGenerator';
+import type { PostProcessResult } from '../pipeline/PostProcessor';
 import { generateHtmlDocument } from './templates/html-template';
 import type { HtmlExportOptions } from './templates/html-template';
 
@@ -315,6 +316,51 @@ class ExportServiceImpl {
       outputPath,
       fileSize: stats.size,
     };
+  }
+
+  /**
+   * Export a PostProcessResult to Markdown.
+   *
+   * Uses the new generateFromPostProcess method on MarkdownGenerator
+   * to produce a clean transcript + frame document.
+   *
+   * @param result - PostProcessResult from the post-recording pipeline
+   * @param sessionDir - Absolute path to the session directory
+   * @param outputPath - Where to write the markdown file
+   */
+  async exportPostProcessToMarkdown(
+    result: PostProcessResult,
+    sessionDir: string,
+    outputPath: string
+  ): Promise<ExportResult> {
+    try {
+      const content = markdownGenerator.generateFromPostProcess(result, sessionDir);
+
+      // Ensure output directory exists
+      await fs.mkdir(path.dirname(outputPath), { recursive: true });
+
+      // Write Markdown file
+      await fs.writeFile(outputPath, content, 'utf-8');
+
+      const stats = await fs.stat(outputPath);
+
+      console.log(`[ExportService] Post-process Markdown exported to ${outputPath} (${stats.size} bytes)`);
+
+      return {
+        success: true,
+        format: 'markdown',
+        outputPath,
+        fileSize: stats.size,
+      };
+    } catch (error) {
+      console.error(`[ExportService] Post-process Markdown export failed:`, error);
+      return {
+        success: false,
+        format: 'markdown',
+        outputPath,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   /**

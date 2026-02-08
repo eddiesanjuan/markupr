@@ -3,8 +3,7 @@
  *
  * Displays available transcription tiers with their status:
  * - Tier 1: Local Whisper (default, good quality, requires model download)
- * - Tier 2: macOS Dictation (fallback, macOS only)
- * - Tier 3: Timer Only (emergency, no transcription)
+ * - Tier 2: Timer Only (fallback, no transcription)
  *
  * Key UX principles:
  * - Local Whisper is the DEFAULT tier (no API key needed)
@@ -59,7 +58,7 @@ interface TranscriptionTierSelectorProps {
 // Tier Information
 // ============================================================================
 
-const TIER_INFO: Record<TranscriptionTier, TierInfo> = {
+const TIER_INFO: Partial<Record<TranscriptionTier, TierInfo>> = {
   whisper: {
     name: 'Local Whisper',
     description: 'On-device AI transcription - works offline, no API key needed',
@@ -73,25 +72,6 @@ const TIER_INFO: Record<TranscriptionTier, TierInfo> = {
         <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
         <path d="M12 8v4l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
-      </svg>
-    ),
-  },
-  'macos-dictation': {
-    name: 'macOS Dictation',
-    description: 'Built-in system transcription using Apple Speech Recognition',
-    accuracy: '85% accuracy',
-    latency: 'Real-time',
-    requirements: 'macOS only, Dictation enabled in System Settings',
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M17.5 12c0 3.038-2.462 5.5-5.5 5.5S6.5 15.038 6.5 12"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-        <path d="M12 17.5V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" strokeWidth="2" />
       </svg>
     ),
   },
@@ -214,8 +194,8 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
     );
   }
 
-  // Order: Whisper (recommended default), macOS fallback, Timer fallback
-  const orderedTiers: TranscriptionTier[] = ['whisper', 'macos-dictation', 'timer-only'];
+  // Order: Whisper (recommended default), Timer fallback
+  const orderedTiers: TranscriptionTier[] = ['whisper', 'timer-only'];
   const visibleTiers = orderedTiers.filter(tier =>
     tierStatuses.some(s => s.tier === tier)
   );
@@ -233,6 +213,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
         {visibleTiers.map(tierId => {
           const status = tierStatuses.find(s => s.tier === tierId);
           const info = TIER_INFO[tierId];
+          if (!info) return null;
           const isSelected = currentTier === tierId;
           const isAvailable = status?.available ?? false;
           const needsModelDownload = tierId === 'whisper' && status?.reason?.includes('not downloaded');

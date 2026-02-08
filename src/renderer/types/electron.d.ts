@@ -27,6 +27,7 @@ import type {
   WhisperModelInfoPayload,
   WhisperModelCheckResult,
   ApiKeyValidationResult,
+  ProcessingProgressPayload,
 } from '../../shared/types';
 
 type Unsubscribe = () => void;
@@ -128,6 +129,14 @@ interface TranscriptionControlAPI {
   downloadModel: (model: string) => Promise<{ success: boolean; error?: string }>;
   cancelDownload: (model: string) => Promise<{ success: boolean }>;
   onModelProgress: (callback: (data: WhisperDownloadProgressPayload) => void) => Unsubscribe;
+}
+
+/**
+ * Processing Pipeline API (post-recording progress events)
+ */
+interface ProcessingAPI {
+  onProgress: (callback: (data: ProcessingProgressPayload) => void) => Unsubscribe;
+  onComplete: (callback: (data: OutputReadyPayload) => void) => Unsubscribe;
 }
 
 /**
@@ -337,6 +346,7 @@ export interface MarkuprAPI {
   screenRecording: ScreenRecordingAPI;
   transcript: TranscriptAPI;
   transcription: TranscriptionControlAPI;
+  processing: ProcessingAPI;
   settings: SettingsAPI;
   hotkeys: HotkeyAPI;
   permissions: PermissionsAPI;

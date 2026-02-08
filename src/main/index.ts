@@ -76,6 +76,7 @@ import type { WhisperModel } from './transcription/types';
 import { errorHandler } from './ErrorHandler';
 import { autoUpdaterManager } from './AutoUpdater';
 import { crashRecovery, type RecoverableFeedbackItem } from './CrashRecovery';
+import { postProcessor, type PostProcessResult, type PostProcessProgress } from './pipeline';
 import { menuManager } from './MenuManager';
 import { WindowsTaskbar, createWindowsTaskbar } from './platform';
 import { PopoverManager, POPOVER_SIZES } from './windows';
@@ -420,15 +421,13 @@ function handleFeedbackItem(item: {
   timestamp: number;
   text: string;
   confidence: number;
-  screenshot?: { id: string };
 }): void {
   mainWindow?.webContents.send(IPC_CHANNELS.SESSION_FEEDBACK_ITEM, {
     id: item.id,
     timestamp: item.timestamp,
     text: item.text,
     confidence: item.confidence,
-    hasScreenshot: !!item.screenshot,
-    screenshotId: item.screenshot?.id,
+    hasScreenshot: false,
   });
 
   // Update crash recovery with new feedback item
@@ -439,13 +438,12 @@ function handleFeedbackItem(item: {
       timestamp: fi.timestamp,
       text: fi.text,
       confidence: fi.confidence,
-      hasScreenshot: !!fi.screenshot,
-      screenshotId: fi.screenshot?.id,
+      hasScreenshot: false,
     }));
 
     crashRecovery.updateSession({
       feedbackItems: recoverableFeedbackItems,
-      screenshotCount: session.screenshotBuffer.length,
+      screenshotCount: 0,
     });
   }
 }
@@ -644,14 +642,10 @@ async function handlePauseResume(): Promise<void> {
 }
 
 async function handleManualScreenshot(): Promise<void> {
-  try {
-    const screenshot = await sessionController.captureManualScreenshot();
-    if (!screenshot && sessionController.getState() !== 'recording') {
-      console.warn('[Main] Cannot take screenshot - not recording');
-    }
-  } catch (error) {
-    console.error('[Main] Manual screenshot failed:', error);
-  }
+  // Manual screenshots are no longer captured during recording.
+  // In the post-process architecture, frames are extracted from the
+  // video recording after the session stops.
+  console.log('[Main] Manual screenshot requested (no-op in post-process architecture)');
 }
 
 function pauseSession(): { success: boolean; error?: string } {
@@ -949,21 +943,20 @@ async function stopSession(): Promise<{
 
     const recordingProbe = await finalizeScreenRecording(session.id).catch(() => null);
     const hasTranscript = session.transcriptBuffer.some((entry) => entry.text.trim().length > 0);
-    const hasScreenshots = session.screenshotBuffer.length > 0;
     const hasRecording = !!recordingProbe && recordingProbe.bytesWritten > 0;
     const recordingExtension = hasRecording
       ? extname(recordingProbe?.tempPath ?? '') || extensionFromMimeType(recordingProbe?.mimeType)
       : '.webm';
     const recordingFilename = `session-recording${recordingExtension}`;
 
-    if (!hasTranscript && !hasScreenshots && !hasRecording) {
+    if (!hasTranscript && !hasRecording) {
       await cleanupRecordingArtifacts(session.id);
       sessionController.clearCapturedAudio();
       windowsTaskbar?.clearProgress();
       return {
         success: false,
         error:
-          'No capture data was collected (no transcript, screenshots, or recording). Check microphone/screen capture access and retry.',
+          'No capture data was collected (no transcript or recording). Check microphone/screen capture access and retry.',
       };
     }
 
@@ -1026,6 +1019,35 @@ async function stopSession(): Promise<{
         audioBytes: audioArtifact.bytesWritten,
         audioDurationMs: audioArtifact.durationMs,
       });
+    }
+
+    // ------------------------------------------------------------------
+    // Post-Processing Pipeline
+    // ------------------------------------------------------------------
+    // Run the post-processor if we have audio and/or video artifacts.
+    // Progress and completion events are sent to the renderer via IPC.
+    let postProcessResult: PostProcessResult | null = null;
+
+    if (audioArtifact || recordingArtifact) {
+      try {
+        postProcessResult = await postProcessor.process({
+          videoPath: recordingArtifact?.path ?? '',
+          audioPath: audioArtifact?.path ?? '',
+          sessionDir: saveResult.sessionDir,
+          onProgress: (progress: PostProcessProgress) => {
+            mainWindow?.webContents.send('markupr:processing:progress', {
+              percent: progress.percent,
+              step: progress.step,
+            });
+          },
+        });
+
+        // Notify renderer that post-processing is complete
+        mainWindow?.webContents.send('markupr:processing:complete', postProcessResult);
+      } catch (postProcessError) {
+        console.warn('[Main] Post-processing pipeline failed, continuing with basic output:', postProcessError);
+        // Non-fatal: we still have the basic markdown report from the AI/rule-based pipeline
+      }
     }
 
     const markdownForPayload = await fs
@@ -1356,7 +1378,11 @@ function setupIPC(): void {
 
   // Get session status
   ipcMain.handle(IPC_CHANNELS.SESSION_GET_STATUS, (): SessionStatusPayload => {
-    return sessionController.getStatus();
+    const status = sessionController.getStatus();
+    return {
+      ...status,
+      screenshotCount: 0, // Screenshots are now extracted in post-processing
+    };
   });
 
   // Get current session
@@ -1400,10 +1426,10 @@ function setupIPC(): void {
     }
   });
 
-  // Trigger manual screenshot
+  // Manual screenshot (no-op in post-process architecture; frames extracted from video)
   ipcMain.handle(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT, async () => {
-    const screenshot = await sessionController.captureManualScreenshot();
-    return { success: !!screenshot };
+    console.log('[Main] Manual screenshot IPC called (no-op in post-process architecture)');
+    return { success: false };
   });
 
   // Start persisted screen recording for the active session
@@ -2157,7 +2183,12 @@ function setupIPC(): void {
     IPC_CHANNELS.TRANSCRIPTION_SET_TIER,
     (_, tier: UiTranscriptionTier): { success: boolean; error?: string } => {
       try {
-        tierManager.setPreferredTier(tier);
+        // Filter out tiers removed in post-process refactor (e.g. macos-dictation)
+        const validTiers = new Set(['auto', 'whisper', 'timer-only']);
+        if (!validTiers.has(tier)) {
+          return { success: false, error: `Tier "${tier}" is no longer supported.` };
+        }
+        tierManager.setPreferredTier(tier as 'auto' | 'whisper' | 'timer-only');
         return { success: true };
       } catch (error) {
         return {
@@ -2346,8 +2377,7 @@ function serializeSession(session: Session): SessionPayload {
       timestamp: item.timestamp,
       text: item.text,
       confidence: item.confidence,
-      hasScreenshot: !!item.screenshot,
-      screenshotId: item.screenshot?.id,
+      hasScreenshot: false, // Screenshots are now extracted in post-processing
     })),
     metadata: session.metadata,
   };

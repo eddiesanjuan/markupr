@@ -5,23 +5,23 @@
  *   idle -> starting -> recording -> stopping -> processing -> complete
  *
  * Responsibilities:
- * - Coordinate all services (audio, capture, transcription)
+ * - Coordinate all services (audio, video recording)
  * - Manage session state with crash recovery (auto-save every 5 seconds)
  * - Watchdog timer to prevent stuck states
- * - Match screenshots to transcripts within 3-second window
- * - Emit state changes to renderer via IPC
+ * - Run PostProcessor pipeline after recording stops
+ * - Emit state changes and processing progress to renderer via IPC
  */
 
 import Store from 'electron-store';
 import { BrowserWindow } from 'electron';
 import { randomUUID } from 'crypto';
 import { audioCapture, type AudioChunk, type CapturedAudioAsset } from './audio/AudioCapture';
-import { screenCapture } from './capture/ScreenCapture';
 import { whisperService } from './transcription';
 import type { TranscriptEvent } from './transcription/types';
 import { getSettingsManager } from './settings';
 import { IPC_CHANNELS } from '../shared/types';
 import { errorHandler } from './ErrorHandler';
+import { postProcessor, type PostProcessResult, type PostProcessProgress } from './pipeline';
 // Note: CrashRecovery module runs independently for crash logging.
 // Session recovery is handled directly in SessionController for full access to session data.
 
@@ -51,7 +51,7 @@ export const STATE_TIMEOUTS: Record<SessionState, number | null> = {
   starting: 5_000,         // 5 seconds to initialize
   recording: 30 * 60_000,  // 30 minutes max recording
   stopping: 3_000,         // 3 seconds to stop services
-  processing: 60_000,      // 60 seconds to process
+  processing: 5 * 60_000,  // 5 minutes for post-processing pipeline
   complete: 30_000,        // 30 seconds to show completion
   error: 5_000,            // 5 seconds to show error
 } as const;
@@ -64,6 +64,11 @@ export const RECORDING_LIMITS = {
   MAX_DURATION_MS: 30 * 60_000,       // 30 minutes - force stop
 } as const;
 
+/**
+ * @deprecated Screenshot capture during recording has been removed.
+ * Frame extraction now happens in the post-processing pipeline.
+ * This interface is kept for backward compatibility with downstream consumers.
+ */
 export interface Screenshot {
   id: string;
   timestamp: number;
@@ -71,18 +76,20 @@ export interface Screenshot {
   width: number;
   height: number;
   base64?: string;
-  trigger?: ScreenshotTrigger;
+  trigger?: string;
 }
 
 export interface FeedbackItem {
   id: string;
   timestamp: number;
   text: string;
-  screenshot?: Screenshot;
   confidence: number;
+  /**
+   * @deprecated Screenshots are no longer captured during recording.
+   * Extracted frames are available via PostProcessResult after processing.
+   */
+  screenshot?: Screenshot;
 }
-
-export type ScreenshotTrigger = 'pause' | 'manual' | 'voice-command';
 
 export interface SessionMetadata {
   sourceId: string;
@@ -105,6 +112,10 @@ export interface Session {
   sourceId: string;
   feedbackItems: FeedbackItem[];
   transcriptBuffer: TranscriptEvent[];
+  /**
+   * @deprecated Screenshots are no longer captured during recording.
+   * Kept for backward compatibility; always an empty array.
+   */
   screenshotBuffer: Screenshot[];
   metadata: SessionMetadata;
 }
@@ -113,8 +124,9 @@ export interface SessionStatus {
   state: SessionState;
   duration: number;
   feedbackCount: number;
-  screenshotCount: number;
   isPaused: boolean;
+  /** Post-processing progress (only set when state === 'processing') */
+  processingProgress?: PostProcessProgress;
 }
 
 export interface SessionControllerEvents {
@@ -225,7 +237,6 @@ export class SessionController {
 
   // Service references (using actual implementations)
   private audioCaptureService: typeof audioCapture;
-  private screenCaptureService: typeof screenCapture;
 
   // Cleanup functions for event subscriptions
   private cleanupFunctions: Array<() => void> = [];
@@ -240,32 +251,24 @@ export class SessionController {
   private stateEnteredAt: number = Date.now();
   private recordingWarningShown: boolean = false;
 
-  // Pending screenshots
-  private pendingScreenshots: Screenshot[] = [];
-  private screenshotCaptureInFlight = false;
-  private lastScreenshotCapturedAt = 0;
+  // Post-processing result (available after processing completes)
+  private postProcessResult: PostProcessResult | null = null;
+
+  // Current processing progress (for status reporting)
+  private currentProcessingProgress: PostProcessProgress | null = null;
 
   // Configuration constants
   private readonly AUTO_SAVE_INTERVAL_MS = 5000;       // 5 seconds (per spec)
   private readonly WATCHDOG_CHECK_INTERVAL_MS = 1000;  // 1 second
-  private readonly TRANSCRIPT_MATCH_WINDOW_MS = 3000;
-  private readonly SCREENSHOT_DEBOUNCE_MS = 450;
   private readonly MAX_RECENT_SESSIONS = 10;
   private readonly MAX_TRANSCRIPT_BUFFER_EVENTS = 2000;
   private readonly WHISPER_RECOVERY_CHUNK_SECONDS = 30;
   private readonly OPENAI_RECOVERY_CHUNK_SECONDS = 180;
   private readonly MAX_POST_SESSION_LOCAL_RECOVERY_DURATION_SEC = 8 * 60;
-  private readonly VOICE_PAUSE_CAPTURE_COOLDOWN_MS = 1800;
-  private readonly VOICE_SCREENSHOT_COMMANDS: RegExp[] = [
-    /\b(?:take|grab|capture)\s+(?:a\s+)?screenshot\b/i,
-    /\bscreenshot\s+(?:this|that|now|here)\b/i,
-    /^(?:please\s+)?screenshot(?:\s+now)?[.!?]*$/i,
-  ];
 
   constructor() {
     // Use singleton instances
     this.audioCaptureService = audioCapture;
-    this.screenCaptureService = screenCapture;
   }
 
   // ===========================================================================
@@ -576,9 +579,9 @@ export class SessionController {
 
     // Reset counters
     this.audioChunkCount = 0;
-    this.wasVoiceActive = false;
-    this.lastVoicePauseCaptureAt = 0;
     this.isPaused = false;
+    this.postProcessResult = null;
+    this.currentProcessingProgress = null;
 
     // Create new session
     this.session = {
@@ -684,7 +687,7 @@ export class SessionController {
   }
 
   /**
-   * Stop the current session and process results.
+   * Stop the current session and run the post-processing pipeline.
    * Transitions: recording -> stopping -> processing -> complete
    */
   async stop(): Promise<Session | null> {
@@ -699,12 +702,6 @@ export class SessionController {
     }
 
     console.log(`[SessionController] Stopping session: ${this.session.id}`);
-
-    // Capture one final screenshot before tearing services down to avoid
-    // ending with an empty visual timeline on long, uninterrupted narration.
-    await this.captureAndQueueScreenshot('manual', true, true).catch((error) => {
-      console.warn('[SessionController] Final stop-time screenshot capture failed:', error);
-    });
 
     // Transition to stopping state
     if (!this.transition('stopping')) {
@@ -729,26 +726,63 @@ export class SessionController {
     }
     this.session.state = 'processing';
 
-    // If live streaming transcripts were unavailable, run a post-session Whisper
-    // fallback with retries before matching pending screenshots.
-    await this.withTimeout(
-      this.recoverTranscriptFromCapturedAudio(),
-      Math.floor(STATE_TIMEOUTS.processing! * 0.6),
-      undefined,
-      'recoverTranscriptFromCapturedAudio'
-    );
+    // Run the post-processing pipeline if we have recorded assets.
+    // PostProcessor handles transcription, analysis, and frame extraction.
+    const videoPath = this.session.metadata.recordingPath;
+    const audioPath = this.session.metadata.audioPath;
+    const sessionDir = videoPath
+      ? videoPath.substring(0, videoPath.lastIndexOf('/'))
+      : undefined;
 
-    // Process pending screenshots with timeout
-    await this.withTimeout(
-      this.processPendingScreenshotsAsync(),
-      Math.floor(STATE_TIMEOUTS.processing! * 0.35),
-      undefined,
-      'processPendingScreenshots'
-    );
+    if (videoPath && audioPath && sessionDir) {
+      try {
+        this.postProcessResult = await this.withTimeout(
+          postProcessor.process({
+            videoPath,
+            audioPath,
+            sessionDir,
+            onProgress: (progress) => {
+              this.currentProcessingProgress = progress;
+              this.emitToRenderer(IPC_CHANNELS.SESSION_STATUS, this.getStatus());
+            },
+          }),
+          STATE_TIMEOUTS.processing! - 5_000, // leave 5s margin for cleanup
+          null as PostProcessResult | null,
+          'PostProcessor.process()'
+        );
+
+        if (this.postProcessResult) {
+          console.log(
+            `[SessionController] Post-processing complete: ` +
+              `${this.postProcessResult.transcriptSegments.length} segments, ` +
+              `${this.postProcessResult.extractedFrames.length} frames`
+          );
+        } else {
+          console.warn('[SessionController] Post-processing timed out or returned null');
+        }
+      } catch (error) {
+        console.error('[SessionController] Post-processing failed:', error);
+        // Continue with session completion even if post-processing fails
+      }
+    } else {
+      console.warn(
+        '[SessionController] Skipping post-processing: missing video/audio paths',
+        { videoPath: !!videoPath, audioPath: !!audioPath }
+      );
+
+      // Fall back to transcript recovery from captured audio buffer
+      await this.withTimeout(
+        this.recoverTranscriptFromCapturedAudio(),
+        Math.floor(STATE_TIMEOUTS.processing! * 0.8),
+        undefined,
+        'recoverTranscriptFromCapturedAudio'
+      );
+    }
 
     // Set end time
     this.session.endTime = Date.now();
     this.isPaused = false;
+    this.currentProcessingProgress = null;
 
     // Final persist
     this.persistState();
@@ -772,16 +806,6 @@ export class SessionController {
     );
 
     return completedSession;
-  }
-
-  /**
-   * Async wrapper for processPendingScreenshots for timeout support.
-   */
-  private async processPendingScreenshotsAsync(): Promise<void> {
-    return new Promise((resolve) => {
-      this.processPendingScreenshots();
-      resolve();
-    });
   }
 
   /**
@@ -814,7 +838,8 @@ export class SessionController {
   reset(): void {
     this.cleanupServices();
     this.session = null;
-    this.pendingScreenshots = [];
+    this.postProcessResult = null;
+    this.currentProcessingProgress = null;
     this.isPaused = false;
     this.state = 'idle';
     this.emitStateChange();
@@ -830,13 +855,18 @@ export class SessionController {
   getStatus(): SessionStatus {
     const duration = this.session ? Date.now() - this.session.startTime : 0;
 
-    return {
+    const status: SessionStatus = {
       state: this.state,
       duration,
       feedbackCount: this.session?.feedbackItems.length ?? 0,
-      screenshotCount: this.session?.screenshotBuffer.length ?? 0,
       isPaused: this.state === 'recording' && this.isPaused,
     };
+
+    if (this.state === 'processing' && this.currentProcessingProgress) {
+      status.processingProgress = this.currentProcessingProgress;
+    }
+
+    return status;
   }
 
   isSessionPaused(): boolean {
@@ -850,7 +880,6 @@ export class SessionController {
 
     this.isPaused = true;
     this.audioCaptureService.setPaused(true);
-    this.wasVoiceActive = false;
     this.emitToRenderer(IPC_CHANNELS.SESSION_VOICE_ACTIVITY, { active: false });
     this.emitStatus();
     return true;
@@ -863,7 +892,6 @@ export class SessionController {
 
     this.isPaused = false;
     this.audioCaptureService.setPaused(false);
-    this.wasVoiceActive = false;
     this.emitStatus();
     return true;
   }
@@ -918,10 +946,11 @@ export class SessionController {
   }
 
   /**
-   * Capture a screenshot on-demand while recording (manual hotkey/button).
+   * Get the post-processing result from the most recent session.
+   * Available after the processing state completes.
    */
-  async captureManualScreenshot(): Promise<Screenshot | null> {
-    return this.captureAndQueueScreenshot('manual');
+  getPostProcessResult(): PostProcessResult | null {
+    return this.postProcessResult;
   }
 
   // ===========================================================================
@@ -940,7 +969,6 @@ export class SessionController {
       id: randomUUID(),
       timestamp: Date.now(),
       text: item.text || '',
-      screenshot: item.screenshot,
       confidence: item.confidence ?? 1.0,
     };
 
@@ -996,13 +1024,11 @@ export class SessionController {
 
   // Audio chunk counter for debug logging
   private audioChunkCount: number = 0;
-  private wasVoiceActive = false;
-  private lastVoicePauseCaptureAt = 0;
 
   /**
    * Handle audio chunk from microphone
    */
-  private handleAudioChunk(chunk: AudioChunk): void {
+  private handleAudioChunk(_chunk: AudioChunk): void {
     if (this.state !== 'recording') {
       return;
     }
@@ -1023,44 +1049,17 @@ export class SessionController {
   }
 
   /**
-   * Handle voice activity changes (for UI feedback)
+   * Handle voice activity changes (forward to renderer for UI feedback).
+   * Screenshots are no longer captured during recording; frame extraction
+   * happens in the post-processing pipeline after recording stops.
    */
   private handleVoiceActivity(active: boolean): void {
     if (this.isPaused) {
-      this.wasVoiceActive = false;
       this.emitToRenderer(IPC_CHANNELS.SESSION_VOICE_ACTIVITY, { active: false });
       return;
     }
 
-    // Emit to renderer for visual feedback
     this.emitToRenderer(IPC_CHANNELS.SESSION_VOICE_ACTIVITY, { active });
-
-    if (this.state !== 'recording') {
-      this.wasVoiceActive = active;
-      return;
-    }
-
-    if (active) {
-      this.wasVoiceActive = true;
-      return;
-    }
-
-    // Trigger an automatic screenshot when speech transitions into silence.
-    if (this.wasVoiceActive) {
-      this.wasVoiceActive = false;
-      const now = Date.now();
-      if (now - this.lastVoicePauseCaptureAt >= this.VOICE_PAUSE_CAPTURE_COOLDOWN_MS) {
-        this.lastVoicePauseCaptureAt = now;
-        void this.captureAndQueueScreenshot('pause');
-      }
-    }
-  }
-
-  /**
-   * Handle utterance end - KEY event that triggers screenshot capture
-   */
-  private async handleUtteranceEnd(_timestamp: number): Promise<void> {
-    await this.captureAndQueueScreenshot('pause');
   }
 
   /**
@@ -1075,8 +1074,7 @@ export class SessionController {
     const hasFinalTranscript = this.session.transcriptBuffer.some(
       (entry) => entry.isFinal && entry.text.trim().length > 0,
     );
-    const hasUnmatchedScreenshots = this.pendingScreenshots.length > 0;
-    if (hasFinalTranscript && !hasUnmatchedScreenshots) {
+    if (hasFinalTranscript) {
       return;
     }
 
@@ -1163,10 +1161,6 @@ export class SessionController {
         0,
         this.session.transcriptBuffer.length - this.MAX_TRANSCRIPT_BUFFER_EVENTS,
       );
-    }
-
-    for (const event of events) {
-      this.tryMatchTranscriptToScreenshot(event);
     }
   }
 
@@ -1409,6 +1403,8 @@ export class SessionController {
 
   /**
    * Handle transcript result from the active transcription source.
+   * Note: Live transcription is currently disabled in favor of post-processing,
+   * but this handler is retained for future use if streaming transcription returns.
    */
   private handleTranscriptResult(event: TranscriptEvent): void {
     if (!this.session) {
@@ -1421,15 +1417,13 @@ export class SessionController {
       timestamp: normalizedTimestamp,
     };
 
-    const finalEvent = normalizedEvent.isFinal
-      ? this.prepareFinalTranscript(normalizedEvent)
-      : normalizedEvent;
-    if (!finalEvent) {
+    const text = normalizedEvent.text.trim();
+    if (!text) {
       return;
     }
 
     // Add to buffer
-    this.session.transcriptBuffer.push(finalEvent);
+    this.session.transcriptBuffer.push(normalizedEvent);
     if (this.session.transcriptBuffer.length > this.MAX_TRANSCRIPT_BUFFER_EVENTS) {
       this.session.transcriptBuffer.splice(
         0,
@@ -1438,24 +1432,21 @@ export class SessionController {
     }
 
     // Emit to renderer
-    if (finalEvent.isFinal) {
-      console.log(`[SessionController] Final transcript (${finalEvent.tier}): "${finalEvent.text}"`);
+    if (normalizedEvent.isFinal) {
+      console.log(`[SessionController] Final transcript (${normalizedEvent.tier}): "${text}"`);
       this.emitToRenderer(IPC_CHANNELS.TRANSCRIPTION_FINAL, {
-        text: finalEvent.text,
-        confidence: finalEvent.confidence,
-        timestamp: finalEvent.timestamp,
-        tier: finalEvent.tier,
+        text,
+        confidence: normalizedEvent.confidence,
+        timestamp: normalizedEvent.timestamp,
+        tier: normalizedEvent.tier,
       });
-
-      // Try to match with pending screenshots
-      this.tryMatchTranscriptToScreenshot(finalEvent);
     } else {
       this.emitToRenderer(IPC_CHANNELS.TRANSCRIPTION_UPDATE, {
-        text: finalEvent.text,
-        confidence: finalEvent.confidence,
-        timestamp: finalEvent.timestamp,
+        text,
+        confidence: normalizedEvent.confidence,
+        timestamp: normalizedEvent.timestamp,
         isFinal: false,
-        tier: finalEvent.tier,
+        tier: normalizedEvent.tier,
       });
     }
   }
@@ -1484,118 +1475,6 @@ export class SessionController {
     return timestamp;
   }
 
-  /**
-   * Handles voice screenshot commands and strips command phrases from transcript text.
-   * Returns null if the transcript should be dropped from feedback output.
-   */
-  private prepareFinalTranscript(event: TranscriptEvent): TranscriptEvent | null {
-    const raw = event.text.trim();
-    if (!raw) {
-      return null;
-    }
-
-    if (!this.isVoiceScreenshotCommand(raw)) {
-      return event;
-    }
-
-    const cleanedText = this.stripVoiceCommand(raw);
-    void this.captureAndQueueScreenshot('voice-command');
-
-    if (!cleanedText) {
-      console.log('[SessionController] Voice screenshot command detected');
-      return null;
-    }
-
-    return {
-      ...event,
-      text: cleanedText,
-    };
-  }
-
-  private isVoiceScreenshotCommand(text: string): boolean {
-    return this.VOICE_SCREENSHOT_COMMANDS.some((pattern) => pattern.test(text));
-  }
-
-  private stripVoiceCommand(text: string): string {
-    let cleaned = text;
-
-    cleaned = cleaned.replace(/\b(?:take|grab|capture)\s+(?:a\s+)?screenshot(?:\s+now)?\b/gi, ' ');
-    cleaned = cleaned.replace(/\bscreenshot(?:\s+(?:this|that|now|here))?\b/gi, ' ');
-    cleaned = cleaned.replace(/\s+/g, ' ').trim();
-
-    // Trim punctuation left behind after removing command words.
-    cleaned = cleaned.replace(/^[,.;:!?-]+\s*/, '').replace(/\s*[,.;:!?-]+$/, '');
-
-    return cleaned.trim();
-  }
-
-  private async captureAndQueueScreenshot(
-    trigger: ScreenshotTrigger,
-    bypassDebounce: boolean = false,
-    allowWhenPaused: boolean = false
-  ): Promise<Screenshot | null> {
-    if (this.state !== 'recording' || !this.session) {
-      return null;
-    }
-
-    if (this.isPaused && !allowWhenPaused) {
-      return null;
-    }
-
-    if (this.screenshotCaptureInFlight) {
-      return null;
-    }
-
-    const now = Date.now();
-    if (!bypassDebounce && now - this.lastScreenshotCapturedAt < this.SCREENSHOT_DEBOUNCE_MS) {
-      return null;
-    }
-
-    this.screenshotCaptureInFlight = true;
-
-    try {
-      const captureResult = await this.screenCaptureService.capture(this.session.sourceId);
-
-      if (!this.session || this.state !== 'recording') {
-        return null;
-      }
-
-      const screenshot: Screenshot = {
-        id: captureResult.id,
-        timestamp: Date.now(),
-        buffer: captureResult.buffer,
-        width: captureResult.width,
-        height: captureResult.height,
-        trigger,
-      };
-
-      this.lastScreenshotCapturedAt = screenshot.timestamp;
-      this.session.screenshotBuffer.push(screenshot);
-      this.pendingScreenshots.push(screenshot);
-
-      // Match immediately if relevant transcript context is already buffered.
-      this.tryMatchScreenshotToTranscript(screenshot);
-
-      this.emitToRenderer(IPC_CHANNELS.SCREENSHOT_CAPTURED, {
-        id: screenshot.id,
-        timestamp: screenshot.timestamp,
-        count: this.session.screenshotBuffer.length,
-        width: screenshot.width,
-        height: screenshot.height,
-        trigger,
-      });
-
-      this.persistSession();
-      this.persistState();
-
-      return screenshot;
-    } catch (error) {
-      this.handleServiceError('capture', error as Error);
-      return null;
-    } finally {
-      this.screenshotCaptureInFlight = false;
-    }
-  }
 
   /**
    * Handle service errors with categorized error handling
@@ -1640,170 +1519,6 @@ export class SessionController {
     });
   }
 
-  // ===========================================================================
-  // Timestamp Matching Algorithm
-  // ===========================================================================
-
-  /**
-   * Try to match a screenshot to recent transcripts
-   */
-  private tryMatchScreenshotToTranscript(screenshot: Screenshot): void {
-    if (!this.session) {
-      return;
-    }
-
-    // Screenshot timestamp is in ms, transcript timestamps are in seconds
-    const screenshotTimeSec = screenshot.timestamp / 1000;
-
-    const recentTranscripts = this.session.transcriptBuffer.filter(
-      (t) =>
-        t.isFinal &&
-        screenshotTimeSec >= t.timestamp &&
-        screenshotTimeSec - t.timestamp < this.TRANSCRIPT_MATCH_WINDOW_MS / 1000
-    );
-
-    if (recentTranscripts.length > 0) {
-      // Combine recent transcripts as feedback text
-      const combinedText = recentTranscripts
-        .map((t) => t.text)
-        .join(' ')
-        .trim();
-
-      // Calculate average confidence
-      const avgConfidence =
-        recentTranscripts.reduce((sum, t) => sum + t.confidence, 0) /
-        recentTranscripts.length;
-
-      // Create feedback item
-      const feedbackItem: FeedbackItem = {
-        id: randomUUID(),
-        timestamp: screenshot.timestamp,
-        text: combinedText,
-        screenshot,
-        confidence: avgConfidence,
-      };
-
-      this.session.feedbackItems.push(feedbackItem);
-      this.emitFeedbackItem(feedbackItem);
-      this.persistSession();
-      this.persistState();
-
-      // Remove from pending
-      const pendingIndex = this.pendingScreenshots.findIndex(
-        (s) => s.id === screenshot.id
-      );
-      if (pendingIndex !== -1) {
-        this.pendingScreenshots.splice(pendingIndex, 1);
-      }
-
-      console.log(
-        `[SessionController] Matched screenshot to transcript: "${combinedText.substring(0, 50)}..."`
-      );
-    }
-  }
-
-  /**
-   * Try to match a transcript to pending screenshots
-   */
-  private tryMatchTranscriptToScreenshot(event: TranscriptEvent): void {
-    if (!this.session || this.pendingScreenshots.length === 0 || !event.isFinal) {
-      return;
-    }
-
-    // Find screenshots within the match window
-    const resultTimeMs = event.timestamp * 1000;
-    const matchingScreenshots = this.pendingScreenshots.filter(
-      (s) =>
-        s.timestamp - resultTimeMs < this.TRANSCRIPT_MATCH_WINDOW_MS &&
-        s.timestamp >= resultTimeMs
-    );
-
-    for (const screenshot of matchingScreenshots) {
-      // Get all transcripts within window of this screenshot
-      const screenshotTimeSec = screenshot.timestamp / 1000;
-      const windowTranscripts = this.session.transcriptBuffer.filter(
-        (t) =>
-          t.isFinal &&
-          screenshotTimeSec - t.timestamp < this.TRANSCRIPT_MATCH_WINDOW_MS / 1000 &&
-          screenshotTimeSec >= t.timestamp
-      );
-
-      const combinedText = windowTranscripts
-        .map((t) => t.text)
-        .join(' ')
-        .trim();
-
-      if (combinedText) {
-        const avgConfidence =
-          windowTranscripts.reduce((sum, t) => sum + t.confidence, 0) /
-          windowTranscripts.length;
-
-        const feedbackItem: FeedbackItem = {
-          id: randomUUID(),
-          timestamp: screenshot.timestamp,
-          text: combinedText,
-          screenshot,
-          confidence: avgConfidence,
-        };
-
-        this.session.feedbackItems.push(feedbackItem);
-        this.emitFeedbackItem(feedbackItem);
-        this.persistSession();
-        this.persistState();
-
-        // Remove from pending
-        const pendingIndex = this.pendingScreenshots.findIndex(
-          (s) => s.id === screenshot.id
-        );
-        if (pendingIndex !== -1) {
-          this.pendingScreenshots.splice(pendingIndex, 1);
-        }
-      }
-    }
-  }
-
-  /**
-   * Process any remaining pending screenshots at session end
-   */
-  private processPendingScreenshots(): void {
-    if (!this.session) {
-      return;
-    }
-
-    for (const screenshot of this.pendingScreenshots) {
-      // Find any transcripts near this screenshot
-      const screenshotTimeSec = screenshot.timestamp / 1000;
-      const nearbyTranscripts = this.session.transcriptBuffer.filter(
-        (t) =>
-          t.isFinal &&
-          Math.abs(screenshotTimeSec - t.timestamp) <
-            (this.TRANSCRIPT_MATCH_WINDOW_MS * 2) / 1000
-      );
-
-      const combinedText = nearbyTranscripts
-        .map((t) => t.text)
-        .join(' ')
-        .trim();
-
-      const feedbackItem: FeedbackItem = {
-        id: randomUUID(),
-        timestamp: screenshot.timestamp,
-        text: combinedText || '[No matching narration]',
-        screenshot,
-        confidence:
-          nearbyTranscripts.length > 0
-            ? nearbyTranscripts.reduce((sum, t) => sum + t.confidence, 0) /
-              nearbyTranscripts.length
-            : 0,
-      };
-
-      this.session.feedbackItems.push(feedbackItem);
-    }
-
-    this.pendingScreenshots = [];
-    this.persistSession();
-    this.persistState();
-  }
 
   // ===========================================================================
   // Persistence
@@ -1916,8 +1631,7 @@ export class SessionController {
         timestamp: item.timestamp,
         text: item.text,
         confidence: item.confidence,
-        hasScreenshot: !!item.screenshot,
-        // Don't persist screenshot buffer - too large
+        hasScreenshot: false,
       }));
       store.set('persistedFeedbackItems', persistedFeedback);
     }
@@ -2231,13 +1945,11 @@ export class SessionController {
    */
   private emitFeedbackItem(item: FeedbackItem): void {
     this.events?.onFeedbackItem(item);
-    // Emit to renderer without buffer (just metadata)
     this.emitToRenderer('session:feedbackItem', {
       id: item.id,
       timestamp: item.timestamp,
       text: item.text,
       confidence: item.confidence,
-      hasScreenshot: !!item.screenshot,
     });
   }
 
@@ -2339,6 +2051,8 @@ export class SessionController {
 
     // Clear state
     this.session = null;
+    this.postProcessResult = null;
+    this.currentProcessingProgress = null;
     this.events = null;
     this.mainWindow = null;
 

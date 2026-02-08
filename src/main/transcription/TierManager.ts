@@ -1,21 +1,17 @@
 /**
- * TierManager.ts - Transcription Tier Selection and Failover
+ * TierManager.ts - Transcription Tier Selection (Post-Process Architecture)
  *
- * Manages the transcription fallback system:
- * - Tier 1: Local Whisper (default)
- * - Tier 2: macOS Dictation (fallback)
- * - Tier 3: Timer-only (emergency)
+ * Simplified tier system for post-session transcription:
+ * - Tier 1: Local Whisper (default, batch transcription after recording)
+ * - Tier 2: Timer-only (fallback, no transcription)
  *
- * Handles:
- * - Automatic tier selection based on availability
- * - Mid-session failback on failures
- * - Unified interface for all transcription services
+ * In the post-process architecture, transcription no longer happens during
+ * recording. TierManager tracks tier availability for the UI and provides
+ * tier preference selection for post-session processing.
  */
 
 import { EventEmitter } from 'events';
 import * as os from 'os';
-import { whisperService } from './WhisperService';
-import { silenceDetector } from './SilenceDetector';
 import { modelDownloadManager } from './ModelDownloadManager';
 import { getSettingsManager } from '../settings';
 import type {
@@ -23,35 +19,22 @@ import type {
   WhisperModel,
   TierStatus,
   TierQuality,
-  TranscriptEvent,
-  PauseEvent,
-  TranscriptCallback,
-  PauseCallback,
-  TierChangeCallback,
-  ErrorCallback,
 } from './types';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const TIER_PRIORITY: TranscriptionTier[] = ['whisper', 'macos-dictation', 'timer-only'];
+const TIER_PRIORITY: TranscriptionTier[] = ['whisper', 'timer-only'];
 
 const TIER_QUALITY: Record<TranscriptionTier, TierQuality> = {
-  whisper: { accuracy: '90%+', latency: '1-3s' },
-  'macos-dictation': { accuracy: '85%', latency: 'Real-time' },
+  whisper: { accuracy: '90%+', latency: 'Post-session' },
   'timer-only': { accuracy: 'N/A', latency: 'N/A' },
 };
 
 // Minimum memory for Whisper (2GB)
 const WHISPER_MIN_MEMORY = 2 * 1024 * 1024 * 1024;
 
-// Timer-only screenshot interval
-const TIMER_SCREENSHOT_INTERVAL_MS = 10000;
-const MACOS_FALLBACK_SCREENSHOT_INTERVAL_MS = 12000;
-
-// Max failovers before forcing timer-only
-const MAX_FAILOVERS = 3;
 const MODEL_MEMORY_REQUIREMENT_BYTES: Record<WhisperModel, number> = {
   tiny: 450 * 1024 * 1024,
   base: 800 * 1024 * 1024,
@@ -69,20 +52,6 @@ type PreferredTier = 'auto' | TranscriptionTier;
 export class TierManager extends EventEmitter {
   private currentTier: TranscriptionTier | null = null;
   private preferredTier: PreferredTier = 'auto';
-  private isActive: boolean = false;
-  private failoverCount: number = 0;
-
-  // Cleanup functions for subscriptions
-  private cleanupFunctions: Array<() => void> = [];
-
-  // Timer-only mode
-  private timerInterval: ReturnType<typeof setInterval> | null = null;
-
-  // Callbacks
-  private transcriptCallbacks: TranscriptCallback[] = [];
-  private pauseCallbacks: PauseCallback[] = [];
-  private tierChangeCallbacks: TierChangeCallback[] = [];
-  private errorCallbacks: ErrorCallback[] = [];
 
   // ============================================================================
   // Public API
@@ -92,13 +61,12 @@ export class TierManager extends EventEmitter {
    * Get the status of all tiers
    */
   async getTierStatuses(): Promise<TierStatus[]> {
-    const [tier1, tier2, tier3] = await Promise.all([
-      this.checkTier1Availability(),
-      this.checkTier2Availability(),
-      this.checkTier3Availability(),
+    const [whisperStatus, timerStatus] = await Promise.all([
+      this.checkWhisperAvailability(),
+      this.checkTimerOnlyAvailability(),
     ]);
 
-    return [tier1, tier2, tier3];
+    return [whisperStatus, timerStatus];
   }
 
   /**
@@ -116,8 +84,8 @@ export class TierManager extends EventEmitter {
   }
 
   /**
-   * Set preferred tier selection used for future session starts.
-   * Only transcription-capable tiers are accepted in strict feedback mode.
+   * Set preferred tier selection used for post-session transcription.
+   * Only transcription-capable tiers are accepted.
    */
   setPreferredTier(tier: PreferredTier): void {
     if (tier !== 'auto' && !this.tierProvidesTranscription(tier)) {
@@ -131,13 +99,6 @@ export class TierManager extends EventEmitter {
   }
 
   /**
-   * Check if a session is active
-   */
-  isSessionActive(): boolean {
-    return this.isActive;
-  }
-
-  /**
    * Get quality info for a tier
    */
   getTierQuality(tier: TranscriptionTier): TierQuality {
@@ -146,21 +107,21 @@ export class TierManager extends EventEmitter {
 
   /**
    * Check if a tier actually provides transcription
-   * macos-dictation is a placeholder and timer-only never transcribes
    */
   tierProvidesTranscription(tier: TranscriptionTier): boolean {
     return tier === 'whisper';
   }
 
   /**
-   * Check if we have any tier that can actually transcribe
+   * Check if we have any tier that can actually transcribe.
+   * Considers both local Whisper and cloud OpenAI as valid paths.
    */
   async hasTranscriptionCapability(): Promise<boolean> {
     const statuses = await this.getTierStatuses();
-    const hasLiveTier = statuses.some(
+    const hasLocalTier = statuses.some(
       (s) => s.available && this.tierProvidesTranscription(s.tier)
     );
-    if (hasLiveTier) {
+    if (hasLocalTier) {
       return true;
     }
 
@@ -182,8 +143,8 @@ export class TierManager extends EventEmitter {
   }
 
   /**
-   * Select the best available tier
-   * Respects user preference when available
+   * Select the best available tier.
+   * Respects user preference when available.
    */
   async selectBestTier(): Promise<TranscriptionTier> {
     const statuses = await this.getTierStatuses();
@@ -191,11 +152,11 @@ export class TierManager extends EventEmitter {
     if (this.preferredTier !== 'auto') {
       const preferredStatus = statuses.find((s) => s.tier === this.preferredTier);
       if (preferredStatus?.available) {
-        return this.preferredTier;
+        return this.preferredTier as TranscriptionTier;
       }
 
       this.log(
-        `Preferred tier "${this.preferredTier}" unavailable, using automatic failover`
+        `Preferred tier "${this.preferredTier}" unavailable, using automatic fallover`
       );
     }
 
@@ -210,186 +171,11 @@ export class TierManager extends EventEmitter {
     return 'timer-only';
   }
 
-  /**
-   * Start transcription with the best available tier
-   */
-  async start(): Promise<TranscriptionTier> {
-    if (this.isActive) {
-      throw new Error('TierManager already active. Call stop() first.');
-    }
-
-    // Log all tier statuses for debugging
-    const statuses = await this.getTierStatuses();
-    this.log('=== TIER AVAILABILITY CHECK ===');
-    for (const status of statuses) {
-      this.log(`  ${status.tier}: ${status.available ? 'AVAILABLE' : `UNAVAILABLE - ${status.reason}`}`);
-    }
-
-    const tier = await this.selectBestTier();
-
-    // Warn if falling back to a tier that doesn't provide transcription
-    if (tier === 'macos-dictation') {
-      this.log('WARNING: macOS Dictation tier is a PLACEHOLDER - it does NOT produce transcriptions!');
-      this.log('WARNING: Only pause events (for screenshots) will be emitted.');
-      this.log('WARNING: Consider adding an OpenAI API key or downloading a Whisper model.');
-    } else if (tier === 'timer-only') {
-      this.log('WARNING: Timer-only mode - NO transcription will be produced!');
-      this.log('WARNING: Only periodic screenshot triggers will be emitted.');
-    }
-
-    this.log(`Selected tier: ${tier}`);
-    await this.startTier(tier);
-
-    return this.currentTier ?? tier;
-  }
-
-  /**
-   * Start transcription with a specific tier
-   */
-  async startTier(tier: TranscriptionTier): Promise<void> {
-    if (this.isActive && this.currentTier === tier) {
-      return;
-    }
-
-    // Stop current tier if switching
-    if (this.isActive) {
-      await this.stopCurrentTier();
-    }
-
-    this.log(`Starting tier: ${tier}`);
-    this.currentTier = tier;
-    this.isActive = true;
-
-    try {
-      switch (tier) {
-        case 'whisper':
-          await this.startWhisper();
-          break;
-        case 'macos-dictation':
-          await this.startMacOSDictation();
-          break;
-        case 'timer-only':
-          await this.startTimerOnly();
-          break;
-      }
-    } catch (error) {
-      this.logError(`Failed to start ${tier}`, error);
-      await this.handleTierFailure(tier, error as Error);
-    }
-  }
-
-  /**
-   * Stop transcription
-   */
-  async stop(): Promise<void> {
-    if (!this.isActive) {
-      return;
-    }
-
-    await this.stopCurrentTier();
-    this.isActive = false;
-    this.currentTier = null;
-    this.failoverCount = 0;
-  }
-
-  /**
-   * Convert Buffer to Float32Array correctly
-   * Node.js Buffers can have different byteOffset than 0, so we need to account for that
-   */
-  private bufferToFloat32Array(buffer: Buffer): Float32Array {
-    // CRITICAL FIX: When converting from Node.js Buffer to Float32Array,
-    // we must account for the buffer's byteOffset and byteLength.
-    // Simply using new Float32Array(buffer.buffer) can read from wrong memory locations!
-    return new Float32Array(
-      buffer.buffer,
-      buffer.byteOffset,
-      buffer.byteLength / 4  // Float32 = 4 bytes per element
-    );
-  }
-
-  /**
-   * Send audio to the active transcription service
-   */
-  sendAudio(samples: Float32Array | Buffer, timestamp: number, durationMs: number): void {
-    if (!this.isActive || !this.currentTier) {
-      return;
-    }
-
-    switch (this.currentTier) {
-      case 'whisper': {
-        // Whisper expects Float32Array - use correct conversion
-        const float32 = samples instanceof Float32Array ? samples : this.bufferToFloat32Array(samples);
-        whisperService.addAudio(float32, durationMs);
-        // Also feed silence detector for screenshot triggers
-        silenceDetector.addAudio(float32, durationMs);
-        break;
-      }
-
-      case 'macos-dictation': {
-        // macOS dictation handles its own audio capture
-        // We only need silence detection for screenshots
-        const float32ForSilence = samples instanceof Float32Array ? samples : this.bufferToFloat32Array(samples);
-        silenceDetector.addAudio(float32ForSilence, durationMs);
-        break;
-      }
-
-      case 'timer-only':
-        // No transcription, just accumulate audio for recording
-        break;
-    }
-  }
-
-  /**
-   * Force a failover to the next available tier
-   */
-  async forceFailover(reason: string): Promise<TranscriptionTier | null> {
-    if (!this.currentTier) {
-      return null;
-    }
-
-    const currentTier = this.currentTier;
-    await this.handleTierFailure(currentTier, new Error(reason));
-    return this.currentTier;
-  }
-
-  // ============================================================================
-  // Event Subscriptions
-  // ============================================================================
-
-  onTranscript(callback: TranscriptCallback): () => void {
-    this.transcriptCallbacks.push(callback);
-    return () => {
-      this.transcriptCallbacks = this.transcriptCallbacks.filter((cb) => cb !== callback);
-    };
-  }
-
-  onPause(callback: PauseCallback): () => void {
-    this.pauseCallbacks.push(callback);
-    return () => {
-      this.pauseCallbacks = this.pauseCallbacks.filter((cb) => cb !== callback);
-    };
-  }
-
-  onTierChange(callback: TierChangeCallback): () => void {
-    this.tierChangeCallbacks.push(callback);
-    return () => {
-      this.tierChangeCallbacks = this.tierChangeCallbacks.filter((cb) => cb !== callback);
-    };
-  }
-
-  onError(callback: ErrorCallback): () => void {
-    this.errorCallbacks.push(callback);
-    return () => {
-      this.errorCallbacks = this.errorCallbacks.filter((cb) => cb !== callback);
-    };
-  }
-
   // ============================================================================
   // Tier Availability Checks
   // ============================================================================
 
-  private async checkTier1Availability(): Promise<TierStatus> {
-    // Whisper availability
+  private async checkWhisperAvailability(): Promise<TierStatus> {
     if (!modelDownloadManager.hasAnyModel()) {
       return { tier: 'whisper', available: false, reason: 'Model not downloaded' };
     }
@@ -397,7 +183,6 @@ export class TierManager extends EventEmitter {
     const selectedModel = modelDownloadManager.getDefaultModel();
     const requiredMemory = MODEL_MEMORY_REQUIREMENT_BYTES[selectedModel] ?? WHISPER_MIN_MEMORY;
 
-    // Check memory
     const freeMemory = os.freemem();
     if (freeMemory < requiredMemory) {
       return {
@@ -412,219 +197,9 @@ export class TierManager extends EventEmitter {
     return { tier: 'whisper', available: true };
   }
 
-  private async checkTier2Availability(): Promise<TierStatus> {
-    // macOS only
-    if (process.platform !== 'darwin') {
-      return { tier: 'macos-dictation', available: false, reason: 'macOS only' };
-    }
-
-    // Note: Full implementation would check if Dictation is enabled in System Preferences
-    // For now, assume available on macOS (users can enable it if needed)
-    return { tier: 'macos-dictation', available: true };
-  }
-
-  private async checkTier3Availability(): Promise<TierStatus> {
+  private async checkTimerOnlyAvailability(): Promise<TierStatus> {
     // Timer-only is always available
     return { tier: 'timer-only', available: true };
-  }
-
-  // ============================================================================
-  // Tier Start/Stop Methods
-  // ============================================================================
-
-  private async startWhisper(): Promise<void> {
-    if (!modelDownloadManager.hasAnyModel()) {
-      throw new Error('No Whisper model downloaded');
-    }
-
-    const selectedModel = modelDownloadManager.getDefaultModel();
-    const modelPath = modelDownloadManager.getModelPath(selectedModel);
-
-    whisperService.setModelPath(modelPath);
-
-    // Initialize Whisper
-    await whisperService.initialize();
-
-    // Subscribe to transcript events
-    const unsubTranscript = whisperService.onTranscript((result) => {
-      this.emitTranscript({
-        text: result.text,
-        isFinal: true, // Whisper always produces final results
-        confidence: result.confidence,
-        timestamp: result.startTime,
-        tier: 'whisper',
-      });
-    });
-    this.cleanupFunctions.push(unsubTranscript);
-
-    const unsubError = whisperService.onError((error) => {
-      this.handleTierFailure('whisper', error);
-    });
-    this.cleanupFunctions.push(unsubError);
-
-    // Start silence detector for pause events
-    const unsubSilence = silenceDetector.onSilenceDetected((timestamp) => {
-      this.emitPause({ timestamp, tier: 'whisper' });
-    });
-    this.cleanupFunctions.push(unsubSilence);
-
-    silenceDetector.start();
-    await whisperService.start();
-    this.log(`Whisper tier started (model: ${selectedModel})`);
-  }
-
-  private async startMacOSDictation(): Promise<void> {
-    // macOS Dictation uses the system's built-in speech recognition
-    // We just need silence detection for screenshot triggers
-
-    const unsubSilence = silenceDetector.onSilenceDetected((timestamp) => {
-      this.log(`Pause detected at ${timestamp.toFixed(2)}s - triggering screenshot`);
-      this.emitPause({ timestamp, tier: 'macos-dictation' });
-    });
-    this.cleanupFunctions.push(unsubSilence);
-
-    silenceDetector.start();
-
-    // Also emit periodic pause events as a safety net when silence detection
-    // misses transitions (for example during continuous speech).
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-    }
-    this.timerInterval = setInterval(() => {
-      this.emitPause({ timestamp: Date.now() / 1000, tier: 'macos-dictation' });
-    }, MACOS_FALLBACK_SCREENSHOT_INTERVAL_MS);
-
-    // IMPORTANT: This is a PLACEHOLDER tier - it does NOT produce actual transcriptions!
-    // Full macOS Dictation integration would require NSSpeechRecognizer native bindings.
-    // Currently it ONLY emits pause events for screenshot capture.
-    this.log('=== macOS Dictation tier started ===');
-    this.log('NOTE: This tier is a PLACEHOLDER - NO TRANSCRIPTION will be produced!');
-    this.log('NOTE: Only silence detection for screenshot triggers is active.');
-    this.log(
-      `NOTE: Added periodic screenshot safety trigger (${Math.round(MACOS_FALLBACK_SCREENSHOT_INTERVAL_MS / 1000)}s).`
-    );
-    this.log('NOTE: To get actual transcription, add an OpenAI API key or download a Whisper model.');
-  }
-
-  private async startTimerOnly(): Promise<void> {
-    // Timer-only mode: emit pause events at regular intervals
-    this.timerInterval = setInterval(() => {
-      this.emitPause({ timestamp: Date.now() / 1000, tier: 'timer-only' });
-    }, TIMER_SCREENSHOT_INTERVAL_MS);
-
-    this.log(`Timer-only mode started (screenshots every ${TIMER_SCREENSHOT_INTERVAL_MS / 1000}s)`);
-  }
-
-  private async stopCurrentTier(): Promise<void> {
-    // Cleanup subscriptions
-    for (const cleanup of this.cleanupFunctions) {
-      try {
-        cleanup();
-      } catch (error) {
-        this.logError('Error during cleanup', error);
-      }
-    }
-    this.cleanupFunctions = [];
-
-    // Stop services based on current tier
-    if (this.currentTier === 'whisper') {
-      await whisperService.stop();
-      silenceDetector.stop();
-    } else if (this.currentTier === 'macos-dictation') {
-      silenceDetector.stop();
-      if (this.timerInterval) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-      }
-    } else if (this.currentTier === 'timer-only') {
-      if (this.timerInterval) {
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-      }
-    }
-
-    this.log(`Stopped tier: ${this.currentTier}`);
-  }
-
-  // ============================================================================
-  // Failover Handling
-  // ============================================================================
-
-  private async handleTierFailure(failedTier: TranscriptionTier, error: Error): Promise<void> {
-    this.logError(`Tier ${failedTier} failed`, error);
-    this.errorCallbacks.forEach((cb) => cb(error, failedTier));
-
-    this.failoverCount++;
-
-    if (this.failoverCount >= MAX_FAILOVERS) {
-      this.log('Max failovers reached, falling back to timer-only');
-      await this.performFailover(failedTier, 'timer-only', 'Max failover attempts reached');
-      return;
-    }
-
-    // Find next available transcription-capable tier first.
-    const currentIndex = TIER_PRIORITY.indexOf(failedTier);
-    const statuses = await this.getTierStatuses();
-    const remainingTiers = TIER_PRIORITY.slice(currentIndex + 1);
-
-    for (const nextTier of remainingTiers) {
-      if (!this.tierProvidesTranscription(nextTier)) {
-        continue;
-      }
-      const status = statuses.find((s) => s.tier === nextTier);
-
-      if (status?.available) {
-        await this.performFailover(failedTier, nextTier, error.message);
-        return;
-      }
-    }
-
-    // If no transcription-capable fallback exists, drop to best available non-transcribing tier.
-    for (const nextTier of remainingTiers) {
-      const status = statuses.find((s) => s.tier === nextTier);
-      if (!status?.available) {
-        continue;
-      }
-
-      this.log(
-        `No transcription-capable fallback available. Switching to ${nextTier}; post-session recovery should reconstruct transcript from captured audio.`,
-      );
-      await this.performFailover(failedTier, nextTier, `${error.message} (no transcription-capable fallback)`);
-      return;
-    }
-
-    // Should be unreachable because timer-only is always available.
-    await this.performFailover(failedTier, 'timer-only', 'No available fallback tiers');
-  }
-
-  private async performFailover(
-    fromTier: TranscriptionTier,
-    toTier: TranscriptionTier,
-    reason: string
-  ): Promise<void> {
-    this.log(`Failover: ${fromTier} -> ${toTier} (${reason})`);
-
-    // Notify listeners
-    this.tierChangeCallbacks.forEach((cb) => cb(fromTier, toTier, reason));
-    this.emit('tierChange', fromTier, toTier, reason);
-
-    // Stop current tier and start new one
-    await this.stopCurrentTier();
-    await this.startTier(toTier);
-  }
-
-  // ============================================================================
-  // Event Emission
-  // ============================================================================
-
-  private emitTranscript(event: TranscriptEvent): void {
-    this.transcriptCallbacks.forEach((cb) => cb(event));
-    this.emit('transcript', event);
-  }
-
-  private emitPause(event: PauseEvent): void {
-    this.pauseCallbacks.forEach((cb) => cb(event));
-    this.emit('pause', event);
   }
 
   // ============================================================================
@@ -633,11 +208,6 @@ export class TierManager extends EventEmitter {
 
   private log(message: string): void {
     console.log(`[TierManager] ${message}`);
-  }
-
-  private logError(message: string, error?: unknown): void {
-    const errorStr = error instanceof Error ? error.message : String(error);
-    console.error(`[TierManager] ERROR: ${message} - ${errorStr}`);
   }
 }
 

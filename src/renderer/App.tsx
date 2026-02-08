@@ -20,6 +20,15 @@ import StatusIndicator from './components/StatusIndicator';
 import './styles/app-shell.css';
 
 // ============================================================================
+// Post-processing progress types
+// ============================================================================
+
+interface ProcessingProgress {
+  percent: number;
+  step: string;
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -41,7 +50,6 @@ interface LastCapture {
 }
 
 type AppView = 'main' | 'settings' | 'history' | 'shortcuts';
-const MAX_TRANSCRIPT_PREVIEW_LINES = 24;
 
 // ============================================================================
 // Helpers
@@ -133,8 +141,7 @@ const App: React.FC = () => {
   const [audioLevel, setAudioLevel] = useState(0);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [transcriptLines, setTranscriptLines] = useState<string[]>([]);
-  const [interimTranscript, setInterimTranscript] = useState('');
+  const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [hasRequiredByokKeys, setHasRequiredByokKeys] = useState<boolean | null>(null);
 
@@ -328,16 +335,19 @@ const App: React.FC = () => {
         setSessionDir(null);
         setReviewSession(null);
         setShowReviewEditor(false);
-        setTranscriptLines([]);
-        setInterimTranscript('');
+        setProcessingProgress(null);
         // Dismiss overlays when recording starts
         setCurrentView('main');
         setShowCountdown(false);
         setIsPaused(false);
       }
+      if (nextState === 'stopping' || nextState === 'processing') {
+        // Reset progress for a fresh processing run
+        setProcessingProgress({ percent: 0, step: 'Preparing...' });
+      }
       if (nextState === 'idle') {
         setDuration(0);
-        setInterimTranscript('');
+        setProcessingProgress(null);
         setIsPaused(false);
       }
     });
@@ -409,34 +419,64 @@ const App: React.FC = () => {
     const unsubSessionVoice = window.markupr.session.onVoiceActivity(({ active }) => {
       setIsVoiceActive(active);
     });
-    const unsubTranscript = window.markupr.transcript.onChunk((payload) => {
-      const text = payload.text.trim();
-      if (!text) {
-        return;
-      }
-
-      if (payload.isFinal) {
-        setTranscriptLines((prev) => {
-          if (prev[prev.length - 1] === text) {
-            return prev;
-          }
-          const next = [...prev, text];
-          if (next.length > MAX_TRANSCRIPT_PREVIEW_LINES) {
-            return next.slice(next.length - MAX_TRANSCRIPT_PREVIEW_LINES);
-          }
-          return next;
-        });
-        setInterimTranscript('');
-      } else {
-        setInterimTranscript(text);
-      }
-    });
 
     return () => {
       unsubLevel();
       unsubVoice();
       unsubSessionVoice();
-      unsubTranscript();
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Post-processing progress listeners
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    // Listen for processing progress updates from the main process.
+    // These IPC channels are registered in Wave 3 of the refactor;
+    // for now we subscribe via ipcRenderer directly through the preload bridge.
+    // The preload createEventSubscriber pattern uses ipcRenderer.on under the hood,
+    // so we follow the same convention here with a manual listener through the
+    // existing transcript.onChunk channel pattern as a temporary shim.
+    //
+    // Once the preload is updated (Wave 3), these will be:
+    //   window.markupr.processing.onProgress(...)
+    //   window.markupr.processing.onComplete(...)
+    //
+    // For now, use the generic on pattern if available, or subscribe via
+    // the session state change handler above as a fallback (which we already do).
+    const handleProgress = (_event: unknown, data: ProcessingProgress) => {
+      setProcessingProgress(data);
+    };
+
+    const handleComplete = () => {
+      setProcessingProgress({ percent: 100, step: 'Complete' });
+    };
+
+    // Use ipcRenderer-based subscription if the preload exposes it.
+    // The preload currently does not expose markupr:processing:* channels,
+    // so we check for the pattern and gracefully skip if unavailable.
+    // The processing progress will still work via state transitions above.
+    const markuprApi = window.markupr as Record<string, unknown>;
+    let unsubProgress: (() => void) | null = null;
+    let unsubComplete: (() => void) | null = null;
+
+    // Check if the processing API has been added to the preload bridge
+    if (markuprApi.processing && typeof (markuprApi.processing as Record<string, unknown>).onProgress === 'function') {
+      const processingApi = markuprApi.processing as {
+        onProgress: (cb: (data: ProcessingProgress) => void) => () => void;
+        onComplete: (cb: (data: unknown) => void) => () => void;
+      };
+      unsubProgress = processingApi.onProgress((data) => {
+        setProcessingProgress(data);
+      });
+      unsubComplete = processingApi.onComplete(() => {
+        setProcessingProgress({ percent: 100, step: 'Complete' });
+      });
+    }
+
+    return () => {
+      unsubProgress?.();
+      unsubComplete?.();
     };
   }, []);
 
@@ -509,8 +549,8 @@ const App: React.FC = () => {
       case 'stopping':
       case 'processing':
         return {
-          title: 'Building Report',
-          detail: 'Generating markdown and linking screenshots to context.',
+          title: 'Processing Your Recording',
+          detail: processingProgress?.step || 'Preparing post-processing pipeline...',
         };
       case 'complete':
         return {
@@ -531,7 +571,7 @@ const App: React.FC = () => {
               : 'Press Cmd+Shift+F to start a fresh feedback pass.',
         };
     }
-  }, [state, errorMessage, hasTranscriptionCapability, isPaused]);
+  }, [state, errorMessage, hasTranscriptionCapability, isPaused, processingProgress]);
 
   // ---------------------------------------------------------------------------
   // Derived state (existing)
@@ -540,7 +580,8 @@ const App: React.FC = () => {
   const primaryActionDisabled = isMutating || state === 'starting' || state === 'stopping' || state === 'processing';
   const pauseActionDisabled = isMutating || state !== 'recording';
   const manualCaptureDisabled = isMutating || state !== 'recording' || isPaused;
-  const showNarrationCapture = state === 'recording' || state === 'stopping';
+  const showRecordingStatus = state === 'recording';
+  const showProcessingProgress = state === 'stopping' || state === 'processing';
 
   const countdownDuration = settings?.defaultCountdown ?? 0;
   // ---------------------------------------------------------------------------
@@ -925,9 +966,9 @@ const App: React.FC = () => {
           </section>
         )}
 
-        {showNarrationCapture && (
+        {showRecordingStatus && (
           <section className="ff-shell__transcript">
-            <p className="ff-shell__transcript-label">Narration Capture</p>
+            <p className="ff-shell__transcript-label">Recording Active</p>
             <div
               style={{
                 display: 'flex',
@@ -941,10 +982,8 @@ const App: React.FC = () => {
               }}
             >
               <span className="ff-shell__transcript-line">
-                {state === 'stopping'
-                  ? 'Finalizing capture and processing transcript'
-                  : isPaused
-                    ? 'Session paused'
+                {isPaused
+                  ? 'Session paused'
                   : isVoiceActive
                     ? 'Mic is active'
                     : 'Listening for narration'}
@@ -982,24 +1021,30 @@ const App: React.FC = () => {
               <span className="ff-shell__meta-pill">
                 Pause: <PauseResumeHint inline />
               </span>
-              <span className="ff-shell__meta-pill">Auto screenshots trigger when narration pauses</span>
             </div>
-            {transcriptLines.length > 0 || interimTranscript ? (
-              <div className="ff-shell__transcript-scroll" style={{ marginTop: 8 }}>
-                {transcriptLines.map((line, index) => (
-                  <p key={`${index}-${line.slice(0, 24)}`} className="ff-shell__transcript-line">
-                    {line}
-                  </p>
-                ))}
-                {interimTranscript && (
-                  <p className="ff-shell__transcript-interim">{interimTranscript}</p>
-                )}
-              </div>
-            ) : (
-              <p className="ff-shell__transcript-placeholder" style={{ marginTop: 8 }}>
-                Transcript preview appears here while you narrate.
-              </p>
-            )}
+            <p className="ff-shell__transcript-placeholder" style={{ marginTop: 8 }}>
+              Transcript will be generated after you stop recording.
+            </p>
+          </section>
+        )}
+
+        {showProcessingProgress && (
+          <section className="ff-shell__processing">
+            <p className="ff-shell__processing-label">Processing your recording...</p>
+            <div className="ff-shell__processing-bar-track">
+              <div
+                className="ff-shell__processing-bar-fill"
+                style={{ width: `${processingProgress?.percent ?? 0}%` }}
+              />
+            </div>
+            <div className="ff-shell__processing-info">
+              <span className="ff-shell__processing-percent">
+                {processingProgress?.percent ?? 0}%
+              </span>
+              <span className="ff-shell__processing-step">
+                {processingProgress?.step || 'Preparing...'}
+              </span>
+            </div>
           </section>
         )}
 
