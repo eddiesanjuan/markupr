@@ -18,7 +18,7 @@
   <key>com.apple.security.device.audio-input</key>
   <true/>
 
-  <!-- Camera access (disabled - not needed for FeedbackFlow) -->
+  <!-- Camera access (disabled - not needed for markupr) -->
   <key>com.apple.security.device.camera</key>
   <false/>
 
@@ -34,7 +34,7 @@
   <key>com.apple.security.files.user-selected.read-write</key>
   <true/>
 
-  <!-- Network access for Deepgram API -->
+  <!-- Network access for API providers -->
   <key>com.apple.security.network.client</key>
   <true/>
 </dict>

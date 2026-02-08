@@ -1,5 +1,5 @@
 #!/bin/bash
-# FeedbackFlow Crash Recovery Test Script
+# markupr Crash Recovery Test Script
 # Tests the crash recovery system by simulating crashes and verifying recovery
 
 set -e
@@ -8,7 +8,7 @@ APP_DATA="$HOME/Library/Application Support/feedbackflow"
 CRASH_RECOVERY_STORE="$APP_DATA/feedbackflow-crash-recovery.json"
 PROJECT_DIR="/Users/eddiesanjuan/Projects/feedbackflow"
 
-echo "=== FeedbackFlow Crash Recovery Test Suite ==="
+echo "=== markupr Crash Recovery Test Suite ==="
 echo ""
 
 # Helper function to check store state

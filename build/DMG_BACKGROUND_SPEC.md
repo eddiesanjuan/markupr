@@ -15,7 +15,7 @@ The DMG window displays a drag-to-install interface:
 |                                                          |
 |                                                          |
 |        [App Icon]               [Applications]           |
-|        FeedbackFlow                 alias                |
+|        markupr                 alias                |
 |          (180,170)               (480,170)               |
 |                                                          |
 |              ------->  drag  ------->                    |
@@ -32,7 +32,7 @@ The DMG window displays a drag-to-install interface:
 ## Design Guidelines
 
 1. **Background**: Should have visual indication of drag direction
-2. **Colors**: Match FeedbackFlow brand (teal/cyan accent)
+2. **Colors**: Match markupr brand (teal/cyan accent)
 3. **Style**: Clean, minimal, professional
 4. **Contrast**: Ensure icons are visible against background
 
