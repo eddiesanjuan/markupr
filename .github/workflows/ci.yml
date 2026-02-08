@@ -136,11 +136,15 @@ jobs:
       - name: Build application
         run: npm run build
 
-      # Build unsigned packages for CI validation
+      # Build unsigned packages for CI validation (--publish never to skip GH_TOKEN requirement)
       - name: Package application (unsigned)
-        run: npm run package:${{ matrix.os == 'macos-latest' && 'mac:unsigned' || 'win' }}
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --publish never --config electron-builder.yml
+          else
+            npx electron-builder --win --publish never --config electron-builder.yml
+          fi
         env:
-          # Disable code signing for CI builds
           CSC_IDENTITY_AUTO_DISCOVERY: false
           WIN_CSC_LINK: ''
 
