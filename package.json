@@ -32,10 +32,11 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "postinstall": "electron-builder install-app-deps && electron-rebuild",
+    "postinstall": "node scripts/postinstall.mjs",
     "rebuild": "electron-rebuild",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node scripts/build.mjs",
+    "build:desktop": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-builder --config electron-builder.yml",
     "package:mac": "electron-builder --mac --config electron-builder.yml",
