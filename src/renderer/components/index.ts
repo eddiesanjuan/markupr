@@ -6,6 +6,7 @@
  */
 
 export { RecordingOverlay } from './RecordingOverlay';
+export { ProcessingOverlay } from './ProcessingOverlay';
 export { CountdownTimer } from './CountdownTimer';
 export { default as StatusIndicator } from './StatusIndicator';
 export { SessionReview } from './SessionReview';

@@ -414,6 +414,11 @@ function handleSessionStateChange(state: SessionState, session: Session | null):
     state === 'processing';
   popover?.setKeepVisibleOnBlur(keepVisibleOnBlur);
 
+  if (popover && (state === 'recording' || state === 'stopping' || state === 'processing')) {
+    const hudState = state === 'recording' ? 'recording' : 'processing';
+    popover.resizeToState(hudState);
+  }
+
   if (state === 'recording' && popover && !popover.isVisible()) {
     popover.show();
   }

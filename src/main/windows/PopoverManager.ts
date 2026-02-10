@@ -17,8 +17,8 @@ import { join } from 'path';
  */
 export const POPOVER_SIZES = {
   idle: { width: 460, height: 680 },
-  recording: { width: 256, height: 84 },
-  processing: { width: 440, height: 560 },
+  recording: { width: 288, height: 112 },
+  processing: { width: 320, height: 140 },
   complete: { width: 460, height: 720 },
   settings: { width: 400, height: 520 },
   error: { width: 440, height: 620 },
@@ -154,6 +154,16 @@ export class PopoverManager {
 
     const trayBounds = this.tray.getBounds();
     const windowBounds = this.window.getBounds();
+    const isHudState = this.currentState === 'recording' || this.currentState === 'processing';
+
+    if (isHudState) {
+      const cursorDisplay = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      const workArea = cursorDisplay.workArea;
+      const x = Math.round(workArea.x + (workArea.width - windowBounds.width) / 2);
+      const y = Math.round(workArea.y + 8);
+      return { x, y };
+    }
+
     const display = screen.getDisplayMatching(trayBounds);
 
     // Center horizontally under tray icon
@@ -258,11 +268,11 @@ export class PopoverManager {
       return;
     }
 
-    const isRecording = state === 'recording';
+    const isHudState = state === 'recording' || state === 'processing';
     try {
-      // During recording, disable popover vibrancy so the surrounding window
-      // fades away and only the compact HUD appears visually.
-      this.window.setVibrancy(isRecording ? null : 'popover');
+      // During compact HUD states, disable popover vibrancy so the surrounding
+      // window fades away and only the floating overlay appears.
+      this.window.setVibrancy(isHudState ? null : 'popover');
       this.window.setBackgroundColor('#00000000');
     } catch (error) {
       console.warn('[PopoverManager] Failed to apply state appearance:', error);

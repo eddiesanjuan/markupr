@@ -14,6 +14,7 @@ import {
   ExportDialog,
   SessionReview,
   RecordingOverlay,
+  ProcessingOverlay,
 } from './components';
 import { SessionHistory } from './components/SessionHistory';
 import { ToggleRecordingHint, ManualScreenshotHint, PauseResumeHint } from './components/HotkeyHint';
@@ -290,6 +291,16 @@ const App: React.FC = () => {
           return;
         }
 
+        const latestStatus = await window.markupr.session.getStatus().catch(() => null);
+        if (latestStatus && latestStatus.state !== 'recording') {
+          if (recorder.isRecording() || recorder.getSessionId()) {
+            await recorder.stop().catch((error) => {
+              console.warn('[App] Forced recorder stop during stale recording status guard failed:', error);
+            });
+          }
+          return;
+        }
+
         if (!recorder.isRecording()) {
           let activeSession = session;
           if (!activeSession) {
@@ -407,6 +418,7 @@ const App: React.FC = () => {
         setIsPaused(false);
       }
       if (nextState === 'stopping' || nextState === 'processing') {
+        stopRequestedRef.current = true;
         if (!processingStartedAtRef.current) {
           processingStartedAtRef.current = Date.now();
         }
@@ -430,6 +442,9 @@ const App: React.FC = () => {
     });
 
     const unsubStatus = window.markupr.session.onStatusUpdate((status) => {
+      if (status.state === 'stopping' || status.state === 'processing') {
+        stopRequestedRef.current = true;
+      }
       const effectiveState =
         stopRequestedRef.current && status.state === 'recording' ? 'stopping' : status.state;
       setDuration(status.duration);
@@ -724,18 +739,18 @@ const App: React.FC = () => {
   const manualCaptureDisabled = isMutating || state !== 'recording' || isPaused;
   const showRecordingStatus = state === 'recording';
   const showProcessingProgress = state === 'stopping' || state === 'processing';
-  const isRecordingHudMode = showRecordingStatus && currentView === 'main';
+  const isHudMode = (showRecordingStatus || showProcessingProgress) && currentView === 'main';
 
   useEffect(() => {
     const bodyClass = 'markupr-hud-mode';
     const htmlClass = 'markupr-hud-mode';
-    document.documentElement.classList.toggle(htmlClass, isRecordingHudMode);
-    document.body.classList.toggle(bodyClass, isRecordingHudMode);
+    document.documentElement.classList.toggle(htmlClass, isHudMode);
+    document.body.classList.toggle(bodyClass, isHudMode);
     return () => {
       document.documentElement.classList.remove(htmlClass);
       document.body.classList.remove(bodyClass);
     };
-  }, [isRecordingHudMode]);
+  }, [isHudMode]);
 
   const countdownDuration = settings?.defaultCountdown ?? 0;
   // ---------------------------------------------------------------------------
@@ -965,7 +980,7 @@ const App: React.FC = () => {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className={`ff-shell ff-shell--${state}${isRecordingHudMode ? ' ff-shell--hud' : ''}`}>
+    <div className={`ff-shell ff-shell--${state}${isHudMode ? ' ff-shell--hud' : ''}`}>
       {/* === Global overlays (always rendered, self-manage visibility) === */}
       <UpdateNotification />
 
@@ -1025,7 +1040,7 @@ const App: React.FC = () => {
       )}
 
       {/* === Main Card === */}
-      <main className={`ff-shell__card${isRecordingHudMode ? ' ff-shell__card--hud' : ''}`}>
+      <main className={`ff-shell__card${isHudMode ? ' ff-shell__card--hud' : ''}`}>
         {showRecordingStatus && (
           <RecordingOverlay
             duration={Math.floor(duration / 1000)}
@@ -1041,7 +1056,17 @@ const App: React.FC = () => {
           />
         )}
 
-        {!isRecordingHudMode && (
+        {showProcessingProgress && isHudMode && (
+          <ProcessingOverlay
+            percent={processingProgress?.percent ?? PROCESSING_BASELINE_PERCENT}
+            step={processingProgress?.step || formatProcessingStep('preparing')}
+            onHide={() => {
+              void window.markupr.window.hide();
+            }}
+          />
+        )}
+
+        {!isHudMode && (
           <>
         <header className="ff-shell__header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
