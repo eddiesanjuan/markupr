@@ -533,9 +533,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  min-width: 16px;
+  min-width: 28px;
   font-family: 'SF Mono', 'Menlo', monospace;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: rgba(219, 234, 255, 0.9);
   opacity: 0.92;
 }

@@ -72,6 +72,13 @@ export class ScreenRecordingRenderer {
     }
   }
 
+  private hasLiveTrack(stream: MediaStream | null | undefined): boolean {
+    if (!stream) {
+      return false;
+    }
+    return stream.getTracks().some((track) => track.readyState === 'live');
+  }
+
   private getDesktopConstraints(
     sourceId: string,
     highQuality: boolean
@@ -178,6 +185,8 @@ export class ScreenRecordingRenderer {
   }
 
   async start(options: StartOptions): Promise<void> {
+    this.forceReleaseOrphanedCapture();
+
     if (this.isRecording()) {
       return;
     }
@@ -384,6 +393,31 @@ export class ScreenRecordingRenderer {
     } catch (error) {
       console.warn('[ScreenRecordingRenderer] Failed to resume recording:', error);
     }
+  }
+
+  forceReleaseOrphanedCapture(): void {
+    const hasStreamLeak = this.hasLiveTrack(this.mediaStream);
+    const hasRecorderLeak = this.hasLiveTrack(this.mediaRecorder?.stream);
+    if (!hasStreamLeak && !hasRecorderLeak) {
+      return;
+    }
+
+    try {
+      if (this.mediaRecorder) {
+        this.mediaRecorder.ondataavailable = null;
+        this.mediaRecorder.onerror = null;
+        this.mediaRecorder.onstop = null;
+      }
+    } catch {
+      // Best effort.
+    }
+
+    this.stopTracks(this.mediaRecorder?.stream);
+    this.cleanupStream();
+    this.mediaRecorder = null;
+    this.activeSessionId = null;
+    this.stopping = false;
+    this.recordingStartTime = null;
   }
 
   private cleanupStream(): void {

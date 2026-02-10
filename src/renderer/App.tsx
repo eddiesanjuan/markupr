@@ -32,6 +32,7 @@ interface ProcessingProgress {
 const PROCESSING_BASELINE_PERCENT = 4;
 const PROCESSING_VISIBLE_MAX = 96;
 const PROCESSING_PROGRESS_TICK_MS = 120;
+const PROCESSING_DOT_FRAMES = ['∙∙∙', '●∙∙', '●●∙', '●●●'] as const;
 
 const PROCESSING_STEP_LABELS: Record<string, string> = {
   preparing: 'Finalizing recording assets...',
@@ -188,6 +189,7 @@ const App: React.FC = () => {
   const [hasRequiredByokKeys, setHasRequiredByokKeys] = useState<boolean | null>(null);
   const outputReadyRef = useRef(false);
   const processingStartedAtRef = useRef<number | null>(null);
+  const stopRequestedRef = useRef(false);
 
   // ---------------------------------------------------------------------------
   // Crash recovery (existing)
@@ -279,6 +281,15 @@ const App: React.FC = () => {
       const recorder = screenRecorderRef.current;
 
       if (nextState === 'recording') {
+        if (stopRequestedRef.current) {
+          if (recorder.isRecording() || recorder.getSessionId()) {
+            await recorder.stop().catch((error) => {
+              console.warn('[App] Forced recorder stop during stop-request guard failed:', error);
+            });
+          }
+          return;
+        }
+
         if (!recorder.isRecording()) {
           let activeSession = session;
           if (!activeSession) {
@@ -343,6 +354,7 @@ const App: React.FC = () => {
           console.warn('[App] Failed to stop continuous screen recording:', error);
         });
       }
+      recorder.forceReleaseOrphanedCapture();
     },
     []
   );
@@ -372,9 +384,12 @@ const App: React.FC = () => {
       nextState === 'complete' && !outputReadyRef.current ? 'processing' : nextState;
 
     const unsubState = window.markupr.session.onStateChange(({ state: nextState, session }) => {
-      setState(toUiState(nextState));
-      void syncScreenRecording(nextState, session, false);
+      const effectiveState =
+        stopRequestedRef.current && nextState === 'recording' ? 'stopping' : nextState;
+      setState(toUiState(effectiveState));
+      void syncScreenRecording(effectiveState, session, false);
       if (nextState === 'recording') {
+        stopRequestedRef.current = false;
         outputReadyRef.current = false;
         setErrorMessage(null);
         setReportPath(null);
@@ -404,6 +419,7 @@ const App: React.FC = () => {
         );
       }
       if (nextState === 'idle') {
+        stopRequestedRef.current = false;
         outputReadyRef.current = false;
         setDuration(0);
         setProcessingProgress(null);
@@ -414,11 +430,13 @@ const App: React.FC = () => {
     });
 
     const unsubStatus = window.markupr.session.onStatusUpdate((status) => {
+      const effectiveState =
+        stopRequestedRef.current && status.state === 'recording' ? 'stopping' : status.state;
       setDuration(status.duration);
       setScreenshotCount(status.screenshotCount);
-      setState(toUiState(status.state));
+      setState(toUiState(effectiveState));
       setIsPaused(status.isPaused);
-      void syncScreenRecording(status.state, null, status.isPaused);
+      void syncScreenRecording(effectiveState, null, status.isPaused);
     });
 
     const unsubScreenshot = window.markupr.capture.onScreenshot((payload) => {
@@ -433,6 +451,7 @@ const App: React.FC = () => {
       void syncScreenRecording('idle', null, false).catch((error) => {
         console.warn('[App] Failed to force-release screen recorder on output ready:', error);
       });
+      stopRequestedRef.current = false;
       outputReadyRef.current = true;
       setRawProcessingProgress({ percent: 100, step: 'complete' });
       setProcessingProgress({ percent: 100, step: formatProcessingStep('complete') });
@@ -450,12 +469,14 @@ const App: React.FC = () => {
     });
 
     const unsubSessionError = window.markupr.session.onError((payload) => {
+      stopRequestedRef.current = false;
       outputReadyRef.current = false;
       setState('error');
       setErrorMessage(payload.message);
     });
 
     const unsubOutputError = window.markupr.output.onError((payload) => {
+      stopRequestedRef.current = false;
       outputReadyRef.current = false;
       setState('error');
       setErrorMessage(payload.message);
@@ -545,16 +566,16 @@ const App: React.FC = () => {
       const startedAt = processingStartedAtRef.current ?? Date.now();
       const elapsedMs = Date.now() - startedAt;
       const elapsedFloor = (() => {
-        if (elapsedMs < 3500) {
-          return PROCESSING_BASELINE_PERCENT + elapsedMs / 380;
+        if (elapsedMs < 2200) {
+          return PROCESSING_BASELINE_PERCENT + elapsedMs / 120;
         }
-        if (elapsedMs < 12000) {
-          return 13 + (elapsedMs - 3500) / 240;
+        if (elapsedMs < 9000) {
+          return 22 + (elapsedMs - 2200) / 170;
         }
-        if (elapsedMs < 24000) {
-          return 48 + (elapsedMs - 12000) / 420;
+        if (elapsedMs < 22000) {
+          return 62 + (elapsedMs - 9000) / 420;
         }
-        return 76 + (elapsedMs - 24000) / 900;
+        return 85 + (elapsedMs - 22000) / 1300;
       })();
       const rawPercent = Math.max(0, Math.min(100, rawProcessingProgress?.percent ?? 0));
       const rawGuided = Math.min(PROCESSING_VISIBLE_MAX, rawPercent + 8);
@@ -732,6 +753,7 @@ const App: React.FC = () => {
     setIsMutating(true);
     try {
       if (state === 'recording') {
+        stopRequestedRef.current = true;
         // Flush renderer-side screen recorder first so main-process post-processing
         // receives a finalized video artifact.
         try {
@@ -753,6 +775,7 @@ const App: React.FC = () => {
       setRecordingPath(null);
       setAudioPath(null);
       setErrorMessage(null);
+      stopRequestedRef.current = false;
       outputReadyRef.current = false;
 
       const result = await window.markupr.session.start();
@@ -788,6 +811,7 @@ const App: React.FC = () => {
       setRecordingPath(null);
       setAudioPath(null);
       setErrorMessage(null);
+      stopRequestedRef.current = false;
       outputReadyRef.current = false;
 
       const result = await window.markupr.session.start();
@@ -1194,7 +1218,7 @@ const App: React.FC = () => {
             <p className="ff-shell__processing-label">
               Processing your recording
               <span className="ff-shell__processing-dots" aria-hidden="true">
-                {'.'.repeat(Math.max(1, processingDotFrame))}
+                {PROCESSING_DOT_FRAMES[processingDotFrame] || PROCESSING_DOT_FRAMES[0]}
               </span>
             </p>
             <div className="ff-shell__processing-bar-track">
