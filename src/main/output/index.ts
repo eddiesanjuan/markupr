@@ -10,7 +10,7 @@
  */
 
 import type { FeedbackSession, OutputDocument, Screenshot, TranscriptionSegment } from '../../shared/types';
-import { clipboardService, type ClipboardService, type SummaryOptions } from './ClipboardService';
+import { clipboardService, type ClipboardService } from './ClipboardService';
 import type { Session } from '../SessionController';
 
 export class OutputManager {

@@ -5,7 +5,7 @@
  * Must be used within a ThemeProvider.
  */
 
-import { useContext, createContext, useCallback, useMemo } from 'react';
+import { useContext, createContext, useMemo } from 'react';
 import {
   ThemeColors,
   ThemeMode,

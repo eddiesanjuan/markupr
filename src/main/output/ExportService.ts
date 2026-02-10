@@ -21,7 +21,6 @@ import type { Session, FeedbackItem, FeedbackCategory, FeedbackSeverity } from '
 import { markdownGenerator } from './MarkdownGenerator';
 import type { PostProcessResult } from '../pipeline/PostProcessor';
 import { generateHtmlDocument } from './templates/html-template';
-import type { HtmlExportOptions } from './templates/html-template';
 
 // ============================================================================
 // Types

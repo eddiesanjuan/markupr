@@ -1031,8 +1031,6 @@ const markuprApi = {
 // =============================================================================
 
 contextBridge.exposeInMainWorld('markupr', markuprApi);
-// Backward compatibility alias for legacy renderer builds.
-contextBridge.exposeInMainWorld('feedbackflow', markuprApi);
 
 // =============================================================================
 // Type Exports
@@ -1043,6 +1041,5 @@ export type MarkuprAPI = typeof markuprApi;
 declare global {
   interface Window {
     markupr: MarkuprAPI;
-    feedbackflow: MarkuprAPI;
   }
 }

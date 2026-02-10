@@ -9,7 +9,7 @@
  * - Support both full and compact modes
  */
 
-import { clipboard, Notification, app, shell, BrowserWindow } from 'electron';
+import { clipboard, Notification, app, BrowserWindow } from 'electron';
 import path from 'path';
 import { Session, FeedbackItem } from '../SessionController';
 
