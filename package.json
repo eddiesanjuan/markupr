@@ -36,6 +36,7 @@
     "rebuild": "electron-rebuild",
     "dev": "electron-vite dev",
     "build": "node scripts/build.mjs",
+    "start": "node site/server.js",
     "build:desktop": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-builder --config electron-builder.yml",

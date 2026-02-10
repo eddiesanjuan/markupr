@@ -191,6 +191,7 @@ const App: React.FC = () => {
   const outputReadyRef = useRef(false);
   const processingStartedAtRef = useRef<number | null>(null);
   const stopRequestedRef = useRef(false);
+  const screenSyncQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // ---------------------------------------------------------------------------
   // Crash recovery (existing)
@@ -370,6 +371,18 @@ const App: React.FC = () => {
     []
   );
 
+  const queueScreenRecordingSync = useCallback(
+    (nextState: SessionState, session: SessionPayload | null, paused: boolean) => {
+      screenSyncQueueRef.current = screenSyncQueueRef.current
+        .catch(() => {
+          // Keep queue alive after prior failure.
+        })
+        .then(() => syncScreenRecording(nextState, session, paused));
+      return screenSyncQueueRef.current;
+    },
+    [syncScreenRecording]
+  );
+
   // ---------------------------------------------------------------------------
   // Session IPC listeners (existing)
   // ---------------------------------------------------------------------------
@@ -385,7 +398,7 @@ const App: React.FC = () => {
         setDuration(status.duration);
         setScreenshotCount(status.screenshotCount);
         setIsPaused(status.isPaused);
-        void syncScreenRecording(status.state, null, status.isPaused);
+        void queueScreenRecordingSync(status.state, null, status.isPaused);
       })
       .catch((error) => {
         console.error('[App] Failed to load initial status:', error);
@@ -398,7 +411,7 @@ const App: React.FC = () => {
       const effectiveState =
         stopRequestedRef.current && nextState === 'recording' ? 'stopping' : nextState;
       setState(toUiState(effectiveState));
-      void syncScreenRecording(effectiveState, session, false);
+      void queueScreenRecordingSync(effectiveState, session, false);
       if (nextState === 'recording') {
         stopRequestedRef.current = false;
         outputReadyRef.current = false;
@@ -451,7 +464,7 @@ const App: React.FC = () => {
       setScreenshotCount(status.screenshotCount);
       setState(toUiState(effectiveState));
       setIsPaused(status.isPaused);
-      void syncScreenRecording(effectiveState, null, status.isPaused);
+      void queueScreenRecordingSync(effectiveState, null, status.isPaused);
     });
 
     const unsubScreenshot = window.markupr.capture.onScreenshot((payload) => {
@@ -463,7 +476,7 @@ const App: React.FC = () => {
     });
 
     const unsubReady = window.markupr.output.onReady((payload) => {
-      void syncScreenRecording('idle', null, false).catch((error) => {
+      void queueScreenRecordingSync('idle', null, false).catch((error) => {
         console.warn('[App] Failed to force-release screen recorder on output ready:', error);
       });
       stopRequestedRef.current = false;
@@ -510,7 +523,7 @@ const App: React.FC = () => {
         void recorder.stop();
       }
     };
-  }, [loadRecentSessions, syncScreenRecording]);
+  }, [loadRecentSessions, queueScreenRecordingSync]);
 
   // ---------------------------------------------------------------------------
   // Audio level + voice activity listeners (for CompactAudioIndicator)
@@ -772,7 +785,7 @@ const App: React.FC = () => {
         // Flush renderer-side screen recorder first so main-process post-processing
         // receives a finalized video artifact.
         try {
-          await syncScreenRecording('idle', null, false);
+          await queueScreenRecordingSync('idle', null, false);
         } catch (error) {
           console.warn('[App] Failed to flush screen recording before stop:', error);
         }
@@ -806,7 +819,7 @@ const App: React.FC = () => {
       } else {
         const activeSession = await window.markupr.session.getCurrent();
         if (activeSession) {
-          await syncScreenRecording('recording', activeSession, false);
+          await queueScreenRecordingSync('recording', activeSession, false);
         }
       }
     } catch (error) {
@@ -815,7 +828,7 @@ const App: React.FC = () => {
     } finally {
       setIsMutating(false);
     }
-  }, [primaryActionDisabled, state, countdownDuration, syncScreenRecording]);
+  }, [primaryActionDisabled, state, countdownDuration, queueScreenRecordingSync]);
 
   const handleCountdownComplete = useCallback(async () => {
     setShowCountdown(false);
@@ -836,7 +849,7 @@ const App: React.FC = () => {
       } else {
         const activeSession = await window.markupr.session.getCurrent();
         if (activeSession) {
-          await syncScreenRecording('recording', activeSession, false);
+          await queueScreenRecordingSync('recording', activeSession, false);
         }
       }
     } catch (error) {
@@ -845,7 +858,7 @@ const App: React.FC = () => {
     } finally {
       setIsMutating(false);
     }
-  }, [syncScreenRecording]);
+  }, [queueScreenRecordingSync]);
 
   const handlePauseAction = useCallback(async () => {
     if (pauseActionDisabled) return;
@@ -859,7 +872,7 @@ const App: React.FC = () => {
           return;
         }
         setIsPaused(false);
-        await syncScreenRecording('recording', null, false);
+        await queueScreenRecordingSync('recording', null, false);
         return;
       }
 
@@ -870,13 +883,13 @@ const App: React.FC = () => {
       }
       setIsPaused(true);
       setIsVoiceActive(false);
-      await syncScreenRecording('recording', null, true);
+      await queueScreenRecordingSync('recording', null, true);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Pause/resume failed.');
     } finally {
       setIsMutating(false);
     }
-  }, [isPaused, pauseActionDisabled, syncScreenRecording]);
+  }, [isPaused, pauseActionDisabled, queueScreenRecordingSync]);
 
   const handleCountdownSkip = useCallback(() => {
     setShowCountdown(false);

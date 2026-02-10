@@ -50,6 +50,7 @@ export class ScreenRecordingRenderer {
   private mediaRecorder: MediaRecorder | null = null;
   private activeSessionId: string | null = null;
   private inFlightWrites: Set<Promise<void>> = new Set();
+  private startPromise: Promise<void> | null = null;
   private stopping = false;
   private stopPromise: Promise<StopResult> | null = null;
   private recordingStartTime: number | null = null;
@@ -185,85 +186,108 @@ export class ScreenRecordingRenderer {
   }
 
   async start(options: StartOptions): Promise<void> {
-    this.forceReleaseOrphanedCapture();
-
-    if (this.isRecording()) {
-      return;
+    if (this.startPromise) {
+      return this.startPromise;
     }
 
-    const mimeType = chooseMimeType();
-    const stream = await this.acquireScreenStream(options.sourceId);
+    const startTask = (async () => {
+      if (this.stopPromise) {
+        await this.stopPromise.catch(() => {
+          // Best effort; continuing to start allows a clean retry path.
+        });
+      }
 
-    const recordingStartTime = Date.now();
-    const startResult = await window.markupr.screenRecording.start(
-      options.sessionId,
-      mimeType,
-      recordingStartTime
-    );
-    if (!startResult.success) {
-      stream.getTracks().forEach((track) => track.stop());
-      throw new Error(startResult.error || 'Unable to start screen recording persistence.');
-    }
+      this.forceReleaseOrphanedCapture();
 
-    let recorder: MediaRecorder;
-    try {
-      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
-    } catch (error) {
-      // MediaRecorder construction failed — clean up the main-process artifact and stream.
-      stream.getTracks().forEach((track) => track.stop());
-      await window.markupr.screenRecording.stop(options.sessionId).catch(() => {});
-      throw error;
-    }
-
-    recorder.ondataavailable = (event: BlobEvent) => {
-      if (!event.data || event.data.size === 0 || !this.activeSessionId) {
+      if (this.isRecording()) {
         return;
       }
 
-      const sessionId = this.activeSessionId;
-      const writePromise = event.data
-        .arrayBuffer()
-        .then((buffer) =>
-          window.markupr.screenRecording.appendChunk(sessionId, new Uint8Array(buffer))
-        )
-        .then((result) => {
-          if (!result.success) {
-            throw new Error(result.error || 'Failed to append recording chunk.');
-          }
-        })
-        .catch((error) => {
-          console.error('[ScreenRecordingRenderer] Chunk write failed:', error);
-        })
-        .finally(() => {
-          this.inFlightWrites.delete(writePromise);
-        });
+      const mimeType = chooseMimeType();
+      const stream = await this.acquireScreenStream(options.sourceId);
 
-      this.inFlightWrites.add(writePromise);
-    };
+      const recordingStartTime = Date.now();
+      const startResult = await window.markupr.screenRecording.start(
+        options.sessionId,
+        mimeType,
+        recordingStartTime
+      );
+      if (!startResult.success) {
+        stream.getTracks().forEach((track) => track.stop());
+        throw new Error(startResult.error || 'Unable to start screen recording persistence.');
+      }
 
-    this.mediaStream = stream;
-    this.mediaRecorder = recorder;
-    this.activeSessionId = options.sessionId;
-    this.stopping = false;
-    this.recordingStartTime = recordingStartTime;
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 5_000_000 });
+      } catch (error) {
+        // MediaRecorder construction failed — clean up the main-process artifact and stream.
+        stream.getTracks().forEach((track) => track.stop());
+        await window.markupr.screenRecording.stop(options.sessionId).catch(() => {});
+        throw error;
+      }
 
-    // Emit chunks every second for near-real-time persistence.
-    try {
-      recorder.start(1000);
-    } catch (error) {
-      // recorder.start() failed — clean up everything.
-      this.cleanupStream();
-      this.mediaRecorder = null;
-      this.activeSessionId = null;
-      this.recordingStartTime = null;
-      await window.markupr.screenRecording.stop(options.sessionId).catch(() => {});
-      throw error;
-    }
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (!event.data || event.data.size === 0 || !this.activeSessionId) {
+          return;
+        }
+
+        const sessionId = this.activeSessionId;
+        const writePromise = event.data
+          .arrayBuffer()
+          .then((buffer) =>
+            window.markupr.screenRecording.appendChunk(sessionId, new Uint8Array(buffer))
+          )
+          .then((result) => {
+            if (!result.success) {
+              throw new Error(result.error || 'Failed to append recording chunk.');
+            }
+          })
+          .catch((error) => {
+            console.error('[ScreenRecordingRenderer] Chunk write failed:', error);
+          })
+          .finally(() => {
+            this.inFlightWrites.delete(writePromise);
+          });
+
+        this.inFlightWrites.add(writePromise);
+      };
+
+      this.mediaStream = stream;
+      this.mediaRecorder = recorder;
+      this.activeSessionId = options.sessionId;
+      this.stopping = false;
+      this.recordingStartTime = recordingStartTime;
+
+      // Emit chunks every second for near-real-time persistence.
+      try {
+        recorder.start(1000);
+      } catch (error) {
+        // recorder.start() failed — clean up everything.
+        this.cleanupStream();
+        this.mediaRecorder = null;
+        this.activeSessionId = null;
+        this.recordingStartTime = null;
+        await window.markupr.screenRecording.stop(options.sessionId).catch(() => {});
+        throw error;
+      }
+    })();
+
+    this.startPromise = startTask.finally(() => {
+      this.startPromise = null;
+    });
+    return this.startPromise;
   }
 
   async stop(): Promise<StopResult> {
     if (this.stopPromise) {
       return this.stopPromise;
+    }
+
+    if (this.startPromise) {
+      await this.startPromise.catch(() => {
+        // If start failed, stop should still continue to clean up any residual state.
+      });
     }
 
     if (this.stopping) {
