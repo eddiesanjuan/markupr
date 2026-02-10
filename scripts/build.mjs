@@ -19,6 +19,7 @@ function run(command, args) {
     stdio: 'inherit',
     env: process.env,
     cwd: repoRoot,
+    shell: true,
   });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
