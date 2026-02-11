@@ -14,20 +14,14 @@
  */
 
 import { globalShortcut, app } from 'electron';
+import type { HotkeyConfig } from '../shared/types';
 
 /**
  * Available hotkey actions
  */
 export type HotkeyAction = 'toggleRecording' | 'manualScreenshot' | 'pauseResume';
 
-/**
- * Configuration for all hotkeys
- */
-export interface HotkeyConfig {
-  toggleRecording: string;
-  manualScreenshot: string;
-  pauseResume: string;
-}
+// HotkeyConfig is imported from '../shared/types' (single source of truth)
 
 /**
  * Result of a hotkey registration attempt
@@ -400,3 +394,6 @@ export function createHotkeyManager(config?: Partial<HotkeyConfig>): HotkeyManag
 export const hotkeyManager = getHotkeyManager();
 
 export default hotkeyManager;
+
+// Re-export HotkeyConfig from shared/types for downstream consumers
+export type { HotkeyConfig } from '../shared/types';

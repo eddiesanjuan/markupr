@@ -361,17 +361,17 @@ const toolbarStyles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     cursor: 'pointer',
     transition: 'all 0.15s ease',
-    color: '#f3f4f6',
+    color: 'var(--text-primary)',
   },
   buttonActive: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--accent-default)',
   },
   buttonDisabled: {
     opacity: 0.4,
     cursor: 'not-allowed',
   },
   buttonDanger: {
-    color: '#f87171',
+    color: 'var(--status-error)',
   },
   buttonIcon: {
     fontSize: 18,
@@ -387,7 +387,7 @@ const toolbarStyles: Record<string, React.CSSProperties> = {
     transition: 'all 0.15s ease',
   },
   colorButtonActive: {
-    borderColor: '#ffffff',
+    borderColor: 'var(--text-inverse)',
     transform: 'scale(1.1)',
   },
   actionButton: {
@@ -401,11 +401,11 @@ const toolbarStyles: Record<string, React.CSSProperties> = {
   },
   cancelButton: {
     backgroundColor: 'rgba(75, 85, 99, 0.5)',
-    color: '#f3f4f6',
+    color: 'var(--text-primary)',
   },
   saveButton: {
-    backgroundColor: '#10b981',
-    color: '#ffffff',
+    backgroundColor: 'var(--status-success)',
+    color: 'var(--text-inverse)',
   },
 };
 
@@ -442,7 +442,7 @@ const hintStyles: Record<string, React.CSSProperties> = {
     left: '50%',
     transform: 'translateX(-50%)',
     zIndex: 10001,
-    animation: 'fadeInUp 0.3s ease-out, fadeOut 0.3s ease-in 3.7s forwards',
+    animation: 'toolbarFadeInUp 0.3s ease-out, fadeOut 0.3s ease-in 3.7s forwards',
   },
   badge: {
     padding: '8px 16px',
@@ -451,7 +451,7 @@ const hintStyles: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(8px)',
   },
   text: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontSize: 13,
   },
   kbd: {
@@ -463,7 +463,7 @@ const hintStyles: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     fontSize: 11,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    color: '#f3f4f6',
+    color: 'var(--text-primary)',
   },
 };
 
@@ -770,31 +770,7 @@ export const AnnotationOverlay: React.FC<AnnotationOverlayProps> = ({
 
   return (
     <>
-      {/* Keyframe animations */}
-      <style>
-        {`
-          @keyframes fadeInUp {
-            from {
-              opacity: 0;
-              transform: translateX(-50%) translateY(10px);
-            }
-            to {
-              opacity: 1;
-              transform: translateX(-50%) translateY(0);
-            }
-          }
-
-          @keyframes fadeOut {
-            from { opacity: 1; }
-            to { opacity: 0; }
-          }
-
-          @keyframes overlayFadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-        `}
-      </style>
+      {/* toolbarFadeInUp, fadeOut, pageFadeIn keyframes provided by animations.css */}
 
       {/* Backdrop */}
       <div
@@ -803,7 +779,7 @@ export const AnnotationOverlay: React.FC<AnnotationOverlayProps> = ({
           inset: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.85)',
           zIndex: 10000,
-          animation: 'overlayFadeIn 0.2s ease-out',
+          animation: 'pageFadeIn 0.2s ease-out',
         }}
       />
 

@@ -24,7 +24,7 @@ vi.mock('electron', () => ({
       return paths[name] || '/tmp/test';
     }),
     getName: vi.fn(() => 'markupr'),
-    getVersion: vi.fn(() => '0.4.0'),
+    getVersion: vi.fn(() => '2.0.0'),
     getAppPath: vi.fn(() => '/mock/app/path'),
     isReady: vi.fn(() => true),
     isPackaged: false,

@@ -13,6 +13,7 @@
  */
 
 import React, { useMemo } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 const MAX_RENDER_SEGMENTS = 100;
 
@@ -56,6 +57,7 @@ export const TranscriptionPreview: React.FC<TranscriptionPreviewProps> = ({
   isDarkMode = false,
   maxHeight = 300,
 }) => {
+  const { colors } = useTheme();
   const visibleSegments = useMemo(
     () => (segments.length > MAX_RENDER_SEGMENTS ? segments.slice(-MAX_RENDER_SEGMENTS) : segments),
     [segments]
@@ -64,8 +66,8 @@ export const TranscriptionPreview: React.FC<TranscriptionPreviewProps> = ({
   const theme = useMemo(
     () => ({
       bg: isDarkMode ? 'rgba(0, 0, 0, 0.80)' : 'rgba(255, 255, 255, 0.94)',
-      text: isDarkMode ? '#ffffff' : '#1d1d1f',
-      textMuted: isDarkMode ? 'rgba(255, 255, 255, 0.55)' : '#6e6e73',
+      text: colors.text.primary,
+      textMuted: colors.text.secondary,
       border: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(60, 60, 67, 0.15)',
       timestampBg: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(120, 120, 128, 0.08)',
     }),

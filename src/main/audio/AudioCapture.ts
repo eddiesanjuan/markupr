@@ -20,6 +20,7 @@ import { join, dirname } from 'path';
 import { app } from 'electron';
 import { errorHandler } from '../ErrorHandler';
 import { IPC_CHANNELS } from '../../shared/types';
+import { extensionFromMimeType, encodeFloat32Wav } from './audioUtils';
 
 // ============================================================================
 // Types and Interfaces
@@ -428,7 +429,7 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
   ): Promise<{ path: string; bytesWritten: number; durationMs: number; mimeType: string } | null> {
     const encodedAsset = this.getCapturedEncodedAudioAsset();
     if (encodedAsset) {
-      const extension = this.extensionFromMimeType(encodedAsset.mimeType);
+      const extension = extensionFromMimeType(encodedAsset.mimeType);
       const outputPath = `${filePathBase}${extension}`;
       await mkdir(dirname(outputPath), { recursive: true });
       await writeFile(outputPath, encodedAsset.buffer);
@@ -467,7 +468,7 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
       return null;
     }
 
-    const wavBuffer = this.encodeFloat32Wav(rawAudio, this.config.sampleRate, this.config.channels);
+    const wavBuffer = encodeFloat32Wav(rawAudio, this.config.sampleRate, this.config.channels);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, wavBuffer);
 
@@ -925,7 +926,7 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
       return null;
     }
 
-    const wavBuffer = this.encodeFloat32Wav(rawAudio, this.config.sampleRate, this.config.channels);
+    const wavBuffer = encodeFloat32Wav(rawAudio, this.config.sampleRate, this.config.channels);
     const durationMs =
       this.sessionAudioDurationMs > 0
         ? this.sessionAudioDurationMs
@@ -966,49 +967,6 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
     return null;
   }
 
-  private extensionFromMimeType(mimeType: string): string {
-    const normalized = mimeType.toLowerCase();
-    if (normalized.includes('webm')) return '.webm';
-    if (normalized.includes('ogg')) return '.ogg';
-    if (normalized.includes('mp4') || normalized.includes('aac') || normalized.includes('m4a')) {
-      return '.m4a';
-    }
-    if (normalized.includes('wav')) return '.wav';
-    return '.audio';
-  }
-
-  /**
-   * Encode float32 PCM samples into a WAV container.
-   */
-  private encodeFloat32Wav(rawAudio: Buffer, sampleRate: number, channels: number): Buffer {
-    const bytesPerSample = 4; // Float32
-    const blockAlign = channels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = rawAudio.byteLength;
-    const riffChunkSize = 36 + dataSize;
-    const header = Buffer.alloc(44);
-
-    // RIFF header
-    header.write('RIFF', 0, 'ascii');
-    header.writeUInt32LE(riffChunkSize, 4);
-    header.write('WAVE', 8, 'ascii');
-
-    // fmt chunk
-    header.write('fmt ', 12, 'ascii');
-    header.writeUInt32LE(16, 16); // fmt chunk size
-    header.writeUInt16LE(3, 20); // IEEE float
-    header.writeUInt16LE(channels, 22);
-    header.writeUInt32LE(sampleRate, 24);
-    header.writeUInt32LE(byteRate, 28);
-    header.writeUInt16LE(blockAlign, 32);
-    header.writeUInt16LE(32, 34); // bits per sample
-
-    // data chunk
-    header.write('data', 36, 'ascii');
-    header.writeUInt32LE(dataSize, 40);
-
-    return Buffer.concat([header, rawAudio], 44 + dataSize);
-  }
 }
 
 // ============================================================================

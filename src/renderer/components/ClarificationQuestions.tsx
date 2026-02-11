@@ -282,7 +282,7 @@ export function ClarificationQuestions({
         <div
           style={{
             ...styles.questionContainer,
-            animation: `${direction === 'forward' ? 'slideInRight' : 'slideInLeft'} 0.2s ease-out`,
+            animation: `${direction === 'forward' ? 'pageSlideInRight' : 'pageSlideInLeft'} 0.2s ease-out`,
           }}
           key={currentQuestion.id}
         >
@@ -372,52 +372,7 @@ export function ClarificationQuestions({
         )}
       </div>
 
-      {/* Global animation styles */}
-      <style>
-        {`
-          @keyframes slideInRight {
-            from {
-              transform: translateX(20px);
-              opacity: 0;
-            }
-            to {
-              transform: translateX(0);
-              opacity: 1;
-            }
-          }
-
-          @keyframes slideInLeft {
-            from {
-              transform: translateX(-20px);
-              opacity: 0;
-            }
-            to {
-              transform: translateX(0);
-              opacity: 1;
-            }
-          }
-
-          @keyframes fadeIn {
-            from {
-              opacity: 0;
-            }
-            to {
-              opacity: 1;
-            }
-          }
-
-          @keyframes scaleIn {
-            from {
-              transform: scale(0.95) translateY(10px);
-              opacity: 0;
-            }
-            to {
-              transform: scale(1) translateY(0);
-              opacity: 1;
-            }
-          }
-        `}
-      </style>
+      {/* pageSlideInRight, pageSlideInLeft, pageFadeIn, dialogEnter keyframes provided by animations.css */}
     </div>
   );
 }
@@ -438,11 +393,11 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 50,
     padding: 16,
     transition: 'opacity 0.2s ease-out',
-    animation: 'fadeIn 0.2s ease-out',
+    animation: 'pageFadeIn 0.2s ease-out',
   },
 
   modal: {
-    backgroundColor: '#1e293b',
+    backgroundColor: 'var(--bg-secondary)',
     border: '1px solid rgba(51, 65, 85, 0.8)',
     borderRadius: 16,
     padding: 24,
@@ -450,7 +405,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)',
     transition: 'transform 0.2s ease-out',
-    animation: 'scaleIn 0.3s ease-out',
+    animation: 'dialogEnter 0.3s ease-out',
     position: 'relative',
   },
 
@@ -475,20 +430,20 @@ const styles: Record<string, React.CSSProperties> = {
     height: 40,
     borderRadius: 10,
     backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    color: '#60a5fa',
+    color: 'var(--text-link)',
   },
 
   title: {
     margin: 0,
     fontSize: 18,
     fontWeight: 600,
-    color: '#f1f5f9',
+    color: 'var(--text-primary)',
     lineHeight: 1.2,
   },
 
   typeLabel: {
     fontSize: 12,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     fontWeight: 500,
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
@@ -499,7 +454,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 6,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -523,14 +478,14 @@ const styles: Record<string, React.CSSProperties> = {
 
   progressFill: {
     height: '100%',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--accent-default)',
     borderRadius: 2,
     transition: 'width 0.3s ease-out',
   },
 
   progressText: {
     fontSize: 12,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     fontWeight: 500,
     whiteSpace: 'nowrap',
   },
@@ -543,14 +498,14 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 8px 0',
     fontSize: 16,
     fontWeight: 500,
-    color: '#f1f5f9',
+    color: 'var(--text-primary)',
     lineHeight: 1.4,
   },
 
   hint: {
     margin: 0,
     fontSize: 13,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     lineHeight: 1.5,
   },
 
@@ -561,7 +516,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(251, 191, 36, 0.2)',
     borderRadius: 8,
     fontSize: 12,
-    color: '#fbbf24',
+    color: 'var(--status-warning)',
   },
 
   matchedCode: {
@@ -578,7 +533,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'rgba(15, 23, 42, 0.8)',
     border: '1px solid rgba(51, 65, 85, 0.8)',
     borderRadius: 10,
-    color: '#f1f5f9',
+    color: 'var(--text-primary)',
     fontSize: 14,
     lineHeight: 1.5,
     resize: 'vertical',
@@ -615,7 +570,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 8,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
@@ -627,7 +582,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: '1px solid rgba(51, 65, 85, 0.8)',
     borderRadius: 8,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
@@ -639,10 +594,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 4,
     padding: '10px 20px',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--accent-default)',
     border: 'none',
     borderRadius: 8,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
@@ -664,7 +619,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 4,
     fontSize: 11,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
   },
 
   kbd: {
@@ -678,7 +633,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     fontSize: 10,
     fontWeight: 500,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontFamily: 'inherit',
   },
 
@@ -693,7 +648,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     fontSize: 11,
     fontWeight: 500,
-    color: '#22c55e',
+    color: 'var(--status-success)',
   },
 };
 

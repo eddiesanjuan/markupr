@@ -904,7 +904,7 @@ const markuprApi = {
   // App Version
   // ===========================================================================
   version: (): Promise<string> => {
-    return ipcRenderer.invoke('markupr:app:version');
+    return ipcRenderer.invoke(IPC_CHANNELS.APP_VERSION);
   },
 
   // ===========================================================================
@@ -946,10 +946,10 @@ const markuprApi = {
   // Popover controls
   popover: {
     resize: (width: number, height: number): Promise<{ success: boolean }> => {
-      return ipcRenderer.invoke('markupr:popover:resize', width, height);
+      return ipcRenderer.invoke(IPC_CHANNELS.POPOVER_RESIZE, width, height);
     },
     resizeToState: (state: string): Promise<{ success: boolean }> => {
-      return ipcRenderer.invoke('markupr:popover:resize-to-state', state);
+      return ipcRenderer.invoke(IPC_CHANNELS.POPOVER_RESIZE_TO_STATE, state);
     },
   },
 
@@ -959,33 +959,33 @@ const markuprApi = {
   navigation: {
     onShowSettings: (callback: () => void): Unsubscribe => {
       const handler = () => callback();
-      ipcRenderer.on('markupr:show-settings', handler);
-      return () => ipcRenderer.removeListener('markupr:show-settings', handler);
+      ipcRenderer.on(IPC_CHANNELS.SHOW_SETTINGS, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SHOW_SETTINGS, handler);
     },
     onShowHistory: (callback: () => void): Unsubscribe => {
       const handler = () => callback();
-      ipcRenderer.on('markupr:show-history', handler);
-      return () => ipcRenderer.removeListener('markupr:show-history', handler);
+      ipcRenderer.on(IPC_CHANNELS.SHOW_HISTORY, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SHOW_HISTORY, handler);
     },
     onShowShortcuts: (callback: () => void): Unsubscribe => {
       const handler = () => callback();
-      ipcRenderer.on('markupr:show-shortcuts', handler);
-      return () => ipcRenderer.removeListener('markupr:show-shortcuts', handler);
+      ipcRenderer.on(IPC_CHANNELS.SHOW_SHORTCUTS, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SHOW_SHORTCUTS, handler);
     },
     onShowOnboarding: (callback: () => void): Unsubscribe => {
       const handler = () => callback();
-      ipcRenderer.on('markupr:show-onboarding', handler);
-      return () => ipcRenderer.removeListener('markupr:show-onboarding', handler);
+      ipcRenderer.on(IPC_CHANNELS.SHOW_ONBOARDING, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SHOW_ONBOARDING, handler);
     },
     onShowExport: (callback: () => void): Unsubscribe => {
       const handler = () => callback();
-      ipcRenderer.on('markupr:show-export', handler);
-      return () => ipcRenderer.removeListener('markupr:show-export', handler);
+      ipcRenderer.on(IPC_CHANNELS.SHOW_EXPORT, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SHOW_EXPORT, handler);
     },
     onShowWindowSelector: (callback: () => void): Unsubscribe => {
       const handler = () => callback();
-      ipcRenderer.on('markupr:show-window-selector', handler);
-      return () => ipcRenderer.removeListener('markupr:show-window-selector', handler);
+      ipcRenderer.on(IPC_CHANNELS.SHOW_WINDOW_SELECTOR, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.SHOW_WINDOW_SELECTOR, handler);
     },
   },
 

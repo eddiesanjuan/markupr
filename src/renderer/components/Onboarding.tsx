@@ -11,7 +11,8 @@
  * 5. Success - Confetti celebration, Start Recording button
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -71,15 +72,15 @@ interface Particle {
   opacity: number;
 }
 
-const CONFETTI_COLORS = [
-  '#3b82f6', // blue
-  '#10b981', // emerald
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#ec4899', // pink
-  '#06b6d4', // cyan
-  '#84cc16', // lime
+const getConfettiColors = (colors: ReturnType<typeof import('../hooks/useTheme').useTheme>['colors']) => [
+  colors.accent.default,
+  colors.status.success,
+  colors.status.warning,
+  colors.status.error,
+  colors.text.link,
+  colors.accent.hover,
+  colors.status.info,
+  colors.status.success,
 ];
 
 const createParticle = (id: number, centerX: number, centerY: number): Particle => ({
@@ -90,7 +91,7 @@ const createParticle = (id: number, centerX: number, centerY: number): Particle 
   vy: Math.random() * -15 - 10,
   rotation: Math.random() * 360,
   rotationSpeed: (Math.random() - 0.5) * 20,
-  color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+  color: '',
   size: Math.random() * 8 + 4,
   opacity: 1,
 });
@@ -99,6 +100,9 @@ const ConfettiCanvas: React.FC<{ active: boolean }> = ({ active }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const animationRef = useRef<number>();
+  const { colors } = useTheme();
+
+  const confettiColors = useMemo(() => getConfettiColors(colors), [colors]);
 
   const prefersReducedMotion = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -116,11 +120,16 @@ const ConfettiCanvas: React.FC<{ active: boolean }> = ({ active }) => {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // Create initial burst of particles
+    // Create initial burst of particles with theme colors
+    const themedCreateParticle = (id: number, cx: number, cy: number): Particle => ({
+      ...createParticle(id, cx, cy),
+      color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+    });
+
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
     particlesRef.current = Array.from({ length: 150 }, (_, i) =>
-      createParticle(i, centerX, centerY)
+      themedCreateParticle(i, centerX, centerY)
     );
 
     const animate = () => {
@@ -189,6 +198,7 @@ const AudioLevelMeter: React.FC<{ active: boolean }> = ({ active }) => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationRef = useRef<number>();
+  const { colors } = useTheme();
 
   useEffect(() => {
     if (!active) {
@@ -268,7 +278,7 @@ const AudioLevelMeter: React.FC<{ active: boolean }> = ({ active }) => {
           style={{
             ...styles.audioBar,
             height: `${Math.max(4, level * 48)}px`,
-            backgroundColor: level > 0.6 ? 'var(--ff-success)' : level > 0.3 ? 'var(--ff-accent)' : '#6b7280',
+            backgroundColor: level > 0.6 ? colors.status.success : level > 0.3 ? colors.accent.default : colors.text.tertiary,
             opacity: 0.5 + level * 0.5,
           }}
         />
@@ -286,6 +296,7 @@ const WelcomeStep: React.FC<{ onNext: () => void; onSkip: () => void }> = ({
   onSkip,
 }) => {
   const [mounted, setMounted] = useState(false);
+  const { colors } = useTheme();
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -316,18 +327,18 @@ const WelcomeStep: React.FC<{ onNext: () => void; onSkip: () => void }> = ({
           {/* Inner microphone icon */}
           <path
             d="M40 20c-4.4 0-8 3.6-8 8v12c0 4.4 3.6 8 8 8s8-3.6 8-8V28c0-4.4-3.6-8-8-8z"
-            fill="#ffffff"
+            fill={colors.text.inverse}
             opacity="0.9"
           />
           <path
             d="M54 36v4c0 7.7-6.3 14-14 14s-14-6.3-14-14v-4h-4v4c0 9.4 7.2 17.2 16 18v6h-6v4h16v-4h-6v-6c8.8-.8 16-8.6 16-18v-4h-4z"
-            fill="#ffffff"
+            fill={colors.text.inverse}
             opacity="0.9"
           />
           <defs>
             <linearGradient id="gradient1" x1="5" y1="5" x2="75" y2="75">
-              <stop stopColor="#3b82f6" />
-              <stop offset="1" stopColor="#8b5cf6" />
+              <stop stopColor={colors.accent.default} />
+              <stop offset="1" stopColor={colors.text.link} />
             </linearGradient>
           </defs>
         </svg>
@@ -378,6 +389,7 @@ const MicrophoneStep: React.FC<{
   onBack: () => void;
 }> = ({ status, onRequestPermission, onNext, onBack }) => {
   const [isRechecking, setIsRechecking] = useState(false);
+  const { colors } = useTheme();
 
   // Recheck permission after user returns from System Preferences
   const handleRecheck = async () => {
@@ -396,15 +408,15 @@ const MicrophoneStep: React.FC<{
         <div
           style={{
             ...styles.iconCircle,
-            backgroundColor: status === 'granted' ? 'rgba(59, 212, 154, 0.1)' : 'rgba(98, 168, 255, 0.1)',
-            borderColor: status === 'granted' ? 'var(--ff-success)' : 'var(--ff-accent)',
+            backgroundColor: status === 'granted' ? colors.status.successSubtle : colors.accent.subtle,
+            borderColor: status === 'granted' ? colors.status.success : colors.accent.default,
           }}
         >
           {status === 'granted' ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M18 24l4 4 8-8"
-                stroke="var(--ff-success)"
+                stroke={colors.status.success}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -414,19 +426,19 @@ const MicrophoneStep: React.FC<{
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M24 8c-3.3 0-6 2.7-6 6v9c0 3.3 2.7 6 6 6s6-2.7 6-6v-9c0-3.3-2.7-6-6-6z"
-                stroke="var(--ff-accent)"
+                stroke={colors.accent.default}
                 strokeWidth="2.5"
                 fill="none"
               />
               <path
                 d="M36 20v3c0 6.6-5.4 12-12 12s-12-5.4-12-12v-3"
-                stroke="var(--ff-accent)"
+                stroke={colors.accent.default}
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
               <path
                 d="M24 35v5M18 40h12"
-                stroke="var(--ff-accent)"
+                stroke={colors.accent.default}
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
@@ -459,12 +471,12 @@ const MicrophoneStep: React.FC<{
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
               <path
                 d="M10 6v4m0 4h.01M19 10a9 9 0 11-18 0 9 9 0 0118 0z"
-                stroke="#ef4444"
+                stroke={colors.status.error}
                 strokeWidth="1.5"
                 strokeLinecap="round"
               />
             </svg>
-            <span style={{ ...styles.instructionTitle, color: '#f87171' }}>Permission Denied</span>
+            <span style={{ ...styles.instructionTitle, color: colors.status.error }}>Permission Denied</span>
           </div>
           <ol style={styles.instructionList}>
             <li>Click &quot;Open System Settings&quot; below</li>
@@ -481,7 +493,7 @@ const MicrophoneStep: React.FC<{
           <button
             style={{
               ...styles.primaryButton,
-              backgroundColor: status === 'denied' ? 'var(--ff-error)' : 'var(--ff-accent)',
+              backgroundColor: status === 'denied' ? colors.status.error : colors.accent.default,
             }}
             onClick={onRequestPermission}
             disabled={status === 'pending'}
@@ -558,6 +570,7 @@ const ScreenRecordingStep: React.FC<{
   onBack: () => void;
 }> = ({ status, onRequestPermission, onNext, onBack }) => {
   const [isRechecking, setIsRechecking] = useState(false);
+  const { colors } = useTheme();
 
   // Recheck permission after user returns from System Preferences
   const handleRecheck = async () => {
@@ -576,15 +589,15 @@ const ScreenRecordingStep: React.FC<{
         <div
           style={{
             ...styles.iconCircle,
-            backgroundColor: status === 'granted' ? 'rgba(59, 212, 154, 0.1)' : 'rgba(98, 168, 255, 0.1)',
-            borderColor: status === 'granted' ? 'var(--ff-success)' : 'var(--ff-accent)',
+            backgroundColor: status === 'granted' ? colors.status.successSubtle : colors.accent.subtle,
+            borderColor: status === 'granted' ? colors.status.success : colors.accent.default,
           }}
         >
           {status === 'granted' ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M18 24l4 4 8-8"
-                stroke="var(--ff-success)"
+                stroke={colors.status.success}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -598,13 +611,13 @@ const ScreenRecordingStep: React.FC<{
                 width="36"
                 height="24"
                 rx="3"
-                stroke="var(--ff-accent)"
+                stroke={colors.accent.default}
                 strokeWidth="2.5"
                 fill="none"
               />
-              <path d="M14 38h20" stroke="var(--ff-accent)" strokeWidth="2.5" strokeLinecap="round" />
-              <path d="M24 34v4" stroke="var(--ff-accent)" strokeWidth="2.5" strokeLinecap="round" />
-              <circle cx="24" cy="22" r="4" stroke="var(--ff-accent)" strokeWidth="2" fill="none" />
+              <path d="M14 38h20" stroke={colors.accent.default} strokeWidth="2.5" strokeLinecap="round" />
+              <path d="M24 34v4" stroke={colors.accent.default} strokeWidth="2.5" strokeLinecap="round" />
+              <circle cx="24" cy="22" r="4" stroke={colors.accent.default} strokeWidth="2" fill="none" />
             </svg>
           )}
         </div>
@@ -627,7 +640,7 @@ const ScreenRecordingStep: React.FC<{
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
               <path
                 d="M10 6v4m0 4h.01M19 10a9 9 0 11-18 0 9 9 0 0118 0z"
-                stroke="#f59e0b"
+                stroke={colors.status.warning}
                 strokeWidth="1.5"
                 strokeLinecap="round"
               />
@@ -652,7 +665,7 @@ const ScreenRecordingStep: React.FC<{
           <button
             style={{
               ...styles.primaryButton,
-              backgroundColor: status === 'denied' ? '#f59e0b' : 'var(--ff-accent)',
+              backgroundColor: status === 'denied' ? colors.status.warning : colors.accent.default,
             }}
             onClick={onRequestPermission}
             disabled={status === 'pending'}
@@ -696,7 +709,7 @@ const ScreenRecordingStep: React.FC<{
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
             <path
               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              stroke="#10b981"
+              stroke={colors.status.success}
               strokeWidth="2"
               strokeLinecap="round"
             />
@@ -744,6 +757,7 @@ const ApiKeyStep: React.FC<{
   onBack: () => void;
 }> = ({ apiKey, onApiKeyChange, onTestApiKey, onNext, onSkip, onBack }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { colors } = useTheme();
 
   useEffect(() => {
     // Focus input on mount
@@ -757,15 +771,15 @@ const ApiKeyStep: React.FC<{
         <div
           style={{
             ...styles.iconCircle,
-            backgroundColor: apiKey.valid ? 'rgba(59, 212, 154, 0.1)' : 'rgba(98, 168, 255, 0.1)',
-            borderColor: apiKey.valid ? 'var(--ff-success)' : 'var(--ff-accent)',
+            backgroundColor: apiKey.valid ? colors.status.successSubtle : colors.accent.subtle,
+            borderColor: apiKey.valid ? colors.status.success : colors.accent.default,
           }}
         >
           {apiKey.valid ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M18 24l4 4 8-8"
-                stroke="var(--ff-success)"
+                stroke={colors.status.success}
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -775,7 +789,7 @@ const ApiKeyStep: React.FC<{
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <path
                 d="M32 20l-8-8-8 8M16 28l8 8 8-8"
-                stroke="var(--ff-accent)"
+                stroke={colors.accent.default}
                 strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -784,7 +798,7 @@ const ApiKeyStep: React.FC<{
                 cx="24"
                 cy="24"
                 r="4"
-                stroke="var(--ff-accent)"
+                stroke={colors.accent.default}
                 strokeWidth="2.5"
                 fill="none"
               />
@@ -821,7 +835,7 @@ const ApiKeyStep: React.FC<{
           onChange={(e) => onApiKeyChange(e.target.value)}
           style={{
             ...styles.input,
-            borderColor: apiKey.error ? 'var(--ff-error)' : apiKey.valid ? 'var(--ff-success)' : '#374151',
+            borderColor: apiKey.error ? colors.status.error : apiKey.valid ? colors.status.success : colors.border.default,
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && apiKey.value.length > 10) {
@@ -833,7 +847,7 @@ const ApiKeyStep: React.FC<{
           <button
             style={{
               ...styles.testButton,
-              backgroundColor: apiKey.testing ? '#374151' : 'var(--ff-accent)',
+              backgroundColor: apiKey.testing ? colors.bg.tertiary : colors.accent.default,
             }}
             onClick={onTestApiKey}
             disabled={apiKey.value.length < 10}
@@ -855,7 +869,7 @@ const ApiKeyStep: React.FC<{
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path
               d="M10 6v4m0 4h.01M19 10a9 9 0 11-18 0 9 9 0 0118 0z"
-              stroke="#ef4444"
+              stroke={colors.status.error}
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -870,7 +884,7 @@ const ApiKeyStep: React.FC<{
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
             <path
               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-              stroke="#10b981"
+              stroke={colors.status.success}
               strokeWidth="2"
               strokeLinecap="round"
             />
@@ -923,6 +937,7 @@ const ApiKeyStep: React.FC<{
 const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
   const [showConfetti, setShowConfetti] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const { colors } = useTheme();
 
   useEffect(() => {
     // Trigger animations after mount
@@ -952,6 +967,8 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
           <div
             style={{
               ...styles.successIconOuter,
+              backgroundColor: colors.status.successSubtle,
+              borderColor: colors.status.success,
               transform: mounted ? 'scale(1)' : 'scale(0)',
               transition: 'transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s',
             }}
@@ -959,7 +976,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
             <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
               <path
                 d="M20 32l8 8 16-16"
-                stroke="#10b981"
+                stroke={colors.status.success}
                 strokeWidth="4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -974,7 +991,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
         </div>
 
         {/* Title */}
-        <h2 style={{ ...styles.stepTitle, color: '#10b981' }}>You&apos;re All Set!</h2>
+        <h2 style={{ ...styles.stepTitle, color: colors.status.success }}>You&apos;re All Set!</h2>
 
         {/* Summary */}
         <p style={styles.stepDescription}>
@@ -989,7 +1006,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path
                 d="M9 12l2 2 4-4"
-                stroke="#10b981"
+                stroke="currentColor"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
@@ -1000,7 +1017,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path
                 d="M9 12l2 2 4-4"
-                stroke="#10b981"
+                stroke="currentColor"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
@@ -1011,7 +1028,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path
                 d="M9 12l2 2 4-4"
-                stroke="#10b981"
+                stroke="currentColor"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
@@ -1024,7 +1041,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
         <button
           style={{
             ...styles.primaryButton,
-            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+            backgroundColor: colors.status.success,
           }}
           onClick={onComplete}
         >
@@ -1055,9 +1072,10 @@ const STEPS: OnboardingStep[] = ['welcome', 'microphone', 'screen', 'apikey', 's
 
 const ProgressDots: React.FC<{ currentStep: OnboardingStep }> = ({ currentStep }) => {
   const currentIndex = STEPS.indexOf(currentStep);
+  const { colors } = useTheme();
 
   return (
-    <div style={styles.progressContainer}>
+    <div style={styles.progressContainer} role="navigation" aria-label="Setup progress">
       {STEPS.filter((s) => s !== 'welcome' && s !== 'success').map((step) => {
         const stepIndex = STEPS.indexOf(step);
         const isActive = stepIndex === currentIndex;
@@ -1068,15 +1086,16 @@ const ProgressDots: React.FC<{ currentStep: OnboardingStep }> = ({ currentStep }
             key={step}
             style={{
               ...styles.progressDot,
-              backgroundColor: isCompleted ? '#10b981' : isActive ? '#3b82f6' : '#374151',
+              backgroundColor: isCompleted ? colors.status.success : isActive ? colors.accent.default : colors.bg.tertiary,
               transform: isActive ? 'scale(1.2)' : 'scale(1)',
             }}
+            aria-label={`Step ${stepIndex}: ${step}${isCompleted ? ' (completed)' : isActive ? ' (current)' : ''}`}
           >
             {isCompleted && (
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
                 <path
                   d="M2 5l2 2 4-4"
-                  stroke="#ffffff"
+                  stroke={colors.text.inverse}
                   strokeWidth="1.5"
                   strokeLinecap="round"
                 />
@@ -1112,6 +1131,33 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
     setSlideDirection(direction);
     setCurrentStep(step);
   }, []);
+
+  // Keyboard navigation: Enter/Right = next, Escape/Left = back
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const stepIndex = STEPS.indexOf(currentStep);
+
+      if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        e.preventDefault();
+        if (currentStep === 'welcome') goToStep('microphone');
+        else if (currentStep === 'microphone' && permissions.microphone === 'granted') goToStep('screen');
+        else if (currentStep === 'screen' && permissions.screen === 'granted') goToStep('apikey');
+        else if (currentStep === 'apikey' && apiKey.valid) goToStep('success');
+        else if (currentStep === 'success') onComplete();
+      } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
+        e.preventDefault();
+        if (stepIndex > 0 && currentStep !== 'welcome') {
+          goToStep(STEPS[stepIndex - 1], 'right');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentStep, permissions, apiKey.valid, goToStep, onComplete]);
 
   // Check initial permission status on mount
   useEffect(() => {
@@ -1280,7 +1326,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
   };
 
   return (
-    <div style={styles.overlay}>
+    <div style={styles.overlay} role="dialog" aria-modal="true" aria-label="Setup wizard">
       <div style={styles.backdrop} />
 
       <div style={styles.modal}>
@@ -1289,71 +1335,28 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
           <ProgressDots currentStep={currentStep} />
         )}
 
+        {/* ARIA live region for step announcements */}
+        <div aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+          {currentStep === 'welcome' && 'Welcome to markupr setup'}
+          {currentStep === 'microphone' && 'Step 1 of 3: Microphone access'}
+          {currentStep === 'screen' && 'Step 2 of 3: Screen recording'}
+          {currentStep === 'apikey' && 'Step 3 of 3: OpenAI API key'}
+          {currentStep === 'success' && 'Setup complete'}
+        </div>
+
         {/* Step Content with Animation */}
         <div
           key={currentStep}
           style={{
             ...styles.stepWrapper,
-            animation: `slideIn${slideDirection === 'left' ? 'Left' : 'Right'} 0.4s ease-out`,
+            animation: `pageSlideIn${slideDirection === 'left' ? 'Left' : 'Right'} 0.4s ease-out`,
           }}
         >
           {renderStep()}
         </div>
       </div>
 
-      {/* Keyframe Animations */}
-      <style>
-        {`
-          @keyframes slideInLeft {
-            from {
-              opacity: 0;
-              transform: translateX(30px);
-            }
-            to {
-              opacity: 1;
-              transform: translateX(0);
-            }
-          }
-
-          @keyframes slideInRight {
-            from {
-              opacity: 0;
-              transform: translateX(-30px);
-            }
-            to {
-              opacity: 1;
-              transform: translateX(0);
-            }
-          }
-
-          @keyframes spin {
-            from {
-              transform: rotate(0deg);
-            }
-            to {
-              transform: rotate(360deg);
-            }
-          }
-
-          @keyframes pulse {
-            0%, 100% {
-              opacity: 1;
-            }
-            50% {
-              opacity: 0.5;
-            }
-          }
-
-          @keyframes glow {
-            0%, 100% {
-              box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-            }
-            50% {
-              box-shadow: 0 0 40px rgba(59, 130, 246, 0.5);
-            }
-          }
-        `}
-      </style>
+      {/* pageSlideInLeft, pageSlideInRight, spin, pulse, glowPulse keyframes provided by animations.css */}
     </div>
   );
 };
@@ -1379,7 +1382,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   backdrop: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'var(--bg-overlay)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
   },
@@ -1389,9 +1392,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 480,
     margin: 24,
-    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+    backgroundColor: 'var(--bg-elevated)',
     borderRadius: 24,
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-subtle)',
     overflow: 'hidden',
     WebkitAppRegion: 'no-drag',
   },
@@ -1416,15 +1419,15 @@ const styles: Record<string, ExtendedCSSProperties> = {
   logoGlow: {
     position: 'absolute',
     inset: -20,
-    background: 'radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%)',
-    animation: 'glow 3s ease-in-out infinite',
+    background: 'radial-gradient(circle, var(--accent-muted) 0%, transparent 70%)',
+    animation: 'glowPulse 3s ease-in-out infinite',
   },
 
   // Typography
   title: {
     fontSize: 28,
     fontWeight: 700,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     marginBottom: 16,
     letterSpacing: '-0.02em',
   },
@@ -1432,7 +1435,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   tagline: {
     fontSize: 15,
     lineHeight: 1.6,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     marginBottom: 32,
     maxWidth: 360,
   },
@@ -1440,7 +1443,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   stepTitle: {
     fontSize: 24,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     marginBottom: 12,
     letterSpacing: '-0.01em',
   },
@@ -1448,7 +1451,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   stepDescription: {
     fontSize: 14,
     lineHeight: 1.6,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     marginBottom: 24,
     maxWidth: 340,
   },
@@ -1461,10 +1464,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 280,
     padding: '14px 24px',
-    backgroundColor: 'var(--ff-accent)',
+    backgroundColor: 'var(--accent-default)',
     border: 'none',
     borderRadius: 12,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 15,
     fontWeight: 600,
     cursor: 'pointer',
@@ -1476,7 +1479,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     padding: '8px 16px',
     backgroundColor: 'transparent',
     border: 'none',
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 13,
     cursor: 'pointer',
     transition: 'color 0.2s ease',
@@ -1487,7 +1490,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     padding: '8px 16px',
     backgroundColor: 'transparent',
     border: 'none',
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 13,
     cursor: 'pointer',
     transition: 'color 0.2s ease',
@@ -1498,10 +1501,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     padding: '10px 16px',
-    backgroundColor: 'var(--ff-accent)',
+    backgroundColor: 'var(--accent-default)',
     border: 'none',
     borderRadius: 8,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1553,10 +1556,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   input: {
     flex: 1,
     padding: '12px 16px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    border: '1px solid #374151',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     fontSize: 14,
     transition: 'border-color 0.2s ease',
   },
@@ -1566,7 +1569,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 320,
     padding: 16,
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
     borderRadius: 12,
     marginBottom: 24,
   },
@@ -1574,7 +1577,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   previewLabel: {
     display: 'block',
     fontSize: 12,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     marginBottom: 12,
   },
 
@@ -1585,12 +1588,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 360,
     padding: 12,
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    border: '1px solid rgba(245, 158, 11, 0.3)',
+    backgroundColor: 'var(--status-warning-subtle)',
+    border: '1px solid var(--status-warning)',
     borderRadius: 8,
     marginBottom: 16,
     fontSize: 13,
-    color: '#fbbf24',
+    color: 'var(--status-warning)',
     textAlign: 'left',
   },
 
@@ -1601,12 +1604,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 360,
     padding: 12,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    border: '1px solid rgba(16, 185, 129, 0.3)',
+    backgroundColor: 'var(--status-success-subtle)',
+    border: '1px solid var(--status-success)',
     borderRadius: 8,
     marginBottom: 24,
     fontSize: 13,
-    color: '#34d399',
+    color: 'var(--status-success)',
     textAlign: 'left',
   },
 
@@ -1617,12 +1620,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 360,
     padding: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    border: '1px solid rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'var(--status-error-subtle)',
+    border: '1px solid var(--status-error)',
     borderRadius: 8,
     marginBottom: 16,
     fontSize: 13,
-    color: '#f87171',
+    color: 'var(--status-error)',
     textAlign: 'left',
   },
 
@@ -1631,8 +1634,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 360,
     padding: 16,
-    backgroundColor: 'rgba(245, 158, 11, 0.08)',
-    border: '1px solid rgba(245, 158, 11, 0.25)',
+    backgroundColor: 'var(--status-warning-subtle)',
+    border: '1px solid var(--status-warning)',
     borderRadius: 12,
     marginBottom: 20,
     textAlign: 'left',
@@ -1648,21 +1651,21 @@ const styles: Record<string, ExtendedCSSProperties> = {
   instructionTitle: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#fbbf24',
+    color: 'var(--status-warning)',
   },
 
   instructionList: {
     margin: 0,
     paddingLeft: 20,
     fontSize: 13,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     lineHeight: 1.8,
   },
 
   instructionNote: {
     marginTop: 12,
     fontSize: 12,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontStyle: 'italic',
   },
 
@@ -1682,9 +1685,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     padding: '12px 24px',
     backgroundColor: 'transparent',
-    border: '1px solid #4b5563',
+    border: '1px solid var(--border-strong)',
     borderRadius: 12,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1700,8 +1703,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 96,
     height: 96,
     borderRadius: '50%',
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    border: '2px solid #10b981',
+    backgroundColor: 'var(--status-success-subtle)',
+    border: '2px solid var(--status-success)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1719,22 +1722,22 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 8,
     fontSize: 14,
-    color: '#d1d5db',
+    color: 'var(--status-success)',
   },
 
   kbd: {
     display: 'inline-block',
     padding: '2px 8px',
-    backgroundColor: 'rgba(55, 65, 81, 0.8)',
+    backgroundColor: 'var(--surface-inset)',
     borderRadius: 4,
     fontSize: 12,
     fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
-    color: '#f9fafb',
-    border: '1px solid #4b5563',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border-strong)',
   },
 
   link: {
-    color: '#60a5fa',
+    color: 'var(--text-link)',
     textDecoration: 'none',
   },
 
@@ -1761,8 +1764,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
   spinner: {
     width: 16,
     height: 16,
-    border: '2px solid rgba(255, 255, 255, 0.3)',
-    borderTopColor: '#ffffff',
+    border: '2px solid var(--border-subtle)',
+    borderTopColor: 'var(--text-inverse)',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },

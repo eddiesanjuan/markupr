@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { ReviewSession as Session } from '../../shared/types';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -151,14 +152,15 @@ interface FormatCardProps {
 }
 
 const FormatCard: React.FC<FormatCardProps> = ({ data, isSelected, onSelect }) => {
+  const { colors } = useTheme();
   return (
     <button
       onClick={onSelect}
       style={{
         ...styles.formatCard,
-        borderColor: isSelected ? 'rgba(59, 130, 246, 0.7)' : 'rgba(51, 65, 85, 0.5)',
-        backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'rgba(31, 41, 55, 0.5)',
-        boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : 'none',
+        borderColor: isSelected ? `${colors.accent.default}b3` : 'rgba(51, 65, 85, 0.5)',
+        backgroundColor: isSelected ? `${colors.accent.default}1a` : 'rgba(31, 41, 55, 0.5)',
+        boxShadow: isSelected ? `0 0 0 2px ${colors.accent.default}4d` : 'none',
       }}
     >
       <div style={styles.formatIcon}>{data.icon}</div>
@@ -284,6 +286,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
   onExport,
   defaultProjectName,
 }) => {
+  const { colors } = useTheme();
   const [format, setFormat] = useState<ExportFormat>('markdown');
   const [projectName, setProjectName] = useState(
     defaultProjectName || session.metadata?.sourceName || 'Feedback Report'
@@ -340,31 +343,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
 
   return (
     <div style={styles.overlay} onClick={onClose}>
-      <style>
-        {`
-          @keyframes export-dialog-enter {
-            from {
-              opacity: 0;
-              transform: scale(0.95) translateY(10px);
-            }
-            to {
-              opacity: 1;
-              transform: scale(1) translateY(0);
-            }
-          }
-
-          @keyframes export-spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-
-          @keyframes export-success {
-            0% { transform: scale(0); }
-            50% { transform: scale(1.2); }
-            100% { transform: scale(1); }
-          }
-        `}
-      </style>
+      {/* dialogEnter, spin, successPop keyframes provided by animations.css */}
 
       <div
         style={styles.dialog}
@@ -419,7 +398,7 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                     style={{
                       ...styles.toggleButton,
                       backgroundColor: includeImages
-                        ? 'rgba(59, 130, 246, 0.8)'
+                        ? `${colors.accent.default}cc`
                         : 'rgba(51, 65, 85, 0.5)',
                     }}
                   >
@@ -442,8 +421,8 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                       onClick={() => setTheme('dark')}
                       style={{
                         ...styles.themeButton,
-                        backgroundColor: theme === 'dark' ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
-                        color: theme === 'dark' ? '#ffffff' : '#94a3b8',
+                        backgroundColor: theme === 'dark' ? `${colors.accent.default}cc` : 'transparent',
+                        color: theme === 'dark' ? colors.text.inverse : colors.text.secondary,
                       }}
                     >
                       Dark
@@ -452,8 +431,8 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
                       onClick={() => setTheme('light')}
                       style={{
                         ...styles.themeButton,
-                        backgroundColor: theme === 'light' ? 'rgba(59, 130, 246, 0.8)' : 'transparent',
-                        color: theme === 'light' ? '#ffffff' : '#94a3b8',
+                        backgroundColor: theme === 'light' ? `${colors.accent.default}cc` : 'transparent',
+                        color: theme === 'light' ? colors.text.inverse : colors.text.secondary,
                       }}
                     >
                       Light
@@ -496,14 +475,14 @@ const ExportDialog: React.FC<ExportDialogProps> = ({
             >
               {isExporting ? (
                 <>
-                  <span style={{ animation: 'export-spin 1s linear infinite', display: 'inline-flex' }}>
+                  <span style={{ animation: 'spin 1s linear infinite', display: 'inline-flex' }}>
                     <SpinnerIcon />
                   </span>
                   <span>Exporting...</span>
                 </>
               ) : exportSuccess ? (
                 <>
-                  <span style={{ animation: 'export-success 0.3s ease-out' }}>
+                  <span style={{ animation: 'successPop 0.3s ease-out' }}>
                     <CheckIcon />
                   </span>
                   <span>Exported!</span>
@@ -541,14 +520,14 @@ const styles: Record<string, React.CSSProperties> = {
     width: '90%',
     maxWidth: 900,
     maxHeight: '85vh',
-    backgroundColor: '#0f172a',
+    backgroundColor: 'var(--bg-primary)',
     borderRadius: 16,
     border: '1px solid rgba(51, 65, 85, 0.5)',
     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    animation: 'export-dialog-enter 0.2s ease-out',
+    animation: 'dialogEnter 0.2s ease-out',
   },
 
   // Header
@@ -563,7 +542,7 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 18,
     fontWeight: 600,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     margin: 0,
   },
 
@@ -577,7 +556,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 8,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
@@ -608,7 +587,7 @@ const styles: Record<string, React.CSSProperties> = {
   sectionTitle: {
     fontSize: 12,
     fontWeight: 600,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     marginBottom: 12,
@@ -644,7 +623,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
     borderRadius: 10,
-    color: '#60a5fa',
+    color: 'var(--text-link)',
   },
 
   formatInfo: {
@@ -662,18 +641,18 @@ const styles: Record<string, React.CSSProperties> = {
   formatName: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
   },
 
   formatExtension: {
     fontSize: 11,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     fontFamily: 'ui-monospace, monospace',
   },
 
   formatDescription: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     margin: 0,
     lineHeight: 1.4,
     marginBottom: 8,
@@ -687,7 +666,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   featureTag: {
     fontSize: 10,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     backgroundColor: 'rgba(51, 65, 85, 0.5)',
     padding: '2px 6px',
     borderRadius: 4,
@@ -702,9 +681,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--accent-default)',
     borderRadius: '50%',
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
   },
 
   // Options
@@ -723,7 +702,7 @@ const styles: Record<string, React.CSSProperties> = {
   optionLabel: {
     fontSize: 13,
     fontWeight: 500,
-    color: '#e2e8f0',
+    color: 'var(--text-primary)',
   },
 
   textInput: {
@@ -732,7 +711,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'rgba(31, 41, 55, 0.5)',
     border: '1px solid rgba(51, 65, 85, 0.5)',
     borderRadius: 8,
-    color: '#f1f5f9',
+    color: 'var(--text-primary)',
     fontSize: 13,
     outline: 'none',
     transition: 'border-color 0.15s ease',
@@ -752,7 +731,7 @@ const styles: Record<string, React.CSSProperties> = {
   toggleKnob: {
     width: 20,
     height: 20,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'var(--text-inverse)',
     borderRadius: '50%',
     transition: 'transform 0.2s ease',
     boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
@@ -797,7 +776,7 @@ const styles: Record<string, React.CSSProperties> = {
   previewTitle: {
     fontSize: 12,
     fontWeight: 500,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
@@ -805,7 +784,7 @@ const styles: Record<string, React.CSSProperties> = {
   previewFormat: {
     fontSize: 10,
     fontWeight: 600,
-    color: '#3b82f6',
+    color: 'var(--text-link)',
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
     padding: '2px 8px',
     borderRadius: 4,
@@ -817,7 +796,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 11,
     lineHeight: 1.5,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
     whiteSpace: 'pre-wrap',
     overflowY: 'auto',
@@ -840,7 +819,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
     fontSize: 12,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
   },
 
   footerItemCount: {
@@ -852,7 +831,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   footerFormat: {
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
   },
 
   footerActions: {
@@ -866,7 +845,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: '1px solid rgba(51, 65, 85, 0.5)',
     borderRadius: 8,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -878,10 +857,10 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
     padding: '10px 20px',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--accent-default)',
     border: 'none',
     borderRadius: 8,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 13,
     fontWeight: 600,
     cursor: 'pointer',

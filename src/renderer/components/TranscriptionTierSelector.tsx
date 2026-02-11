@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../hooks/useTheme';
 import type {
   TranscriptionTier as SharedTranscriptionTier,
   TranscriptionTierStatus,
@@ -34,7 +35,6 @@ interface TierInfo {
   requirements: string;
   icon: React.ReactNode;
   badge?: string;
-  badgeColor?: string;
 }
 
 interface TranscriptionTierSelectorProps {
@@ -66,7 +66,6 @@ const TIER_INFO: Partial<Record<TranscriptionTier, TierInfo>> = {
     latency: '1-3s latency',
     requirements: '~75MB model download, low RAM',
     badge: 'Recommended',
-    badgeColor: '#10B981',
     icon: (
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
@@ -100,6 +99,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
   onTierSelect,
   compact = false,
 }) => {
+  const { colors } = useTheme();
   const [tierStatuses, setTierStatuses] = useState<TierStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
@@ -225,14 +225,14 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
                 disabled={!isAvailable}
                 style={{
                   ...styles.tierCard,
-                  borderColor: isSelected ? '#3B82F6' : 'rgba(255, 255, 255, 0.1)',
-                  backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'rgba(31, 41, 55, 0.5)',
+                  borderColor: isSelected ? colors.accent.default : 'rgba(255, 255, 255, 0.1)',
+                  backgroundColor: isSelected ? colors.accent.subtle : 'rgba(31, 41, 55, 0.5)',
                   opacity: !isAvailable && !needsModelDownload ? 0.5 : 1,
                   cursor: isAvailable ? 'pointer' : 'not-allowed',
                 }}
               >
                 <div style={styles.tierHeader}>
-                  <div style={{ ...styles.tierIcon, color: isSelected ? '#3B82F6' : '#9CA3AF' }}>
+                  <div style={{ ...styles.tierIcon, color: isSelected ? colors.accent.default : colors.text.secondary }}>
                     {info.icon}
                   </div>
                   <div style={styles.tierInfo}>
@@ -242,7 +242,7 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
                         <span
                           style={{
                             ...styles.tierBadge,
-                            backgroundColor: info.badgeColor || '#6B7280',
+                            backgroundColor: colors.status.success,
                           }}
                         >
                           {info.badge}
@@ -343,21 +343,24 @@ export const TranscriptionTierSelector: React.FC<TranscriptionTierSelectorProps>
 // Icons
 // ============================================================================
 
-const WarningIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path
-      d="M7 4.5v3M7 9.5h.005"
-      stroke="#F59E0B"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    />
-    <path
-      d="M6.134 1.944L1.06 10.5a1 1 0 00.866 1.5h10.148a1 1 0 00.866-1.5L7.866 1.944a1 1 0 00-1.732 0z"
-      stroke="#F59E0B"
-      strokeWidth="1.5"
-    />
-  </svg>
-);
+const WarningIcon = () => {
+  const { colors } = useTheme();
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path
+        d="M7 4.5v3M7 9.5h.005"
+        stroke={colors.status.warning}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M6.134 1.944L1.06 10.5a1 1 0 00.866 1.5h10.148a1 1 0 00.866-1.5L7.866 1.944a1 1 0 00-1.732 0z"
+        stroke={colors.status.warning}
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+};
 
 const DownloadIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -398,13 +401,13 @@ const styles: Record<string, React.CSSProperties> = {
   title: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#F9FAFB',
+    color: 'var(--text-primary)',
     margin: 0,
   },
 
   subtitle: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: 'var(--text-secondary)',
     margin: 0,
     lineHeight: 1.5,
   },
@@ -415,7 +418,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     gap: 8,
     padding: 24,
-    color: '#9CA3AF',
+    color: 'var(--text-secondary)',
     fontSize: 13,
   },
 
@@ -423,7 +426,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: 16,
     height: 16,
     border: '2px solid rgba(255, 255, 255, 0.2)',
-    borderTopColor: '#3B82F6',
+    borderTopColor: 'var(--accent-default)',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
@@ -487,13 +490,13 @@ const styles: Record<string, React.CSSProperties> = {
   tierName: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#F9FAFB',
+    color: 'var(--text-primary)',
   },
 
   tierBadge: {
     fontSize: 10,
     fontWeight: 600,
-    color: '#FFFFFF',
+    color: 'var(--text-inverse)',
     padding: '2px 6px',
     borderRadius: 4,
     textTransform: 'uppercase',
@@ -503,15 +506,15 @@ const styles: Record<string, React.CSSProperties> = {
   activeBadge: {
     fontSize: 10,
     fontWeight: 600,
-    color: '#3B82F6',
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    color: 'var(--accent-default)',
+    backgroundColor: 'var(--accent-muted)',
     padding: '2px 6px',
     borderRadius: 4,
   },
 
   tierDescription: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: 'var(--text-secondary)',
     margin: 0,
     lineHeight: 1.4,
   },
@@ -521,7 +524,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 6,
     fontSize: 11,
-    color: '#6B7280',
+    color: 'var(--text-tertiary)',
     flexWrap: 'wrap',
   },
 
@@ -538,7 +541,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 6,
     fontSize: 11,
-    color: '#F59E0B',
+    color: 'var(--status-warning)',
     marginTop: 4,
   },
 
@@ -562,15 +565,15 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 8,
     fontSize: 12,
-    color: '#10B981',
+    color: 'var(--status-success)',
   },
 
   downloadButton: {
     padding: '6px 12px',
-    backgroundColor: '#10B981',
+    backgroundColor: 'var(--status-success)',
     border: 'none',
     borderRadius: 6,
-    color: '#FFFFFF',
+    color: 'var(--text-inverse)',
     fontSize: 12,
     fontWeight: 600,
     cursor: 'pointer',
@@ -593,7 +596,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   progressFill: {
     height: '100%',
-    backgroundColor: '#10B981',
+    backgroundColor: 'var(--status-success)',
     borderRadius: 2,
     transition: 'width 0.2s ease',
   },
@@ -602,11 +605,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: 11,
-    color: '#10B981',
+    color: 'var(--status-success)',
   },
 
   progressSpeed: {
-    color: '#6B7280',
+    color: 'var(--text-tertiary)',
   },
 
   cancelButton: {
@@ -615,7 +618,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     borderRadius: 4,
-    color: '#9CA3AF',
+    color: 'var(--text-secondary)',
     fontSize: 11,
     cursor: 'pointer',
   },
@@ -625,11 +628,11 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'flex-start',
     gap: 8,
     padding: 12,
-    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    backgroundColor: 'var(--accent-subtle)',
     borderRadius: 8,
     border: '1px solid rgba(59, 130, 246, 0.1)',
     fontSize: 11,
-    color: '#9CA3AF',
+    color: 'var(--text-secondary)',
     lineHeight: 1.5,
   },
 };

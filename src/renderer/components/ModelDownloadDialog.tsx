@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -138,6 +139,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
   const [selectedModel, setSelectedModel] = useState<string>('tiny');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const { colors } = useTheme();
 
   const { isDownloading, progress, error, downloadModel, cancelDownload } = useModelDownload();
 
@@ -190,26 +192,26 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
                 <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
                   <path
                     d="M24 8c-3.3 0-6 2.7-6 6v9c0 3.3 2.7 6 6 6s6-2.7 6-6v-9c0-3.3-2.7-6-6-6z"
-                    stroke="#3b82f6"
+                    stroke={colors.accent.default}
                     strokeWidth="2.5"
                     fill="none"
                   />
                   <path
                     d="M36 20v3c0 6.6-5.4 12-12 12s-12-5.4-12-12v-3"
-                    stroke="#3b82f6"
+                    stroke={colors.accent.default}
                     strokeWidth="2.5"
                     strokeLinecap="round"
                   />
                   <path
                     d="M24 35v5M18 40h12"
-                    stroke="#3b82f6"
+                    stroke={colors.accent.default}
                     strokeWidth="2.5"
                     strokeLinecap="round"
                   />
                   {/* Download arrow */}
                   <path
                     d="M38 28v6h-6M38 34l-6-6"
-                    stroke="#10b981"
+                    stroke={colors.status.success}
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -237,8 +239,8 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
                       key={model.name}
                       style={{
                         ...styles.modelOption,
-                        borderColor: selectedModel === model.name ? '#3b82f6' : '#374151',
-                        backgroundColor: selectedModel === model.name ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                        borderColor: selectedModel === model.name ? colors.accent.default : colors.bg.tertiary,
+                        backgroundColor: selectedModel === model.name ? colors.accent.subtle : 'transparent',
                       }}
                       onClick={() => setSelectedModel(model.name)}
                     >
@@ -301,7 +303,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
                     cy="60"
                     r="54"
                     fill="none"
-                    stroke="#374151"
+                    stroke={colors.bg.tertiary}
                     strokeWidth="8"
                   />
                   {/* Progress circle */}
@@ -310,7 +312,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
                     cy="60"
                     r="54"
                     fill="none"
-                    stroke="#3b82f6"
+                    stroke={colors.accent.default}
                     strokeWidth="8"
                     strokeLinecap="round"
                     strokeDasharray={`${(progress?.percent || 0) * 3.39} 339`}
@@ -361,7 +363,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
                 <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
                   <path
                     d="M16 24l6 6 12-12"
-                    stroke="#10b981"
+                    stroke={colors.status.success}
                     strokeWidth="4"
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -371,7 +373,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
             </div>
 
             {/* Title */}
-            <h2 style={{ ...styles.title, color: '#10b981' }}>Download Complete!</h2>
+            <h2 style={{ ...styles.title, color: colors.status.success }}>Download Complete!</h2>
 
             {/* Description */}
             <p style={styles.description}>
@@ -404,7 +406,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
                 <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
                   <path
                     d="M24 16v8m0 8h.01"
-                    stroke="#ef4444"
+                    stroke={colors.status.error}
                     strokeWidth="4"
                     strokeLinecap="round"
                   />
@@ -413,7 +415,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
             </div>
 
             {/* Title */}
-            <h2 style={{ ...styles.title, color: '#ef4444' }}>Download Failed</h2>
+            <h2 style={{ ...styles.title, color: colors.status.error }}>Download Failed</h2>
 
             {/* Error Message */}
             <div style={styles.errorBox}>
@@ -601,8 +603,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 96,
     height: 96,
     borderRadius: '50%',
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    border: '2px solid #3b82f6',
+    backgroundColor: 'var(--accent-subtle)',
+    border: '2px solid var(--accent-default)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -611,7 +613,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   title: {
     fontSize: 22,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     marginBottom: 12,
     letterSpacing: '-0.01em',
   },
@@ -619,7 +621,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   description: {
     fontSize: 14,
     lineHeight: 1.6,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     marginBottom: 24,
     maxWidth: 340,
   },
@@ -638,10 +640,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     justifyContent: 'center',
     width: '100%',
     padding: '14px 24px',
-    backgroundColor: '#3b82f6',
+    backgroundColor: 'var(--accent-default)',
     border: 'none',
     borderRadius: 12,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 15,
     fontWeight: 600,
     cursor: 'pointer',
@@ -652,7 +654,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     padding: '10px 16px',
     backgroundColor: 'transparent',
     border: 'none',
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 13,
     cursor: 'pointer',
     transition: 'color 0.2s ease',
@@ -663,7 +665,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     padding: '8px 16px',
     backgroundColor: 'transparent',
     border: 'none',
-    color: '#60a5fa',
+    color: 'var(--text-link)',
     fontSize: 13,
     cursor: 'pointer',
     transition: 'color 0.2s ease',
@@ -677,7 +679,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   modelLabel: {
     display: 'block',
     fontSize: 13,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     marginBottom: 12,
     textAlign: 'left',
   },
@@ -692,7 +694,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     padding: '12px 16px',
     backgroundColor: 'transparent',
-    border: '1px solid #374151',
+    border: '1px solid var(--bg-tertiary)',
     borderRadius: 10,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -709,15 +711,15 @@ const styles: Record<string, ExtendedCSSProperties> = {
   modelName: {
     fontSize: 14,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     textTransform: 'capitalize',
   },
 
   downloadedBadge: {
     fontSize: 11,
     padding: '2px 8px',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    color: '#10b981',
+    backgroundColor: 'var(--status-success-subtle)',
+    color: 'var(--status-success)',
     borderRadius: 4,
   },
 
@@ -725,11 +727,11 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     gap: 12,
     fontSize: 12,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
   },
 
   modelQuality: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
   },
 
   // Progress state styles
@@ -746,7 +748,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     position: 'absolute',
     fontSize: 24,
     fontWeight: 700,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
   },
 
   progressDetails: {
@@ -764,21 +766,21 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   progressLabel: {
     fontSize: 13,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
   },
 
   progressValue: {
     fontSize: 13,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
   },
 
   cancelButton: {
     padding: '12px 24px',
     backgroundColor: 'transparent',
-    border: '1px solid #4b5563',
+    border: '1px solid var(--border-strong)',
     borderRadius: 10,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     fontSize: 14,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -789,8 +791,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 96,
     height: 96,
     borderRadius: '50%',
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    border: '2px solid #10b981',
+    backgroundColor: 'var(--status-success-subtle)',
+    border: '2px solid var(--status-success)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -803,10 +805,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 300,
     padding: '14px 24px',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    background: 'linear-gradient(135deg, var(--status-success) 0%, #059669 100%)',
     border: 'none',
     borderRadius: 12,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 15,
     fontWeight: 600,
     cursor: 'pointer',
@@ -818,8 +820,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 96,
     height: 96,
     borderRadius: '50%',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    border: '2px solid #ef4444',
+    backgroundColor: 'var(--status-error-subtle)',
+    border: '2px solid var(--status-error)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -829,12 +831,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 300,
     padding: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: 'var(--status-error-subtle)',
     border: '1px solid rgba(239, 68, 68, 0.3)',
     borderRadius: 8,
     marginBottom: 24,
     fontSize: 13,
-    color: '#f87171',
+    color: 'var(--status-error)',
     textAlign: 'center',
   },
 };

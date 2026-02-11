@@ -12,6 +12,8 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTheme } from '../hooks/useTheme';
+import { useReducedMotion } from '../hooks/useAnimation';
 
 export interface CountdownTimerProps {
   /** Countdown duration in seconds (0 skips countdown entirely) */
@@ -109,6 +111,8 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
   enableSound = false,
   isDarkMode = true,
 }) => {
+  const { colors } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
   const [count, setCount] = useState<number>(duration);
   const [phase, setPhase] = useState<CountdownPhase>('counting');
   const [isExiting, setIsExiting] = useState(false);
@@ -116,13 +120,13 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
   const hasPlayedInitialRef = useRef(false);
   const completeCalledRef = useRef(false);
 
-  // Skip if duration is 0
+  // Skip if duration is 0 or user prefers reduced motion
   useEffect(() => {
-    if (duration === 0 && !completeCalledRef.current) {
+    if ((duration === 0 || prefersReducedMotion) && !completeCalledRef.current) {
       completeCalledRef.current = true;
       onComplete();
     }
-  }, [duration, onComplete]);
+  }, [duration, prefersReducedMotion, onComplete]);
 
   // Play initial tick when countdown starts
   useEffect(() => {
@@ -199,15 +203,15 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSkip]);
 
-  // Don't render if duration is 0 or phase is done
-  if (duration === 0 || phase === 'done') return null;
+  // Don't render if duration is 0, reduced motion preferred, or phase is done
+  if (duration === 0 || prefersReducedMotion || phase === 'done') return null;
 
   // Theme colors
   const theme = {
     overlayBg: isDarkMode ? 'rgba(0, 0, 0, 0.85)' : 'rgba(0, 0, 0, 0.75)',
-    numberColor: isDarkMode ? '#ffffff' : '#ffffff',
+    numberColor: colors.text.inverse,
     numberGlow: isDarkMode ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.5)',
-    recordingColor: '#ef4444',
+    recordingColor: colors.status.error,
     recordingGlow: 'rgba(239, 68, 68, 0.5)',
     skipText: isDarkMode ? 'rgba(156, 163, 175, 0.8)' : 'rgba(156, 163, 175, 0.9)',
     skipTextHover: isDarkMode ? 'rgba(209, 213, 219, 1)' : 'rgba(255, 255, 255, 1)',
@@ -351,11 +355,17 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
             gap: 24,
           }}
         >
+          {/* Screen reader announcement */}
+          <div aria-live="assertive" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+            {phase === 'counting' ? `${count}` : phase === 'go' ? 'Recording started' : ''}
+          </div>
+
           {/* Countdown number */}
           {phase === 'counting' && (
             <div
               key={count}
               className="countdown-number"
+              aria-hidden="true"
               style={{
                 fontSize: 'min(40vw, 280px)',
                 fontWeight: 800,

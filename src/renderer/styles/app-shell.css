@@ -1,29 +1,18 @@
+/* Shell-specific variables (theme tokens set by ThemeProvider on :root) */
 :root {
-  --ff-shell-bg:
+  --shell-bg:
     radial-gradient(circle at 10% -18%, rgba(10, 132, 255, 0.16), transparent 46%),
     radial-gradient(circle at 90% -16%, rgba(94, 106, 240, 0.12), transparent 44%),
-    linear-gradient(180deg, #090c14 0%, #0c1018 60%, #0b0f16 100%);
-  --ff-surface: rgba(22, 28, 39, 0.82);
-  --ff-surface-strong: rgba(26, 33, 45, 0.9);
-  --ff-border: rgba(150, 162, 183, 0.22);
-  --ff-border-strong: rgba(167, 178, 198, 0.34);
-  --ff-text-primary: #eef3ff;
-  --ff-text-secondary: #c6d0e3;
-  --ff-text-muted: #8f9db5;
-  --ff-live: #ff3b30;
-  --ff-live-soft: rgba(255, 59, 48, 0.24);
-  --ff-accent: #0a84ff;
-  --ff-accent-soft: rgba(10, 132, 255, 0.22);
-  --ff-success: #34c759;
-  --ff-error: #ff3b30;
+    linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-primary) 60%, var(--bg-primary) 100%);
+  --surface-strong: rgba(26, 33, 45, 0.9);
 }
 
 .ff-shell {
   width: 100%;
   min-height: 100%;
   padding: 12px;
-  background: var(--ff-shell-bg);
-  color: var(--ff-text-primary);
+  background: var(--shell-bg);
+  color: var(--text-primary);
   font-family: 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Helvetica Neue',
     Arial, sans-serif;
 }
@@ -34,9 +23,9 @@
 }
 
 .ff-shell__card {
-  border: 1px solid var(--ff-border);
+  border: 1px solid var(--border-default);
   border-radius: 18px;
-  background: linear-gradient(180deg, var(--ff-surface-strong) 0%, var(--ff-surface) 100%);
+  background: linear-gradient(180deg, var(--surface-strong) 0%, var(--surface-glass) 100%);
   box-shadow:
     0 12px 32px rgba(3, 6, 12, 0.5),
     inset 0 1px 0 rgba(217, 224, 236, 0.11);
@@ -73,7 +62,7 @@
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
   font-weight: 600;
 }
 
@@ -82,12 +71,12 @@
   font-size: 24px;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
 }
 
 .ff-shell__quiet-btn {
   font-size: 12px;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   background: rgba(138, 149, 171, 0.14);
   border: 1px solid rgba(138, 149, 171, 0.26);
   border-radius: 999px;
@@ -102,11 +91,11 @@
 .ff-shell__quiet-btn:hover {
   background: rgba(138, 149, 171, 0.24);
   border-color: rgba(164, 176, 199, 0.45);
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
 }
 
 .ff-shell__subtitle {
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -144,7 +133,7 @@
 }
 
 .ff-shell__secondary-btn {
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   background: rgba(124, 137, 160, 0.12);
   border-color: rgba(124, 137, 160, 0.24);
 }
@@ -152,7 +141,7 @@
 .ff-shell__secondary-btn:hover:not(:disabled) {
   background: rgba(124, 137, 160, 0.22);
   border-color: rgba(124, 137, 160, 0.38);
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
 }
 
 .ff-shell__primary-btn:disabled,
@@ -180,7 +169,7 @@
   border-radius: 999px;
   padding: 5px 10px;
   font-size: 11px;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
 }
 
 .ff-shell__meta span.is-ready {
@@ -203,7 +192,7 @@
   border-radius: 999px;
   padding: 5px 10px;
   font-size: 11px;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
 }
 
 .ff-shell__byok-cta {
@@ -247,7 +236,7 @@
 
 .ff-shell__transcript-label {
   font-size: 11px;
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -269,20 +258,20 @@
 .ff-shell__transcript-line {
   font-size: 13px;
   line-height: 1.45;
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
 }
 
 .ff-shell__transcript-interim {
   font-size: 13px;
   line-height: 1.45;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   font-style: italic;
   opacity: 0.92;
 }
 
 .ff-shell__transcript-placeholder {
   font-size: 12px;
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
 }
 
 .ff-shell__report {
@@ -304,7 +293,7 @@
 .ff-shell__path {
   font-family: 'SF Mono', Menlo, Monaco, 'Cascadia Mono', monospace;
   font-size: 11px;
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
   overflow-wrap: anywhere;
   background: rgba(11, 15, 24, 0.72);
   border: 1px solid rgba(130, 142, 165, 0.28);
@@ -324,7 +313,7 @@
   border-radius: 10px;
   border: 1px solid rgba(130, 142, 165, 0.28);
   background: rgba(25, 31, 42, 0.84);
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   font-size: 12px;
   padding: 8px 10px;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
@@ -333,7 +322,7 @@
 .ff-shell__report-actions button:hover {
   background: rgba(34, 41, 54, 0.95);
   border-color: rgba(153, 166, 189, 0.42);
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
 }
 
 .ff-shell__error {
@@ -366,7 +355,7 @@
 }
 
 .ff-shell__recent-header button {
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   font-size: 11px;
   border-radius: 8px;
   border: 1px solid rgba(131, 144, 168, 0.28);
@@ -394,11 +383,11 @@
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
 }
 
 .ff-shell__recent-open span:last-child {
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -409,13 +398,13 @@
   gap: 8px;
   align-items: center;
   font-size: 11px;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
 }
 
 .ff-shell__recent-meta button {
   margin-left: auto;
   min-height: 28px;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   border: 1px solid rgba(131, 144, 168, 0.28);
   background: rgba(131, 144, 168, 0.12);
   border-radius: 8px;
@@ -425,7 +414,7 @@
 
 .ff-shell__empty {
   font-size: 12px;
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
 }
 
 .ff-shell__footer {
@@ -435,7 +424,7 @@
 
 .ff-shell__footer p {
   font-size: 11px;
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
 }
 
 .ff-shell__donate {
@@ -454,8 +443,8 @@
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: var(--ff-live);
-  box-shadow: 0 0 0 6px var(--ff-live-soft);
+  background: var(--status-error);
+  box-shadow: 0 0 0 6px var(--status-error-subtle);
   animation: ffLivePulse 1.6s ease-in-out infinite;
 }
 
@@ -470,7 +459,7 @@
 @keyframes ffLivePulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 var(--ff-live-soft);
+    box-shadow: 0 0 0 0 var(--status-error-subtle);
     opacity: 1;
   }
   50% {
@@ -503,7 +492,7 @@
   height: 22px;
   margin: 8px auto;
   border: 2.5px solid rgba(123, 138, 166, 0.3);
-  border-top-color: var(--ff-accent);
+  border-top-color: var(--accent-default);
   border-radius: 50%;
   animation: ffSpinnerSpin 0.85s linear infinite;
 }
@@ -521,7 +510,7 @@
 .ff-shell__processing-label {
   font-size: 14px;
   font-weight: 600;
-  color: var(--ff-text-primary);
+  color: var(--text-primary);
   text-align: center;
   display: inline-flex;
   align-items: center;
@@ -580,14 +569,14 @@
 .ff-shell__processing-percent {
   font-size: 13px;
   font-weight: 600;
-  color: var(--ff-accent);
+  color: var(--accent-default);
   font-variant-numeric: tabular-nums;
   min-width: 36px;
 }
 
 .ff-shell__processing-step {
   font-size: 12px;
-  color: var(--ff-text-secondary);
+  color: var(--text-secondary);
   text-align: right;
   flex: 1;
 }
@@ -595,7 +584,7 @@
 .ff-shell__error-guidance {
   margin-top: 8px;
   font-size: 11px;
-  color: var(--ff-text-muted);
+  color: var(--text-tertiary);
   line-height: 1.45;
 }
 
@@ -624,7 +613,7 @@
 }
 
 :focus-visible {
-  outline: 2px solid var(--ff-accent);
+  outline: 2px solid var(--accent-default);
   outline-offset: 2px;
 }
 

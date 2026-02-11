@@ -75,7 +75,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
       // Default error UI
       return (
-        <div style={styles.container}>
+        <div style={styles.container} role="alert" aria-live="assertive">
           <div style={styles.card}>
             {/* Error icon */}
             <div style={styles.iconContainer}>
@@ -84,7 +84,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 height="48"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#ef4444"
+                stroke="var(--status-error)"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -196,7 +196,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     minHeight: '100%',
     height: '100%',
-    backgroundColor: '#111827',
+    backgroundColor: 'var(--bg-secondary)',
     padding: '16px',
     overflow: 'auto',
   },
@@ -216,13 +216,13 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: '16px',
   },
   title: {
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     fontSize: '20px',
     fontWeight: 600,
     margin: '0 0 8px 0',
   },
   message: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontSize: '14px',
     margin: '0 0 24px 0',
     lineHeight: 1.5,
@@ -235,13 +235,13 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left',
   },
   summary: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontSize: '12px',
     cursor: 'pointer',
     userSelect: 'none',
   },
   stackTrace: {
-    color: '#ef4444',
+    color: 'var(--status-error)',
     fontSize: '10px',
     fontFamily: 'monospace',
     whiteSpace: 'pre-wrap',
@@ -266,12 +266,12 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'all 0.2s ease',
   },
   primaryButton: {
-    backgroundColor: '#3b82f6',
-    color: '#ffffff',
+    backgroundColor: 'var(--accent-default)',
+    color: 'var(--text-inverse)',
   },
   secondaryButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
   },
 };
@@ -287,15 +287,15 @@ const minimalStyles: Record<string, React.CSSProperties> = {
     borderRadius: '4px',
   },
   text: {
-    color: '#ef4444',
+    color: 'var(--status-error)',
     fontSize: '12px',
   },
   retryButton: {
     padding: '4px 8px',
     backgroundColor: 'transparent',
-    border: '1px solid #ef4444',
+    border: '1px solid var(--status-error)',
     borderRadius: '4px',
-    color: '#ef4444',
+    color: 'var(--status-error)',
     fontSize: '11px',
     cursor: 'pointer',
   },

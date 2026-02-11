@@ -6,6 +6,7 @@
 
 import React from 'react';
 import type { SessionStatus } from '../../shared/types';
+import { useTheme } from '../hooks/useTheme';
 
 interface StatusIndicatorProps {
   status: SessionStatus;
@@ -13,18 +14,20 @@ interface StatusIndicatorProps {
 }
 
 const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, error }) => {
+  const { colors } = useTheme();
+
   const getColor = (): string => {
     switch (status) {
       case 'recording':
-        return '#ff3b30';
+        return colors.status.error;
       case 'processing':
-        return '#ff9f0a';
+        return colors.status.warning;
       case 'complete':
-        return '#34c759';
+        return colors.status.success;
       case 'error':
-        return '#ff3b30';
+        return colors.status.error;
       default:
-        return '#8e8e93';
+        return colors.text.tertiary;
     }
   };
 
@@ -46,7 +49,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, error }) => {
   const color = getColor();
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} role="status" aria-live={status === 'error' ? 'assertive' : 'polite'}>
       <div
         style={{
           ...styles.dot,
@@ -56,14 +59,7 @@ const StatusIndicator: React.FC<StatusIndicatorProps> = ({ status, error }) => {
         }}
       />
       <span style={styles.text}>{getText()}</span>
-      <style>
-        {`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-        `}
-      </style>
+      {/* pulse keyframe provided by animations.css */}
     </div>
   );
 };
@@ -81,7 +77,7 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'all 0.2s ease',
   },
   text: {
-    color: '#1d1d1f',
+    color: 'var(--text-primary)',
     fontSize: 13,
     fontWeight: 500,
   },

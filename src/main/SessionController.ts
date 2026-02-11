@@ -6,7 +6,7 @@
  *
  * Responsibilities:
  * - Coordinate all services (audio, video recording)
- * - Manage session state with crash recovery (auto-save every 5 seconds)
+ * - Manage session state (crash recovery delegated to CrashRecoveryManager)
  * - Watchdog timer to prevent stuck states
  * - Run PostProcessor pipeline after recording stops
  * - Emit state changes and processing progress to renderer via IPC
@@ -15,32 +15,18 @@
 import Store from 'electron-store';
 import { BrowserWindow } from 'electron';
 import { randomUUID } from 'crypto';
-import { audioCapture, type AudioChunk, type CapturedAudioAsset } from './audio/AudioCapture';
-import { whisperService } from './transcription';
+import { audioCapture, type AudioChunk } from './audio/AudioCapture';
 import type { TranscriptEvent } from './transcription/types';
-import { getSettingsManager } from './settings';
-import { IPC_CHANNELS } from '../shared/types';
+import { recoverTranscript, normalizeTranscriptTimestamp } from './transcription/TranscriptionRecoveryService';
+import { IPC_CHANNELS, type SessionState, type SessionMetadata } from '../shared/types';
 import { errorHandler } from './ErrorHandler';
 import { type PostProcessResult, type PostProcessProgress } from './pipeline';
-// Note: CrashRecovery module runs independently for crash logging.
-// Session recovery is handled directly in SessionController for full access to session data.
 
 // =============================================================================
 // Types - Bulletproof State Machine
 // =============================================================================
 
-/**
- * All possible session states.
- * Every state except 'idle' has a maximum timeout for automatic recovery.
- */
-export type SessionState =
-  | 'idle'       // Waiting for user action
-  | 'starting'   // Initializing services (5s timeout)
-  | 'recording'  // Active recording (30 min max)
-  | 'stopping'   // Stopping services (3s timeout)
-  | 'processing' // Processing results (10s timeout)
-  | 'complete'   // Session finished (30s timeout then auto-idle)
-  | 'error';     // Error occurred (5s timeout then auto-idle)
+// SessionState is imported from '../shared/types' (single source of truth)
 
 /**
  * State timeout configuration (in milliseconds).
@@ -91,18 +77,7 @@ export interface FeedbackItem {
   screenshot?: Screenshot;
 }
 
-export interface SessionMetadata {
-  sourceId: string;
-  sourceName?: string;
-  windowTitle?: string;
-  appName?: string;
-  recordingPath?: string;
-  recordingMimeType?: string;
-  recordingBytes?: number;
-  audioPath?: string;
-  audioBytes?: number;
-  audioDurationMs?: number;
-}
+// SessionMetadata is imported from '../shared/types' (single source of truth)
 
 export interface Session {
   id: string;
@@ -164,34 +139,9 @@ interface PersistedSession {
   metadata: SessionMetadata;
 }
 
-/**
- * Persisted state format for crash recovery.
- * Contains everything needed to show recovery dialog and restore session.
- */
-interface PersistedState {
-  version: 1;
-  state: SessionState;
-  stateEnteredAt: number;
-  session: PersistedSession | null;
-  lastPersistedAt: number;
-  feedbackItemIds: string[];  // IDs only - full data separate
-}
-
 interface StoreSchema {
   currentSession: PersistedSession | null;
   recentSessions: PersistedSession[];
-  lastCrashRecoveryCheck: number;
-  // New fields for bulletproof state machine
-  persistedState: PersistedState | null;
-  persistedFeedbackItems: Array<{
-    id: string;
-    timestamp: number;
-    text: string;
-    confidence: number;
-    hasScreenshot: boolean;
-  }> | null;
-  lastCleanExit: boolean;
-  lastExitTimestamp: number;
 }
 
 const store = new Store<StoreSchema>({
@@ -199,11 +149,6 @@ const store = new Store<StoreSchema>({
   defaults: {
     currentSession: null,
     recentSessions: [],
-    lastCrashRecoveryCheck: 0,
-    persistedState: null,
-    persistedFeedbackItems: null,
-    lastCleanExit: true,
-    lastExitTimestamp: 0,
   },
   // Clear on corruption
   clearInvalidConfig: true,
@@ -212,20 +157,6 @@ const store = new Store<StoreSchema>({
 // =============================================================================
 // SessionController Class
 // =============================================================================
-
-/**
- * Crash recovery info returned to caller.
- */
-export interface CrashRecoveryInfo {
-  sessionId: string;
-  startTime: number;
-  duration: number;
-  feedbackCount: number;
-  lastState: SessionState;
-  lastPersistedAt: number;
-  canRecover: boolean;
-  recoveryReason: string;
-}
 
 export class SessionController {
   // Core state
@@ -245,7 +176,6 @@ export class SessionController {
   private autoSaveTimer: NodeJS.Timeout | null = null;
   private durationTimer: NodeJS.Timeout | null = null;
   private watchdogTimer: NodeJS.Timeout | null = null;
-  private statePersistenceTimer: NodeJS.Timeout | null = null;
 
   // Watchdog state
   private stateEnteredAt: number = Date.now();
@@ -262,10 +192,6 @@ export class SessionController {
   private readonly WATCHDOG_CHECK_INTERVAL_MS = 1000;  // 1 second
   private readonly MAX_RECENT_SESSIONS = 10;
   private readonly MAX_TRANSCRIPT_BUFFER_EVENTS = 2000;
-  private readonly WHISPER_RECOVERY_CHUNK_SECONDS = 30;
-  private readonly OPENAI_RECOVERY_CHUNK_SECONDS = 180;
-  private readonly MAX_POST_SESSION_LOCAL_RECOVERY_DURATION_SEC = 8 * 60;
-
   constructor() {
     // Use singleton instances
     this.audioCaptureService = audioCapture;
@@ -336,153 +262,16 @@ export class SessionController {
   }
 
   /**
-   * Initialize the SessionController
-   * Checks for incomplete sessions from crashes and offers recovery
-   *
-   * @returns Recovery info if an incomplete session was found
+   * Initialize the SessionController.
+   * Crash recovery is handled by CrashRecoveryManager (single authority).
    */
-  async initialize(): Promise<CrashRecoveryInfo | null> {
+  async initialize(): Promise<void> {
     console.log('[SessionController] Initializing...');
 
     // Start watchdog immediately
     this.startWatchdog();
 
-    // Check for crash recovery
-    const recoveryInfo = this.checkCrashRecovery();
-
-    // Start state persistence
-    this.startStatePersistence();
-
-    store.set('lastCrashRecoveryCheck', Date.now());
     console.log('[SessionController] Initialization complete');
-
-    return recoveryInfo;
-  }
-
-  /**
-   * Check for incomplete sessions from crashes.
-   * Called during initialization.
-   */
-  private checkCrashRecovery(): CrashRecoveryInfo | null {
-    const lastCleanExit = store.get('lastCleanExit', true);
-    const persistedState = store.get('persistedState');
-
-    // Mark that we're starting (not a clean exit until we explicitly mark it)
-    store.set('lastCleanExit', false);
-
-    // No persisted state
-    if (!persistedState || !persistedState.session) {
-      console.log('[SessionController] No persisted state found');
-      return null;
-    }
-
-    // Was a clean exit
-    if (lastCleanExit && persistedState.state === 'idle') {
-      console.log('[SessionController] Last exit was clean, no recovery needed');
-      store.delete('persistedState');
-      return null;
-    }
-
-    // Check if the persisted state indicates an incomplete session
-    const wasInterrupted = ['starting', 'recording', 'stopping', 'processing'].includes(
-      persistedState.state
-    );
-
-    if (!wasInterrupted) {
-      console.log(`[SessionController] Persisted state '${persistedState.state}' does not need recovery`);
-      store.delete('persistedState');
-      return null;
-    }
-
-    // Calculate how old the persisted state is
-    const stateAge = Date.now() - persistedState.lastPersistedAt;
-    const maxRecoveryAge = 60 * 60_000; // 1 hour max
-
-    const session = persistedState.session;
-    const duration = (persistedState.lastPersistedAt - session.startTime);
-
-    const recoveryInfo: CrashRecoveryInfo = {
-      sessionId: session.id,
-      startTime: session.startTime,
-      duration,
-      feedbackCount: session.feedbackItemCount,
-      lastState: persistedState.state,
-      lastPersistedAt: persistedState.lastPersistedAt,
-      canRecover: stateAge < maxRecoveryAge,
-      recoveryReason: stateAge >= maxRecoveryAge
-        ? `Session is too old (${Math.round(stateAge / 60_000)} minutes)`
-        : 'Session was interrupted',
-    };
-
-    console.log('[SessionController] Crash recovery detected:', {
-      sessionId: recoveryInfo.sessionId,
-      lastState: recoveryInfo.lastState,
-      feedbackCount: recoveryInfo.feedbackCount,
-      stateAge: `${Math.round(stateAge / 1000)}s`,
-      canRecover: recoveryInfo.canRecover,
-    });
-
-    return recoveryInfo;
-  }
-
-  /**
-   * Attempt to recover an incomplete session.
-   * Called after user confirms they want to recover.
-   */
-  async recoverSession(): Promise<boolean> {
-    const persistedState = store.get('persistedState');
-    const persistedFeedback = store.get('persistedFeedbackItems');
-
-    if (!persistedState || !persistedState.session) {
-      console.warn('[SessionController] No session to recover');
-      return false;
-    }
-
-    console.log('[SessionController] Recovering session:', persistedState.session.id);
-
-    // Create a minimal recovered session and add to recent
-    const recoveredSession: PersistedSession = {
-      id: persistedState.session.id,
-      startTime: persistedState.session.startTime,
-      endTime: persistedState.lastPersistedAt,
-      state: 'complete',
-      sourceId: persistedState.session.sourceId,
-      feedbackItemCount: persistedFeedback?.length || 0,
-      metadata: persistedState.session.metadata,
-    };
-
-    // Add to recent sessions
-    this.addToRecentSessionsPersisted(recoveredSession);
-
-    // Clear persisted state
-    store.delete('persistedState');
-    store.delete('persistedFeedbackItems');
-
-    console.log('[SessionController] Session recovered:', {
-      id: recoveredSession.id,
-      feedbackItems: recoveredSession.feedbackItemCount,
-    });
-
-    // Emit recovered session to renderer
-    this.emitToRenderer('session:recovered', {
-      session: {
-        id: recoveredSession.id,
-        feedbackCount: recoveredSession.feedbackItemCount,
-        duration: (recoveredSession.endTime || Date.now()) - recoveredSession.startTime,
-      },
-    });
-
-    return true;
-  }
-
-  /**
-   * Discard a recoverable session.
-   * Called when user declines recovery.
-   */
-  discardRecovery(): void {
-    console.log('[SessionController] Discarding recoverable session');
-    store.delete('persistedState');
-    store.delete('persistedFeedbackItems');
   }
 
   /**
@@ -541,9 +330,6 @@ export class SessionController {
 
     console.log(`[SessionController] State: ${oldState} -> ${newState}`);
 
-    // Persist state change immediately
-    this.persistState();
-
     // Notify listeners
     this.emitStateChange();
 
@@ -598,9 +384,6 @@ export class SessionController {
       },
     };
 
-    // Persist immediately
-    this.persistState();
-
     try {
       // Initialize services with timeout protection
       await this.initializeServicesWithTimeout();
@@ -614,9 +397,6 @@ export class SessionController {
       // Start timers
       this.startAutoSave();
       this.startDurationTimer();
-
-      // Persist successful start
-      this.persistState();
 
       console.log(`[SessionController] Session started: ${this.session.id}`);
     } catch (error) {
@@ -745,9 +525,6 @@ export class SessionController {
     this.session.endTime = Date.now();
     this.isPaused = false;
     this.currentProcessingProgress = null;
-
-    // Final persist
-    this.persistState();
 
     // Transition to complete
     if (!this.transition('complete')) {
@@ -878,7 +655,7 @@ export class SessionController {
       ...updates,
     };
 
-    this.persistState();
+    this.persistSession();
     return true;
   }
 
@@ -1026,7 +803,7 @@ export class SessionController {
 
   /**
    * Run a post-session transcription recovery pass when live transcription produced no final output.
-   * Uses local Whisper and retries automatically for transient failures.
+   * Delegates to TranscriptionRecoveryService for the actual recovery strategies.
    */
   private async recoverTranscriptFromCapturedAudio(): Promise<void> {
     if (!this.session) {
@@ -1040,327 +817,22 @@ export class SessionController {
       return;
     }
 
-    const capturedAudio = this.audioCaptureService.getCapturedAudioAsset();
-    if (!capturedAudio || capturedAudio.buffer.byteLength === 0) {
-      console.warn('[SessionController] Post-session transcription recovery skipped: no captured audio asset.');
-      return;
-    }
-
     const sessionStartSec = this.session.startTime / 1000;
-    const openAiApiKey = await this.getOpenAIApiKey();
-    if (openAiApiKey) {
-      const openAiRecovered = await this.recoverTranscriptWithOpenAIAudioAsset(
-        capturedAudio,
-        sessionStartSec,
-        openAiApiKey,
-      2
-      );
-      if (openAiRecovered.length > 0) {
-        this.appendRecoveredTranscriptEvents(openAiRecovered);
-        return;
-      }
-    } else {
-      console.warn(
-        '[SessionController] Post-session OpenAI recovery skipped: API key not configured.',
-      );
-    }
+    const recoveredEvents = await recoverTranscript(sessionStartSec, {
+      capturedAudioAsset: this.audioCaptureService.getCapturedAudioAsset(),
+      capturedAudioBuffer: this.audioCaptureService.getCapturedAudioBuffer(),
+    });
 
-    // Local Whisper fallback only works with raw PCM buffers.
-    const mergedAudio = this.audioCaptureService.getCapturedAudioBuffer();
-    if (!mergedAudio || mergedAudio.byteLength === 0) {
-      console.warn(
-        '[SessionController] Post-session Whisper recovery skipped: captured audio is encoded-only.',
-      );
-      return;
-    }
-
-    const audioSamples = new Float32Array(
-      mergedAudio.buffer,
-      mergedAudio.byteOffset,
-      mergedAudio.byteLength / 4,
-    );
-    if (audioSamples.length === 0) {
-      return;
-    }
-
-    const audioDurationSec = audioSamples.length / 16000;
-    const canRunLocalWhisperRecovery =
-      audioDurationSec <= this.MAX_POST_SESSION_LOCAL_RECOVERY_DURATION_SEC;
-    if (canRunLocalWhisperRecovery && whisperService.isModelAvailable()) {
-      const whisperRecovered = await this.recoverTranscriptWithWhisper(
-        audioSamples,
-        sessionStartSec,
-        3
-      );
-      if (whisperRecovered.length > 0) {
-        this.appendRecoveredTranscriptEvents(whisperRecovered);
-        return;
-      }
-    } else if (!canRunLocalWhisperRecovery) {
-      console.warn(
-        `[SessionController] Skipping post-session Whisper recovery for long session (${Math.round(audioDurationSec)}s).`,
-      );
-    } else {
-      console.warn(
-        '[SessionController] Post-session Whisper recovery skipped: no local model available.',
-      );
-    }
-
-    console.warn(
-      '[SessionController] Post-session transcription recovery exhausted OpenAI + local Whisper without transcript output.',
-    );
-  }
-
-  private appendRecoveredTranscriptEvents(events: TranscriptEvent[]): void {
-    if (!this.session || events.length === 0) {
-      return;
-    }
-
-    this.session.transcriptBuffer.push(...events);
-    this.session.transcriptBuffer.sort((a, b) => a.timestamp - b.timestamp);
-    if (this.session.transcriptBuffer.length > this.MAX_TRANSCRIPT_BUFFER_EVENTS) {
-      this.session.transcriptBuffer.splice(
-        0,
-        this.session.transcriptBuffer.length - this.MAX_TRANSCRIPT_BUFFER_EVENTS,
-      );
-    }
-  }
-
-  private async recoverTranscriptWithWhisper(
-    audioSamples: Float32Array,
-    sessionStartSec: number,
-    maxAttempts: number,
-  ): Promise<TranscriptEvent[]> {
-    const sampleRate = 16000;
-    const chunkSamples = sampleRate * this.WHISPER_RECOVERY_CHUNK_SECONDS;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const recoveredSegments: Array<{
-          text: string;
-          startTime: number;
-          endTime: number;
-          confidence: number;
-        }> = [];
-        for (let offset = 0; offset < audioSamples.length; offset += chunkSamples) {
-          const chunk = audioSamples.subarray(offset, Math.min(audioSamples.length, offset + chunkSamples));
-          const chunkStartSec = sessionStartSec + offset / sampleRate;
-          const chunkSegments = await whisperService.transcribeSamples(chunk, chunkStartSec);
-          recoveredSegments.push(...chunkSegments);
-
-          // Yield between chunks to keep the app responsive during longer sessions.
-          if (offset + chunkSamples < audioSamples.length) {
-            await new Promise((resolve) => setTimeout(resolve, 0));
-          }
-        }
-
-        const recoveredEvents: TranscriptEvent[] = recoveredSegments
-          .map((segment) => ({
-            text: segment.text,
-            isFinal: true,
-            confidence: segment.confidence,
-            timestamp: this.normalizeTranscriptTimestamp(segment.startTime),
-            tier: 'whisper' as const,
-          }))
-          .filter((segment) => segment.text.trim().length > 0);
-
-        if (recoveredEvents.length === 0) {
-          throw new Error('No transcript text recovered from captured audio');
-        }
-
-        console.log(
-          `[SessionController] Recovered ${recoveredEvents.length} transcript segments via Whisper (attempt ${attempt}/${maxAttempts}).`,
+    if (recoveredEvents.length > 0) {
+      this.session.transcriptBuffer.push(...recoveredEvents);
+      this.session.transcriptBuffer.sort((a, b) => a.timestamp - b.timestamp);
+      if (this.session.transcriptBuffer.length > this.MAX_TRANSCRIPT_BUFFER_EVENTS) {
+        this.session.transcriptBuffer.splice(
+          0,
+          this.session.transcriptBuffer.length - this.MAX_TRANSCRIPT_BUFFER_EVENTS,
         );
-        return recoveredEvents;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[SessionController] Whisper recovery attempt ${attempt}/${maxAttempts} failed: ${message}`,
-        );
-
-        if (attempt < maxAttempts) {
-          const delayMs = 400 * attempt;
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-        }
       }
     }
-
-    return [];
-  }
-
-  private async recoverTranscriptWithOpenAIAudioAsset(
-    audioAsset: CapturedAudioAsset,
-    sessionStartSec: number,
-    apiKey: string,
-    maxAttempts: number,
-  ): Promise<TranscriptEvent[]> {
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutMs = Math.min(180_000, Math.max(30_000, Math.round(audioAsset.durationMs * 1.8)));
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-        const recoveredEvents: TranscriptEvent[] = [];
-
-        try {
-          const extension = this.extensionFromMimeType(audioAsset.mimeType);
-          const form = new FormData();
-          form.append('model', 'whisper-1');
-          form.append('response_format', 'verbose_json');
-          form.append('temperature', '0');
-          form.append(
-            'file',
-            new Blob([new Uint8Array(audioAsset.buffer)], { type: audioAsset.mimeType }),
-            `session-audio${extension}`,
-          );
-
-          const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: form,
-            signal: controller.signal,
-          });
-
-          if (!response.ok) {
-            const detail = await this.extractOpenAiError(response);
-            throw new Error(`OpenAI transcription failed (${response.status}): ${detail}`);
-          }
-
-          const payload = (await response.json()) as {
-            text?: string;
-            segments?: Array<{
-              text?: string;
-              start?: number;
-            }>;
-          };
-
-          const segments = Array.isArray(payload.segments) ? payload.segments : [];
-          if (segments.length > 0) {
-            for (const segment of segments) {
-              const text = segment.text?.trim();
-              if (!text) {
-                continue;
-              }
-
-              const start = Number.isFinite(segment.start) ? Math.max(0, Number(segment.start)) : 0;
-              const normalizedTimestamp = this.normalizeTranscriptTimestamp(sessionStartSec + start);
-              recoveredEvents.push({
-                text,
-                isFinal: true,
-                confidence: 0.9,
-                timestamp: normalizedTimestamp,
-                tier: 'whisper',
-              });
-            }
-          } else if (payload.text?.trim()) {
-            recoveredEvents.push({
-              text: payload.text.trim(),
-              isFinal: true,
-              confidence: 0.85,
-              timestamp: this.normalizeTranscriptTimestamp(sessionStartSec),
-              tier: 'whisper',
-            });
-          }
-        } finally {
-          clearTimeout(timeout);
-        }
-
-        if (recoveredEvents.length === 0) {
-          throw new Error('No transcript text recovered from OpenAI transcription');
-        }
-
-        console.log(
-          `[SessionController] Recovered ${recoveredEvents.length} transcript segments via OpenAI (attempt ${attempt}/${maxAttempts}).`,
-        );
-        return recoveredEvents;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[SessionController] OpenAI recovery attempt ${attempt}/${maxAttempts} failed: ${message}`,
-        );
-
-        if (attempt < maxAttempts) {
-          const delayMs = 500 * attempt;
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-        }
-      }
-    }
-
-    return [];
-  }
-
-  private async getOpenAIApiKey(): Promise<string | null> {
-    try {
-      const settings = getSettingsManager();
-      const apiKey = await settings.getApiKey('openai');
-      const normalized = apiKey?.trim();
-      return normalized && normalized.length > 0 ? normalized : null;
-    } catch (error) {
-      console.warn('[SessionController] Failed to read OpenAI API key for recovery:', error);
-      return null;
-    }
-  }
-
-  private async extractOpenAiError(response: Response): Promise<string> {
-    try {
-      const raw = await response.text();
-      const trimmed = raw.trim();
-      if (trimmed.length === 0) {
-        return 'Unknown API error';
-      }
-
-      const parsed = JSON.parse(trimmed) as { error?: { message?: string } };
-      const message = parsed?.error?.message;
-      if (message && message.trim().length > 0) {
-        return message.trim();
-      }
-      return trimmed.length > 220 ? `${trimmed.slice(0, 220)}...` : trimmed;
-    } catch {
-      return `HTTP ${response.status}`;
-    }
-  }
-
-  private extensionFromMimeType(mimeType: string): string {
-    const normalized = mimeType.toLowerCase();
-    if (normalized.includes('webm')) return '.webm';
-    if (normalized.includes('ogg')) return '.ogg';
-    if (normalized.includes('mp4') || normalized.includes('aac') || normalized.includes('m4a')) {
-      return '.m4a';
-    }
-    if (normalized.includes('wav')) return '.wav';
-    return '.audio';
-  }
-
-  private encodeFloat32Pcm16Wav(samples: Float32Array, sampleRate: number, channels: number): Buffer {
-    const bytesPerSample = 2;
-    const blockAlign = channels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = samples.length * bytesPerSample;
-    const buffer = Buffer.alloc(44 + dataSize);
-
-    buffer.write('RIFF', 0, 'ascii');
-    buffer.writeUInt32LE(36 + dataSize, 4);
-    buffer.write('WAVE', 8, 'ascii');
-    buffer.write('fmt ', 12, 'ascii');
-    buffer.writeUInt32LE(16, 16);
-    buffer.writeUInt16LE(1, 20);
-    buffer.writeUInt16LE(channels, 22);
-    buffer.writeUInt32LE(sampleRate, 24);
-    buffer.writeUInt32LE(byteRate, 28);
-    buffer.writeUInt16LE(blockAlign, 32);
-    buffer.writeUInt16LE(16, 34);
-    buffer.write('data', 36, 'ascii');
-    buffer.writeUInt32LE(dataSize, 40);
-
-    for (let i = 0; i < samples.length; i++) {
-      const clamped = Math.max(-1, Math.min(1, samples[i]));
-      const int16 = clamped < 0 ? Math.round(clamped * 0x8000) : Math.round(clamped * 0x7fff);
-      buffer.writeInt16LE(int16, 44 + i * 2);
-    }
-
-    return buffer;
   }
 
   /**
@@ -1373,7 +845,8 @@ export class SessionController {
       return;
     }
 
-    const normalizedTimestamp = this.normalizeTranscriptTimestamp(event.timestamp);
+    const sessionStartSec = this.session.startTime / 1000;
+    const normalizedTimestamp = normalizeTranscriptTimestamp(event.timestamp, sessionStartSec);
     const normalizedEvent: TranscriptEvent = {
       ...event,
       timestamp: normalizedTimestamp,
@@ -1413,29 +886,6 @@ export class SessionController {
     }
   }
 
-  /**
-   * Normalizes transcript timestamps to epoch seconds for consistent matching.
-   * Some providers emit relative offsets while others emit absolute timestamps.
-   */
-  private normalizeTranscriptTimestamp(timestamp: number): number {
-    if (!this.session) {
-      return timestamp;
-    }
-
-    const sessionStartSec = this.session.startTime / 1000;
-
-    // Relative offsets from stream start are typically small (< 1 day in seconds).
-    if (timestamp < 86_400) {
-      return sessionStartSec + Math.max(0, timestamp);
-    }
-
-    // Defensive fallback for timestamps that are still clearly before session start.
-    if (timestamp < sessionStartSec - 60) {
-      return sessionStartSec + Math.max(0, timestamp);
-    }
-
-    return timestamp;
-  }
 
 
   /**
@@ -1480,7 +930,6 @@ export class SessionController {
       category: errorHandler.categorizeError(error),
     });
   }
-
 
   // ===========================================================================
   // Persistence
@@ -1527,85 +976,6 @@ export class SessionController {
       };
       store.set('currentSession', persisted);
     }
-  }
-
-  // ===========================================================================
-  // State Persistence - Crash Recovery Data (Every 5 Seconds)
-  // ===========================================================================
-
-  /**
-   * Start state persistence timer.
-   * Saves current state every 5 seconds (per spec - max 5 seconds data loss).
-   */
-  private startStatePersistence(): void {
-    this.stopStatePersistence();
-
-    // Save immediately on start
-    this.persistState();
-
-    // Then every 5 seconds
-    this.statePersistenceTimer = setInterval(() => {
-      this.persistState();
-    }, this.AUTO_SAVE_INTERVAL_MS);
-
-    console.log(`[SessionController] State persistence started (every ${this.AUTO_SAVE_INTERVAL_MS}ms)`);
-  }
-
-  /**
-   * Stop state persistence timer.
-   */
-  private stopStatePersistence(): void {
-    if (this.statePersistenceTimer) {
-      clearInterval(this.statePersistenceTimer);
-      this.statePersistenceTimer = null;
-    }
-  }
-
-  /**
-   * Persist current state to disk.
-   * Called every 5 seconds and on state transitions.
-   */
-  private persistState(): void {
-    const persistedState: PersistedState = {
-      version: 1,
-      state: this.state,
-      stateEnteredAt: this.stateEnteredAt,
-      session: this.session ? {
-        id: this.session.id,
-        startTime: this.session.startTime,
-        endTime: this.session.endTime,
-        state: this.session.state,
-        sourceId: this.session.sourceId,
-        feedbackItemCount: this.session.feedbackItems.length,
-        metadata: this.session.metadata,
-      } : null,
-      lastPersistedAt: Date.now(),
-      feedbackItemIds: this.session?.feedbackItems.map(f => f.id) || [],
-    };
-
-    store.set('persistedState', persistedState);
-
-    // Also persist feedback items separately (for recovery)
-    if (this.session && this.session.feedbackItems.length > 0) {
-      // Store without buffers for space efficiency
-      const persistedFeedback = this.session.feedbackItems.map(item => ({
-        id: item.id,
-        timestamp: item.timestamp,
-        text: item.text,
-        confidence: item.confidence,
-        hasScreenshot: false,
-      }));
-      store.set('persistedFeedbackItems', persistedFeedback);
-    }
-  }
-
-  /**
-   * Mark clean exit - called on graceful shutdown.
-   */
-  markCleanExit(): void {
-    store.set('lastCleanExit', true);
-    store.set('lastExitTimestamp', Date.now());
-    console.log('[SessionController] Marked clean exit');
   }
 
   // ===========================================================================
@@ -1675,7 +1045,7 @@ export class SessionController {
 
       console.log(`[SessionController] Recording warning: ${remainingMinutes} minutes remaining`);
 
-      this.emitToRenderer('session:warning', {
+      this.emitToRenderer(IPC_CHANNELS.SESSION_WARNING, {
         type: 'duration',
         message: `Recording will auto-stop in ${remainingMinutes} minutes`,
         remainingMs: RECORDING_LIMITS.MAX_DURATION_MS - elapsed,
@@ -1685,7 +1055,7 @@ export class SessionController {
     // Force stop at 30 minutes
     if (elapsed >= RECORDING_LIMITS.MAX_DURATION_MS) {
       console.log('[SessionController] Recording max duration reached, auto-stopping');
-      this.emitToRenderer('session:warning', {
+      this.emitToRenderer(IPC_CHANNELS.SESSION_WARNING, {
         type: 'maxDuration',
         message: 'Maximum recording duration reached. Stopping automatically.',
       });
@@ -1807,7 +1177,6 @@ export class SessionController {
     // Stop timers
     this.stopAutoSave();
     this.stopDurationTimer();
-    this.stopStatePersistence();
 
     // Unsubscribe without waiting
     for (const cleanup of this.cleanupFunctions) {
@@ -1907,7 +1276,7 @@ export class SessionController {
    */
   private emitFeedbackItem(item: FeedbackItem): void {
     this.events?.onFeedbackItem(item);
-    this.emitToRenderer('session:feedbackItem', {
+    this.emitToRenderer(IPC_CHANNELS.SESSION_FEEDBACK_ITEM, {
       id: item.id,
       timestamp: item.timestamp,
       text: item.text,
@@ -1936,8 +1305,6 @@ export class SessionController {
     // Stop timers
     this.stopAutoSave();
     this.stopDurationTimer();
-    // Note: Don't stop state persistence here - we want it running during stopping/processing
-
     // Unsubscribe from all events
     for (const cleanup of this.cleanupFunctions) {
       try {
@@ -2009,7 +1376,6 @@ export class SessionController {
 
     // Stop all timers
     this.stopWatchdog();
-    this.stopStatePersistence();
     this.cleanupServicesForced();
 
     // Clear state
@@ -2018,9 +1384,6 @@ export class SessionController {
     this.currentProcessingProgress = null;
     this.events = null;
     this.mainWindow = null;
-
-    // Mark clean exit
-    this.markCleanExit();
 
     console.log('[SessionController] Destroy complete');
   }
@@ -2032,3 +1395,6 @@ export class SessionController {
 
 export const sessionController = new SessionController();
 export default SessionController;
+
+// Re-export types from shared/types for downstream consumers
+export type { SessionState, SessionMetadata } from '../shared/types';

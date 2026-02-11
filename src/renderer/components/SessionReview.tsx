@@ -20,6 +20,7 @@ import type {
   ReviewFeedbackCategory as FeedbackCategory,
   ReviewFeedbackSeverity as FeedbackSeverity,
 } from '../../shared/types';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -46,21 +47,8 @@ interface DeletedItem {
 const CATEGORIES: FeedbackCategory[] = ['Bug', 'UX Issue', 'Suggestion', 'Performance', 'Question', 'General'];
 const SEVERITIES: FeedbackSeverity[] = ['Critical', 'High', 'Medium', 'Low'];
 
-const CATEGORY_COLORS: Record<FeedbackCategory, string> = {
-  Bug: '#ef4444',
-  'UX Issue': '#f59e0b',
-  Suggestion: '#3b82f6',
-  Performance: '#22c55e',
-  Question: '#8b5cf6',
-  General: '#6b7280',
-};
-
-const SEVERITY_COLORS: Record<FeedbackSeverity, string> = {
-  Critical: '#dc2626',
-  High: '#ea580c',
-  Medium: '#ca8a04',
-  Low: '#65a30d',
-};
+// Category and severity color maps are now created inside components using useTheme()
+// to support dynamic theme switching.
 
 const UNDO_DURATION_MS = 5000;
 
@@ -115,6 +103,23 @@ const FeedbackItemCard: React.FC<FeedbackItemCardProps> = ({
   const [showSeverityDropdown, setShowSeverityDropdown] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
+  const { colors } = useTheme();
+
+  const CATEGORY_COLORS = useMemo((): Record<FeedbackCategory, string> => ({
+    Bug: colors.status.error,
+    'UX Issue': colors.status.warning,
+    Suggestion: colors.accent.default,
+    Performance: colors.status.success,
+    Question: colors.status.info,
+    General: colors.text.tertiary,
+  }), [colors]);
+
+  const SEVERITY_COLORS = useMemo((): Record<FeedbackSeverity, string> => ({
+    Critical: colors.status.error,
+    High: colors.status.warning,
+    Medium: colors.status.warning,
+    Low: colors.status.success,
+  }), [colors]);
 
   useEffect(() => {
     if (isEditing && editInputRef.current) {
@@ -157,26 +162,26 @@ const FeedbackItemCard: React.FC<FeedbackItemCardProps> = ({
       }}
       style={{
         ...styles.card,
-        backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.15)' : 'rgba(31, 41, 55, 0.6)',
-        borderColor: isSelected ? 'rgba(59, 130, 246, 0.5)' : 'rgba(75, 85, 99, 0.3)',
+        backgroundColor: isSelected ? colors.accent.subtle : colors.surface.inset,
+        borderColor: isSelected ? colors.accent.muted : colors.border.subtle,
         transform: isDragging ? 'scale(0.98) rotate(1deg)' : isDropTarget ? 'translateY(4px)' : 'none',
         opacity: isDragging ? 0.6 : 1,
         boxShadow: isDropTarget
-          ? '0 -2px 0 0 #3b82f6, 0 8px 16px -4px rgba(0, 0, 0, 0.3)'
+          ? `0 -2px 0 0 ${colors.accent.default}, 0 8px 16px -4px rgba(0, 0, 0, 0.3)`
           : isSelected
-          ? '0 8px 16px -4px rgba(59, 130, 246, 0.2)'
+          ? `0 8px 16px -4px ${colors.accent.subtle}`
           : 'none',
       }}
     >
       {/* Drag Handle */}
       <div style={styles.dragHandle}>
         <svg width="12" height="20" viewBox="0 0 12 20" fill="none">
-          <circle cx="3" cy="4" r="1.5" fill="#6b7280" />
-          <circle cx="9" cy="4" r="1.5" fill="#6b7280" />
-          <circle cx="3" cy="10" r="1.5" fill="#6b7280" />
-          <circle cx="9" cy="10" r="1.5" fill="#6b7280" />
-          <circle cx="3" cy="16" r="1.5" fill="#6b7280" />
-          <circle cx="9" cy="16" r="1.5" fill="#6b7280" />
+          <circle cx="3" cy="4" r="1.5" fill="currentColor" />
+          <circle cx="9" cy="4" r="1.5" fill="currentColor" />
+          <circle cx="3" cy="10" r="1.5" fill="currentColor" />
+          <circle cx="9" cy="10" r="1.5" fill="currentColor" />
+          <circle cx="3" cy="16" r="1.5" fill="currentColor" />
+          <circle cx="9" cy="16" r="1.5" fill="currentColor" />
         </svg>
       </div>
 
@@ -215,7 +220,7 @@ const FeedbackItemCard: React.FC<FeedbackItemCardProps> = ({
                     }}
                     style={{
                       ...styles.dropdownItem,
-                      backgroundColor: cat === category ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                      backgroundColor: cat === category ? colors.accent.subtle : 'transparent',
                     }}
                   >
                     <span
@@ -263,7 +268,7 @@ const FeedbackItemCard: React.FC<FeedbackItemCardProps> = ({
                     }}
                     style={{
                       ...styles.dropdownItem,
-                      backgroundColor: sev === severity ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                      backgroundColor: sev === severity ? colors.accent.subtle : 'transparent',
                     }}
                   >
                     <span
@@ -303,7 +308,7 @@ const FeedbackItemCard: React.FC<FeedbackItemCardProps> = ({
                   e.stopPropagation();
                   onDelete();
                 }}
-                style={{ ...styles.actionButton, color: '#ef4444' }}
+                style={{ ...styles.actionButton, color: 'var(--status-error)' }}
                 title="Delete (Del)"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -350,7 +355,7 @@ const FeedbackItemCard: React.FC<FeedbackItemCardProps> = ({
                   />
                 ) : (
                   <div style={styles.thumbnailPlaceholder}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                       <circle cx="8.5" cy="8.5" r="1.5" />
                       <polyline points="21 15 16 10 5 21" />
@@ -410,7 +415,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({ session, projectName 
   return (
     <div style={styles.previewContainer}>
       <div style={styles.previewHeader}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
           <polyline points="14 2 14 8 20 8" />
           <line x1="16" y1="13" x2="8" y2="13" />
@@ -763,38 +768,9 @@ const SessionReview: React.FC<SessionReviewProps> = ({
 
   return (
     <div ref={containerRef} style={styles.container}>
-      {/* Global Styles */}
+      {/* toastSlideIn, pageFadeIn, pulseBorder keyframes provided by animations.css; scrollbar styles below */}
       <style>
         {`
-          @keyframes markupr-toast-enter {
-            from {
-              transform: translateY(100%);
-              opacity: 0;
-            }
-            to {
-              transform: translateY(0);
-              opacity: 1;
-            }
-          }
-
-          @keyframes markupr-lightbox-enter {
-            from {
-              opacity: 0;
-            }
-            to {
-              opacity: 1;
-            }
-          }
-
-          @keyframes markupr-pulse-border {
-            0%, 100% {
-              border-color: rgba(59, 130, 246, 0.5);
-            }
-            50% {
-              border-color: rgba(59, 130, 246, 0.8);
-            }
-          }
-
           .markupr-scrollbar::-webkit-scrollbar {
             width: 8px;
           }
@@ -831,7 +807,7 @@ const SessionReview: React.FC<SessionReviewProps> = ({
         <div style={styles.itemsPane} className="markupr-scrollbar">
           {items.length === 0 ? (
             <div style={styles.emptyState}>
-              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
@@ -921,9 +897,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#0f172a',
-    backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
-    color: '#f1f5f9',
+    backgroundColor: 'var(--bg-primary)',
+    backgroundImage: 'linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-primary) 100%)',
+    color: 'var(--text-primary)',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     position: 'relative',
     overflow: 'hidden',
@@ -935,8 +911,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px 20px',
-    borderBottom: '1px solid rgba(51, 65, 85, 0.5)',
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderBottom: '1px solid var(--border-default)',
+    backgroundColor: 'var(--surface-glass)',
     backdropFilter: 'blur(12px)',
     WebkitAppRegion: 'drag',
   },
@@ -954,13 +930,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
   itemCount: {
     fontSize: 13,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontWeight: 500,
   },
   unsavedBadge: {
     fontSize: 11,
-    color: '#fbbf24',
-    backgroundColor: 'rgba(251, 191, 36, 0.15)',
+    color: 'var(--status-warning)',
+    backgroundColor: 'var(--status-warning-subtle)',
     padding: '2px 8px',
     borderRadius: 10,
     fontWeight: 500,
@@ -970,18 +946,18 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 6,
     padding: '8px 12px',
-    backgroundColor: 'rgba(51, 65, 85, 0.5)',
-    border: '1px solid rgba(71, 85, 105, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
-    color: '#e2e8f0',
+    color: 'var(--text-primary)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
   primaryButton: {
-    backgroundColor: 'rgba(59, 130, 246, 0.8)',
-    borderColor: 'rgba(59, 130, 246, 0.5)',
+    backgroundColor: 'var(--accent-default)',
+    borderColor: 'var(--accent-muted)',
   },
   closeButton: {
     display: 'flex',
@@ -993,7 +969,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 6,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
@@ -1014,8 +990,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
   previewPane: {
     width: '40%',
-    borderLeft: '1px solid rgba(51, 65, 85, 0.5)',
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    borderLeft: '1px solid var(--border-default)',
+    backgroundColor: 'var(--surface-glass)',
     overflow: 'hidden',
   },
 
@@ -1037,6 +1013,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 20,
     cursor: 'grab',
     opacity: 0.5,
+    color: 'var(--text-tertiary)',
     transition: 'opacity 0.15s ease',
   },
   cardContent: {
@@ -1055,7 +1032,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   itemId: {
     fontSize: 12,
     fontWeight: 600,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
   },
   tag: {
@@ -1075,8 +1052,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     top: '100%',
     left: 0,
     marginTop: 4,
-    backgroundColor: '#1e293b',
-    border: '1px solid rgba(51, 65, 85, 0.8)',
+    backgroundColor: 'var(--bg-elevated)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
     padding: 4,
     zIndex: 100,
@@ -1091,7 +1068,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 4,
-    color: '#e2e8f0',
+    color: 'var(--text-primary)',
     fontSize: 12,
     cursor: 'pointer',
     transition: 'background-color 0.15s ease',
@@ -1109,10 +1086,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 28,
     height: 28,
     padding: 0,
-    backgroundColor: 'rgba(51, 65, 85, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
     border: 'none',
     borderRadius: 6,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
@@ -1120,23 +1097,23 @@ const styles: Record<string, ExtendedCSSProperties> = {
     margin: 0,
     fontSize: 14,
     lineHeight: 1.6,
-    color: '#e2e8f0',
+    color: 'var(--text-primary)',
     wordBreak: 'break-word',
   },
   editTextarea: {
     width: '100%',
     minHeight: 80,
     padding: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    border: '2px solid rgba(59, 130, 246, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '2px solid var(--border-focus)',
     borderRadius: 8,
-    color: '#f1f5f9',
+    color: 'var(--text-primary)',
     fontSize: 14,
     lineHeight: 1.6,
     resize: 'vertical',
     outline: 'none',
     fontFamily: 'inherit',
-    animation: 'markupr-pulse-border 1.5s ease-in-out infinite',
+    animation: 'pulseBorder 1.5s ease-in-out infinite',
   },
   thumbnailRow: {
     display: 'flex',
@@ -1149,8 +1126,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     height: 45,
     borderRadius: 6,
     overflow: 'hidden',
-    border: '1px solid rgba(51, 65, 85, 0.5)',
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    border: '1px solid var(--border-default)',
+    backgroundColor: 'var(--surface-inset)',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
     padding: 0,
@@ -1179,12 +1156,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 8,
     padding: '12px 16px',
-    borderBottom: '1px solid rgba(51, 65, 85, 0.5)',
+    borderBottom: '1px solid var(--border-default)',
   },
   previewTitle: {
     fontSize: 12,
     fontWeight: 500,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
   },
@@ -1194,7 +1171,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     margin: 0,
     fontSize: 12,
     lineHeight: 1.6,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
     whiteSpace: 'pre-wrap',
     overflowY: 'auto',
@@ -1213,13 +1190,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
     zIndex: 1000,
   },
   toast: {
-    backgroundColor: '#1e293b',
-    border: '1px solid rgba(51, 65, 85, 0.8)',
+    backgroundColor: 'var(--bg-elevated)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 12,
     padding: 0,
     overflow: 'hidden',
     boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.5)',
-    animation: 'markupr-toast-enter 0.3s ease-out',
+    animation: 'toastSlideIn 0.3s ease-out',
     minWidth: 240,
   },
   toastContent: {
@@ -1230,15 +1207,15 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
   toastText: {
     fontSize: 13,
-    color: '#e2e8f0',
+    color: 'var(--text-primary)',
     fontWeight: 500,
   },
   undoButton: {
     padding: '6px 12px',
     backgroundColor: 'transparent',
-    border: '1px solid rgba(59, 130, 246, 0.5)',
+    border: '1px solid var(--accent-muted)',
     borderRadius: 6,
-    color: '#60a5fa',
+    color: 'var(--text-link)',
     fontSize: 12,
     fontWeight: 600,
     cursor: 'pointer',
@@ -1246,11 +1223,11 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
   toastProgress: {
     height: 3,
-    backgroundColor: 'rgba(51, 65, 85, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
   },
   toastProgressBar: {
     height: '100%',
-    backgroundColor: '#ef4444',
+    backgroundColor: 'var(--status-error)',
     transition: 'width 0.1s linear',
   },
 
@@ -1263,7 +1240,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2000,
-    animation: 'markupr-lightbox-enter 0.2s ease-out',
+    animation: 'pageFadeIn 0.2s ease-out',
     cursor: 'zoom-out',
   },
   lightboxClose: {
@@ -1278,7 +1255,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     border: 'none',
     borderRadius: '50%',
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     cursor: 'pointer',
     transition: 'background-color 0.15s ease',
   },
@@ -1305,12 +1282,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     marginTop: 16,
     fontSize: 16,
     fontWeight: 500,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
   },
   emptySubtext: {
     marginTop: 4,
     fontSize: 13,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
   },
 
   // Keyboard Shortcuts Hint
@@ -1322,7 +1299,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 12,
     fontSize: 11,
-    color: '#64748b',
+    color: 'var(--text-tertiary)',
   },
   shortcutKey: {
     display: 'inline-flex',
@@ -1331,12 +1308,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     minWidth: 20,
     padding: '2px 6px',
     marginRight: 4,
-    backgroundColor: 'rgba(51, 65, 85, 0.5)',
-    border: '1px solid rgba(71, 85, 105, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 4,
     fontSize: 10,
     fontWeight: 500,
-    color: '#94a3b8',
+    color: 'var(--text-secondary)',
   },
 };
 

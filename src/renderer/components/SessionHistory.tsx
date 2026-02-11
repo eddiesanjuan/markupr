@@ -17,6 +17,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Skeleton, SkeletonText } from './Skeleton';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -114,6 +115,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
   onContextMenu,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const { colors } = useTheme();
   const duration = session.endTime - session.startTime;
 
   const handleClick = useCallback(
@@ -158,31 +160,31 @@ const SessionCard: React.FC<SessionCardProps> = ({
       style={{
         ...styles.sessionCard,
         backgroundColor: isSelected
-          ? 'rgba(59, 130, 246, 0.15)'
+          ? colors.accent.subtle
           : isHovered
-          ? 'rgba(55, 65, 81, 0.4)'
-          : 'rgba(31, 41, 55, 0.6)',
+          ? colors.bg.subtle
+          : colors.surface.inset,
         borderColor: isSelected
-          ? 'rgba(59, 130, 246, 0.5)'
+          ? colors.accent.muted
           : isFocused
-          ? 'rgba(99, 102, 241, 0.5)'
-          : 'rgba(75, 85, 99, 0.3)',
-        boxShadow: isSelected ? '0 4px 12px -2px rgba(59, 130, 246, 0.2)' : 'none',
+          ? colors.border.focus
+          : colors.border.subtle,
+        boxShadow: isSelected ? `0 4px 12px -2px ${colors.accent.subtle}` : 'none',
       }}
     >
       {/* Checkbox */}
       <div
         style={{
           ...styles.checkbox,
-          backgroundColor: isSelected ? '#3B82F6' : 'transparent',
-          borderColor: isSelected ? '#3B82F6' : '#6b7280',
+          backgroundColor: isSelected ? colors.accent.default : 'transparent',
+          borderColor: isSelected ? colors.accent.default : colors.text.tertiary,
         }}
       >
         {isSelected && (
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path
               d="M2.5 6l2.5 2.5 4.5-4.5"
-              stroke="#ffffff"
+              stroke={colors.text.inverse}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -204,7 +206,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
           />
         ) : (
           <div style={styles.thumbnailPlaceholder}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.5">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-tertiary)' }}>
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
               <circle cx="8.5" cy="8.5" r="1.5" />
               <polyline points="21 15 16 10 5 21" />
@@ -297,7 +299,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
             </svg>
           </button>
           <button
-            style={{ ...styles.actionButton, color: '#ef4444' }}
+            style={{ ...styles.actionButton, color: colors.status.error }}
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -331,9 +333,9 @@ const SearchInput: React.FC<{
         height="16"
         viewBox="0 0 24 24"
         fill="none"
-        stroke="#6b7280"
+        stroke="currentColor"
         strokeWidth="2"
-        style={styles.searchIcon}
+        style={{ ...styles.searchIcon, color: 'var(--text-tertiary)' }}
       >
         <circle cx="11" cy="11" r="8" />
         <path d="M21 21l-4.35-4.35" />
@@ -429,7 +431,7 @@ const SortDropdown: React.FC<{
               key={option.value}
               style={{
                 ...styles.sortDropdownItem,
-                backgroundColor: sortBy === option.value ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                backgroundColor: sortBy === option.value ? 'var(--accent-subtle)' : 'transparent',
               }}
               onClick={() => {
                 onSortChange(option.value);
@@ -438,7 +440,7 @@ const SortDropdown: React.FC<{
             >
               {option.label}
               {sortBy === option.value && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-default)" strokeWidth="2">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               )}
@@ -526,7 +528,7 @@ const ContextMenu: React.FC<{
         Select All
       </button>
       <div style={styles.contextMenuDivider} />
-      <button style={{ ...styles.contextMenuItem, color: '#ef4444' }} onClick={onDelete}>
+      <button style={{ ...styles.contextMenuItem, color: 'var(--status-error)' }} onClick={onDelete}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
         </svg>
@@ -552,7 +554,7 @@ const DeleteConfirmDialog: React.FC<{
       <div style={styles.dialogBackdrop} onClick={onCancel} />
       <div style={styles.dialog}>
         <div style={styles.dialogIcon}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.5">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--status-error)" strokeWidth="1.5">
             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
             <line x1="10" y1="11" x2="10" y2="17" />
             <line x1="14" y1="11" x2="14" y2="17" />
@@ -584,7 +586,7 @@ const DeleteConfirmDialog: React.FC<{
 const EmptyState: React.FC<{ hasSearch: boolean; onClear: () => void }> = ({ hasSearch, onClear }) => (
   <div style={styles.emptyState}>
     <div style={styles.emptyIcon}>
-      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" style={{ color: 'var(--text-tertiary)' }}>
         {hasSearch ? (
           <>
             <circle cx="11" cy="11" r="8" />
@@ -941,46 +943,32 @@ export function SessionHistory({ isOpen, onClose, onOpenSession }: SessionHistor
 
   return (
     <div style={styles.overlay}>
+      {/* dialogEnter keyframe provided by animations.css; scrollbar styles below */}
       <style>
         {`
-          @keyframes markupr-dialog-enter {
-            from {
-              opacity: 0;
-              transform: scale(0.95) translateY(10px);
-            }
-            to {
-              opacity: 1;
-              transform: scale(1) translateY(0);
-            }
-          }
-
-          .ff-dialog-animate {
-            animation: markupr-dialog-enter 0.2s ease-out;
-          }
-
           .markupr-history-scrollbar::-webkit-scrollbar {
             width: 8px;
           }
 
           .markupr-history-scrollbar::-webkit-scrollbar-track {
-            background: rgba(31, 41, 55, 0.3);
+            background: var(--surface-inset);
             border-radius: 4px;
           }
 
           .markupr-history-scrollbar::-webkit-scrollbar-thumb {
-            background: rgba(107, 114, 128, 0.5);
+            background: var(--border-strong);
             border-radius: 4px;
           }
 
           .markupr-history-scrollbar::-webkit-scrollbar-thumb:hover {
-            background: rgba(107, 114, 128, 0.7);
+            background: var(--text-tertiary);
           }
         `}
       </style>
 
       <div style={styles.backdrop} onClick={onClose} />
 
-      <div ref={containerRef} style={styles.panel} className="ff-dialog-animate">
+      <div ref={containerRef} style={styles.panel} className="ff-dialog-enter">
         {/* Header */}
         <div style={styles.header}>
           <div style={styles.headerLeft}>
@@ -1149,7 +1137,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   backdrop: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'var(--bg-overlay)',
     backdropFilter: 'blur(4px)',
   },
 
@@ -1158,9 +1146,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 900,
     maxHeight: '90vh',
-    backgroundColor: 'rgba(17, 24, 39, 0.98)',
+    backgroundColor: 'var(--surface-glass)',
     borderRadius: 16,
-    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-default)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -1172,7 +1160,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 16,
     padding: '20px 24px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+    borderBottom: '1px solid var(--border-default)',
     WebkitAppRegion: 'drag',
   },
 
@@ -1186,13 +1174,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
   headerTitle: {
     fontSize: 18,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     margin: 0,
   },
 
   sessionCount: {
     fontSize: 13,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontWeight: 400,
   },
 
@@ -1205,7 +1193,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 8,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     WebkitAppRegion: 'no-drag',
@@ -1231,10 +1219,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   searchInput: {
     width: '100%',
     padding: '8px 36px 8px 38px',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     fontSize: 13,
     outline: 'none',
     transition: 'border-color 0.2s ease',
@@ -1251,7 +1239,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 4,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     cursor: 'pointer',
   },
 
@@ -1261,8 +1249,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px 24px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-    backgroundColor: 'rgba(17, 24, 39, 0.5)',
+    borderBottom: '1px solid var(--border-subtle)',
+    backgroundColor: 'var(--surface-glass)',
   },
 
   toolbarLeft: {
@@ -1282,16 +1270,16 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 8,
     fontSize: 13,
-    color: '#60a5fa',
+    color: 'var(--text-link)',
     fontWeight: 500,
   },
 
   deselectButton: {
     padding: '2px 8px',
     backgroundColor: 'transparent',
-    border: '1px solid rgba(96, 165, 250, 0.3)',
+    border: '1px solid var(--accent-subtle)',
     borderRadius: 4,
-    color: '#60a5fa',
+    color: 'var(--text-link)',
     fontSize: 11,
     cursor: 'pointer',
   },
@@ -1309,10 +1297,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 6,
     padding: '6px 10px',
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 6,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     fontSize: 12,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1325,10 +1313,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 6,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
@@ -1339,8 +1327,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     left: 0,
     marginTop: 4,
     minWidth: 140,
-    backgroundColor: '#1f2937',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--bg-elevated)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
     padding: 4,
     zIndex: 50,
@@ -1356,7 +1344,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 4,
-    color: '#e5e7eb',
+    color: 'var(--text-primary)',
     fontSize: 13,
     textAlign: 'left',
     cursor: 'pointer',
@@ -1369,10 +1357,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 6,
     padding: '6px 12px',
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 6,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     fontSize: 12,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1380,9 +1368,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
 
   deleteButton: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    color: '#f87171',
+    backgroundColor: 'var(--status-error-subtle)',
+    borderColor: 'var(--status-error)',
+    color: 'var(--status-error)',
   },
 
   // Content
@@ -1425,7 +1413,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     height: 56,
     borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: 'rgba(31, 41, 55, 0.8)',
+    backgroundColor: 'var(--surface-inset)',
     flexShrink: 0,
   },
 
@@ -1441,7 +1429,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
   },
 
   sessionContent: {
@@ -1462,7 +1450,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   sessionName: {
     fontSize: 14,
     fontWeight: 500,
-    color: '#f3f4f6',
+    color: 'var(--text-primary)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -1470,7 +1458,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   sessionDate: {
     fontSize: 11,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     whiteSpace: 'nowrap',
     flexShrink: 0,
   },
@@ -1486,13 +1474,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 4,
     fontSize: 12,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
   },
 
   transcriptionPreview: {
     margin: 0,
     fontSize: 12,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     lineHeight: 1.4,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -1513,10 +1501,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(55, 65, 81, 0.6)',
+    backgroundColor: 'var(--surface-inset)',
     border: 'none',
     borderRadius: 6,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
@@ -1525,8 +1513,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
   contextMenu: {
     position: 'fixed',
     minWidth: 160,
-    backgroundColor: '#1f2937',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--bg-elevated)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
     padding: 4,
     zIndex: 200,
@@ -1542,7 +1530,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'transparent',
     border: 'none',
     borderRadius: 4,
-    color: '#e5e7eb',
+    color: 'var(--text-primary)',
     fontSize: 13,
     textAlign: 'left',
     cursor: 'pointer',
@@ -1551,7 +1539,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   contextMenuDivider: {
     height: 1,
-    backgroundColor: 'rgba(75, 85, 99, 0.3)',
+    backgroundColor: 'var(--border-subtle)',
     margin: '4px 0',
   },
 
@@ -1568,13 +1556,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
   dialogBackdrop: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'var(--bg-overlay)',
   },
 
   dialog: {
     position: 'relative',
     width: 320,
-    backgroundColor: '#1f2937',
+    backgroundColor: 'var(--bg-elevated)',
     borderRadius: 12,
     padding: 24,
     textAlign: 'center',
@@ -1588,20 +1576,20 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: 'var(--status-error-subtle)',
     borderRadius: '50%',
   },
 
   dialogTitle: {
     fontSize: 16,
     fontWeight: 600,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     margin: '0 0 8px',
   },
 
   dialogMessage: {
     fontSize: 13,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     margin: '0 0 20px',
     lineHeight: 1.5,
   },
@@ -1614,10 +1602,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   dialogCancelButton: {
     flex: 1,
     padding: '10px 16px',
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1627,10 +1615,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
   dialogDeleteButton: {
     flex: 1,
     padding: '10px 16px',
-    backgroundColor: '#dc2626',
+    backgroundColor: 'var(--status-error)',
     border: 'none',
     borderRadius: 8,
-    color: '#ffffff',
+    color: 'var(--text-inverse)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1655,20 +1643,20 @@ const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(55, 65, 81, 0.2)',
+    backgroundColor: 'var(--surface-inset)',
     borderRadius: '50%',
   },
 
   emptyTitle: {
     fontSize: 16,
     fontWeight: 500,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     margin: '0 0 8px',
   },
 
   emptyMessage: {
     fontSize: 13,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     margin: '0 0 16px',
     maxWidth: 280,
     lineHeight: 1.5,
@@ -1676,10 +1664,10 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   emptyClearButton: {
     padding: '8px 16px',
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    border: '1px solid rgba(59, 130, 246, 0.3)',
+    backgroundColor: 'var(--accent-subtle)',
+    border: '1px solid var(--accent-muted)',
     borderRadius: 6,
-    color: '#60a5fa',
+    color: 'var(--text-link)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -1698,9 +1686,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 12,
     padding: 12,
-    backgroundColor: 'rgba(31, 41, 55, 0.6)',
+    backgroundColor: 'var(--surface-inset)',
     borderRadius: 10,
-    border: '1px solid rgba(75, 85, 99, 0.3)',
+    border: '1px solid var(--border-subtle)',
   },
 
   // Footer
@@ -1709,8 +1697,8 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '12px 24px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'rgba(17, 24, 39, 0.5)',
+    borderTop: '1px solid var(--border-default)',
+    backgroundColor: 'var(--surface-glass)',
   },
 
   footerLeft: {
@@ -1723,7 +1711,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 12,
     fontSize: 11,
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
   },
 
   kbd: {
@@ -1733,21 +1721,21 @@ const styles: Record<string, ExtendedCSSProperties> = {
     minWidth: 20,
     padding: '2px 6px',
     marginRight: 4,
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 4,
     fontSize: 10,
     fontWeight: 500,
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontFamily: 'ui-monospace, SFMono-Regular, monospace',
   },
 
   closeFooterButton: {
     padding: '8px 20px',
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
-    border: '1px solid rgba(75, 85, 99, 0.5)',
+    backgroundColor: 'var(--surface-inset)',
+    border: '1px solid var(--border-strong)',
     borderRadius: 8,
-    color: '#d1d5db',
+    color: 'var(--text-secondary)',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',

@@ -21,28 +21,28 @@
 
 :root {
   /* Timing Functions - Spring Physics */
-  --ff-spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ff-spring-smooth: cubic-bezier(0.16, 1, 0.3, 1);
-  --ff-spring-snap: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --spring-snap: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
   /* Timing Functions - Standard */
-  --ff-ease-out: cubic-bezier(0.0, 0, 0.2, 1);
-  --ff-ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ff-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Durations */
-  --ff-duration-instant: 100ms;
-  --ff-duration-fast: 150ms;
-  --ff-duration-normal: 250ms;
-  --ff-duration-slow: 400ms;
-  --ff-duration-slower: 600ms;
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
+  --duration-slower: 600ms;
 
-  /* Colors for state animations */
-  --ff-color-recording: #ef4444;
-  --ff-color-processing: #f59e0b;
-  --ff-color-success: #10b981;
-  --ff-color-error: #ef4444;
-  --ff-color-info: #3b82f6;
+  /* Colors for state animations — sourced from theme tokens */
+  --color-recording: var(--status-error);
+  --color-processing: var(--status-warning);
+  --color-success: var(--status-success);
+  --color-error: var(--status-error);
+  --color-info: var(--status-info);
 }
 
 /* ============================================================================
@@ -110,19 +110,19 @@
 }
 
 .ff-dialog-enter {
-  animation: dialogEnter var(--ff-duration-normal) var(--ff-spring-bounce);
+  animation: dialogEnter var(--duration-normal) var(--spring-bounce);
 }
 
 .ff-dialog-exit {
-  animation: dialogExit var(--ff-duration-fast) var(--ff-ease-out);
+  animation: dialogExit var(--duration-fast) var(--ease-out);
 }
 
 .ff-backdrop-enter {
-  animation: backdropFadeIn var(--ff-duration-normal) var(--ff-ease-out);
+  animation: backdropFadeIn var(--duration-normal) var(--ease-out);
 }
 
 .ff-backdrop-exit {
-  animation: backdropFadeOut var(--ff-duration-fast) var(--ff-ease-out);
+  animation: backdropFadeOut var(--duration-fast) var(--ease-out);
 }
 
 /* ============================================================================
@@ -174,19 +174,19 @@
 }
 
 .ff-list-item-enter {
-  animation: listItemEnter var(--ff-duration-normal) var(--ff-spring-smooth) both;
+  animation: listItemEnter var(--duration-normal) var(--spring-smooth) both;
 }
 
 .ff-list-item-enter-left {
-  animation: listItemEnterLeft var(--ff-duration-normal) var(--ff-spring-smooth) both;
+  animation: listItemEnterLeft var(--duration-normal) var(--spring-smooth) both;
 }
 
 .ff-list-item-enter-right {
-  animation: listItemEnterRight var(--ff-duration-normal) var(--ff-spring-smooth) both;
+  animation: listItemEnterRight var(--duration-normal) var(--spring-smooth) both;
 }
 
 .ff-list-item-enter-scale {
-  animation: listItemEnterScale var(--ff-duration-normal) var(--ff-spring-bounce) both;
+  animation: listItemEnterScale var(--duration-normal) var(--spring-bounce) both;
 }
 
 /* Stagger delays (use with data-stagger-index or inline style) */
@@ -361,17 +361,17 @@
 }
 
 .ff-success-bounce {
-  animation: successBounce 0.5s var(--ff-spring-bounce);
+  animation: successBounce 0.5s var(--spring-bounce);
 }
 
 .ff-success-check {
   stroke-dasharray: 24;
   stroke-dashoffset: 24;
-  animation: successCheckDraw 0.4s var(--ff-ease-out) 0.2s forwards;
+  animation: successCheckDraw 0.4s var(--ease-out) 0.2s forwards;
 }
 
 .ff-success-pop {
-  animation: successPop 0.4s var(--ff-spring-bounce);
+  animation: successPop 0.4s var(--spring-bounce);
 }
 
 /* ============================================================================
@@ -411,7 +411,7 @@
 }
 
 .ff-error-shake {
-  animation: errorShake 0.5s var(--ff-ease-out);
+  animation: errorShake 0.5s var(--ease-out);
 }
 
 .ff-error-pulse {
@@ -495,8 +495,8 @@
    ============================================================================ */
 
 .ff-btn-press {
-  transition: transform var(--ff-duration-instant) var(--ff-ease-out),
-              box-shadow var(--ff-duration-instant) var(--ff-ease-out);
+  transition: transform var(--duration-instant) var(--ease-out),
+              box-shadow var(--duration-instant) var(--ease-out);
   will-change: transform;
 }
 
@@ -511,7 +511,7 @@
 
 /* Scale press effect */
 .ff-btn-scale {
-  transition: transform var(--ff-duration-instant) var(--ff-spring-bounce);
+  transition: transform var(--duration-instant) var(--spring-bounce);
   will-change: transform;
 }
 
@@ -578,15 +578,15 @@
 }
 
 .ff-tooltip-enter {
-  animation: tooltipFadeIn var(--ff-duration-fast) var(--ff-spring-smooth);
+  animation: tooltipFadeIn var(--duration-fast) var(--spring-smooth);
 }
 
 .ff-tooltip-exit {
-  animation: tooltipFadeOut var(--ff-duration-instant) var(--ff-ease-out);
+  animation: tooltipFadeOut var(--duration-instant) var(--ease-out);
 }
 
 .ff-tooltip-enter-top {
-  animation: tooltipFadeInTop var(--ff-duration-fast) var(--ff-spring-smooth);
+  animation: tooltipFadeInTop var(--duration-fast) var(--spring-smooth);
 }
 
 /* ============================================================================
@@ -627,15 +627,15 @@
 }
 
 .ff-toast-enter {
-  animation: toastSlideIn var(--ff-duration-normal) var(--ff-spring-smooth);
+  animation: toastSlideIn var(--duration-normal) var(--spring-smooth);
 }
 
 .ff-toast-exit {
-  animation: toastSlideOut var(--ff-duration-fast) var(--ff-ease-out);
+  animation: toastSlideOut var(--duration-fast) var(--ease-out);
 }
 
 .ff-toast-enter-top {
-  animation: toastSlideInTop var(--ff-duration-normal) var(--ff-spring-smooth);
+  animation: toastSlideInTop var(--duration-normal) var(--spring-smooth);
 }
 
 /* Slide up animation for update notifications */
@@ -651,7 +651,7 @@
 }
 
 .animate-slide-up {
-  animation: slideUp 0.3s var(--ff-spring-smooth);
+  animation: slideUp 0.3s var(--spring-smooth);
 }
 
 /* ============================================================================
@@ -659,8 +659,8 @@
    ============================================================================ */
 
 .ff-card-hover {
-  transition: transform var(--ff-duration-fast) var(--ff-ease-out),
-              box-shadow var(--ff-duration-fast) var(--ff-ease-out);
+  transition: transform var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
   will-change: transform;
 }
 
@@ -670,8 +670,8 @@
 }
 
 .ff-card-lift {
-  transition: transform var(--ff-duration-normal) var(--ff-spring-smooth),
-              box-shadow var(--ff-duration-normal) var(--ff-ease-out);
+  transition: transform var(--duration-normal) var(--spring-smooth),
+              box-shadow var(--duration-normal) var(--ease-out);
 }
 
 .ff-card-lift:hover {
@@ -725,15 +725,15 @@
 }
 
 .ff-badge-pop {
-  animation: badgePop var(--ff-duration-normal) var(--ff-spring-bounce);
+  animation: badgePop var(--duration-normal) var(--spring-bounce);
 }
 
 .ff-badge-bounce {
-  animation: badgeBounce 0.5s var(--ff-ease-out);
+  animation: badgeBounce 0.5s var(--ease-out);
 }
 
 .ff-counter-increment {
-  animation: counterIncrement 0.3s var(--ff-spring-bounce);
+  animation: counterIncrement 0.3s var(--spring-bounce);
 }
 
 /* ============================================================================
@@ -783,19 +783,19 @@
 }
 
 .ff-page-slide-right {
-  animation: pageSlideInRight var(--ff-duration-slow) var(--ff-spring-smooth);
+  animation: pageSlideInRight var(--duration-slow) var(--spring-smooth);
 }
 
 .ff-page-slide-left {
-  animation: pageSlideInLeft var(--ff-duration-slow) var(--ff-spring-smooth);
+  animation: pageSlideInLeft var(--duration-slow) var(--spring-smooth);
 }
 
 .ff-page-fade {
-  animation: pageFadeIn var(--ff-duration-normal) var(--ff-ease-out);
+  animation: pageFadeIn var(--duration-normal) var(--ease-out);
 }
 
 .ff-page-zoom {
-  animation: pageZoomIn var(--ff-duration-normal) var(--ff-spring-smooth);
+  animation: pageZoomIn var(--duration-normal) var(--spring-smooth);
 }
 
 /* ============================================================================
@@ -873,7 +873,7 @@
 
 /* Fade */
 .ff-fade-in {
-  animation: pageFadeIn var(--ff-duration-normal) var(--ff-ease-out);
+  animation: pageFadeIn var(--duration-normal) var(--ease-out);
 }
 
 /* Spin */
@@ -952,6 +952,103 @@
 }
 
 /* ============================================================================
+   Component-Specific Centralized Keyframes
+   ============================================================================ */
+
+/* Fade out */
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.ff-fade-out {
+  animation: fadeOut var(--duration-fast) var(--ease-out);
+}
+
+/* Pulse with scale (recording dots, waveform indicators) */
+@keyframes pulseScale {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.95);
+  }
+}
+
+.ff-pulse-scale {
+  animation: pulseScale 1.5s ease-in-out infinite;
+}
+
+/* Glow pulse (accent-colored box-shadow) */
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px var(--accent-muted);
+  }
+  50% {
+    box-shadow: 0 0 40px var(--accent-muted);
+  }
+}
+
+.ff-glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+/* Border color pulse */
+@keyframes pulseBorder {
+  0%, 100% {
+    border-color: rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    border-color: rgba(59, 130, 246, 0.8);
+  }
+}
+
+.ff-pulse-border {
+  animation: pulseBorder 1.5s ease-in-out infinite;
+}
+
+/* Badge float up and fade */
+@keyframes badgeFloat {
+  0% {
+    transform: scale(0) translateY(0);
+    opacity: 0;
+  }
+  20% {
+    transform: scale(1.2) translateY(-2px);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1) translateY(-4px);
+  }
+  100% {
+    transform: scale(0.8) translateY(-16px);
+    opacity: 0;
+  }
+}
+
+.ff-badge-float {
+  animation: badgeFloat 1.2s ease-out forwards;
+}
+
+/* Annotation toolbar entrance */
+@keyframes toolbarFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.ff-toolbar-enter {
+  animation: toolbarFadeInUp 0.3s var(--ease-out) forwards;
+}
+
+/* ============================================================================
    GPU Acceleration Helpers
    ============================================================================ */
 
@@ -974,23 +1071,23 @@
    ============================================================================ */
 
 .ff-transition-colors {
-  transition: background-color var(--ff-duration-fast) var(--ff-ease-out),
-              border-color var(--ff-duration-fast) var(--ff-ease-out),
-              color var(--ff-duration-fast) var(--ff-ease-out);
+  transition: background-color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
 
 .ff-transition-transform {
-  transition: transform var(--ff-duration-fast) var(--ff-ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .ff-transition-opacity {
-  transition: opacity var(--ff-duration-fast) var(--ff-ease-out);
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .ff-transition-shadow {
-  transition: box-shadow var(--ff-duration-fast) var(--ff-ease-out);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .ff-transition-all {
-  transition: all var(--ff-duration-fast) var(--ff-ease-out);
+  transition: all var(--duration-fast) var(--ease-out);
 }

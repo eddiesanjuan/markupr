@@ -20,6 +20,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { CaptureSource, DisplayInfo } from '../../shared/types';
 import { SkeletonWindowSource } from './Skeleton';
+import { useTheme } from '../hooks/useTheme';
 
 interface WindowSelectorProps {
   sources: CaptureSource[];
@@ -49,6 +50,7 @@ const MonitorLayout: React.FC<MonitorLayoutProps> = ({
   onSelect,
   sources,
 }) => {
+  const { colors } = useTheme();
   // Calculate the bounding box of all displays
   const layoutBounds = useMemo(() => {
     if (displays.length === 0) {
@@ -129,7 +131,7 @@ const MonitorLayout: React.FC<MonitorLayoutProps> = ({
                 top: y,
                 width: w,
                 height: h,
-                borderColor: isSelected ? '#3b82f6' : '#4b5563',
+                borderColor: isSelected ? colors.accent.default : colors.border.strong,
                 backgroundColor: isSelected
                   ? 'rgba(59, 130, 246, 0.2)'
                   : 'rgba(55, 65, 81, 0.5)',
@@ -159,7 +161,7 @@ const MonitorLayout: React.FC<MonitorLayoutProps> = ({
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                     <path
                       d="M2 6L5 9L10 3"
-                      stroke="#3b82f6"
+                      stroke={colors.accent.default}
                       strokeWidth="2"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -187,7 +189,7 @@ const monitorLayoutStyles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(255, 255, 255, 0.06)',
   },
   label: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 11,
     fontWeight: 600,
     textTransform: 'uppercase',
@@ -215,7 +217,7 @@ const monitorLayoutStyles: Record<string, React.CSSProperties> = {
     padding: 0,
   },
   monitorLabel: {
-    color: '#e5e7eb',
+    color: 'var(--text-primary)',
     fontSize: 11,
     fontWeight: 600,
     display: 'flex',
@@ -223,7 +225,7 @@ const monitorLayoutStyles: Record<string, React.CSSProperties> = {
     gap: 2,
   },
   primaryStar: {
-    color: '#fbbf24',
+    color: 'var(--status-warning)',
     fontSize: 10,
   },
   hiDpiBadge: {
@@ -231,7 +233,7 @@ const monitorLayoutStyles: Record<string, React.CSSProperties> = {
     bottom: 2,
     right: 2,
     backgroundColor: 'rgba(139, 92, 246, 0.8)',
-    color: '#fff',
+    color: 'var(--text-inverse)',
     fontSize: 8,
     fontWeight: 600,
     padding: '1px 3px',
@@ -243,7 +245,7 @@ const monitorLayoutStyles: Record<string, React.CSSProperties> = {
     right: 2,
   },
   hint: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 10,
     textAlign: 'center',
     marginTop: 8,
@@ -501,23 +503,7 @@ export const WindowSelector: React.FC<WindowSelectorProps> = ({
         </div>
       </div>
 
-      {/* Pulse animation for recording dot */}
-      <style>
-        {`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.95); }
-          }
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-          @keyframes fadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-          }
-        `}
-      </style>
+      {/* pulse, spin, pageZoomIn keyframes provided by animations.css */}
     </div>
   );
 };
@@ -544,6 +530,7 @@ const SourceItem: React.FC<SourceItemProps> = ({
   onClick,
   onDoubleClick,
 }) => {
+  const { colors } = useTheme();
   const [isHovered, setIsHovered] = useState(false);
   const [isPressed, setIsPressed] = useState(false);
 
@@ -658,7 +645,7 @@ const SourceItem: React.FC<SourceItemProps> = ({
           >
             <path
               d="M1.5 4L3 5.5L6.5 2"
-              stroke="#ffffff"
+              stroke={colors.text.inverse}
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -687,7 +674,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     backdropFilter: 'blur(4px)',
     zIndex: 50,
-    animation: 'fadeIn 0.15s ease-out',
+    animation: 'pageZoomIn 0.15s ease-out',
   },
 
   // Modal container
@@ -711,14 +698,14 @@ const styles: Record<string, ExtendedCSSProperties> = {
     borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
   },
   title: {
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     fontSize: 18,
     fontWeight: 600,
     margin: 0,
     letterSpacing: '-0.01em',
   },
   subtitle: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontSize: 13,
     margin: '6px 0 0',
   },
@@ -735,7 +722,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     marginBottom: 20,
   },
   sectionTitle: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 11,
     fontWeight: 600,
     textTransform: 'uppercase',
@@ -768,7 +755,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
   sourceItemSelected: {
     backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    borderColor: '#3b82f6',
+    borderColor: 'var(--accent-default)',
   },
   sourceItemFocused: {
     boxShadow: '0 0 0 2px rgba(59, 130, 246, 0.5)',
@@ -793,7 +780,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     objectFit: 'cover',
   },
   thumbnailPlaceholder: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -801,7 +788,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   // Source name
   sourceName: {
-    color: '#e5e7eb',
+    color: 'var(--text-primary)',
     fontSize: 11,
     fontWeight: 500,
     textAlign: 'center',
@@ -819,7 +806,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
   },
   hiDpiBadgeInline: {
     backgroundColor: 'rgba(139, 92, 246, 0.8)',
-    color: '#fff',
+    color: 'var(--text-inverse)',
     fontSize: 8,
     fontWeight: 600,
     padding: '1px 4px',
@@ -827,7 +814,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     flexShrink: 0,
   },
   resolutionInfo: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 9,
     textAlign: 'center',
     marginBottom: 4,
@@ -838,13 +825,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 12,
     height: 12,
     borderRadius: '50%',
-    border: '2px solid #4b5563',
+    border: '2px solid var(--border-strong)',
     backgroundColor: 'transparent',
     transition: 'all 0.15s ease',
   },
   selectionDotSelected: {
-    borderColor: '#3b82f6',
-    backgroundColor: '#3b82f6',
+    borderColor: 'var(--accent-default)',
+    backgroundColor: 'var(--accent-default)',
   },
 
   // Loading state
@@ -860,12 +847,12 @@ const styles: Record<string, ExtendedCSSProperties> = {
     width: 32,
     height: 32,
     border: '3px solid rgba(255, 255, 255, 0.1)',
-    borderTopColor: '#3b82f6',
+    borderTopColor: 'var(--accent-default)',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
   loadingText: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
     fontSize: 13,
   },
 
@@ -879,13 +866,13 @@ const styles: Record<string, ExtendedCSSProperties> = {
     textAlign: 'center',
   },
   emptyIcon: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 14,
     fontWeight: 500,
     marginBottom: 8,
   },
   emptyText: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 13,
     lineHeight: 1.5,
     margin: 0,
@@ -902,7 +889,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
 
   // Keyboard hints
   hint: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 11,
     textAlign: 'center',
     display: 'flex',
@@ -919,7 +906,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     fontWeight: 500,
   },
   hintSeparator: {
-    color: '#4b5563',
+    color: 'var(--border-strong)',
   },
 
   // Buttons
@@ -933,7 +920,7 @@ const styles: Record<string, ExtendedCSSProperties> = {
     borderRadius: 8,
     border: 'none',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    color: '#e5e7eb',
+    color: 'var(--text-primary)',
     fontSize: 14,
     fontWeight: 500,
     cursor: 'pointer',
@@ -943,16 +930,16 @@ const styles: Record<string, ExtendedCSSProperties> = {
     padding: '10px 24px',
     borderRadius: 8,
     border: 'none',
-    backgroundColor: '#3b82f6',
-    color: '#ffffff',
+    backgroundColor: 'var(--accent-default)',
+    color: 'var(--text-inverse)',
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
   startButtonDisabled: {
-    backgroundColor: '#374151',
-    color: '#6b7280',
+    backgroundColor: 'var(--bg-tertiary)',
+    color: 'var(--text-tertiary)',
     cursor: 'not-allowed',
   },
 };

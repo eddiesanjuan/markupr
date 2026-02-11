@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 interface ProcessingOverlayProps {
   percent: number;
@@ -11,10 +12,24 @@ export const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
   step,
   onHide,
 }) => {
+  const { colors } = useTheme();
   const boundedPercent = Math.max(0, Math.min(100, Math.round(percent)));
+
+  // Announce progress at 25% milestones for screen readers
+  const lastAnnouncedRef = useRef(0);
+  const [announcement, setAnnouncement] = useState('');
+  useEffect(() => {
+    const milestone = Math.floor(boundedPercent / 25) * 25;
+    if (milestone > lastAnnouncedRef.current && milestone > 0) {
+      lastAnnouncedRef.current = milestone;
+      setAnnouncement(`Processing ${milestone}% complete. ${step}`);
+    }
+  }, [boundedPercent, step]);
 
   return (
     <div
+      role="status"
+      aria-label={`Processing ${boundedPercent}% complete`}
       style={{
         position: 'fixed',
         left: '50%',
@@ -88,7 +103,7 @@ export const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
               width: `${boundedPercent}%`,
               height: '100%',
               borderRadius: 999,
-              background: 'linear-gradient(90deg, #0a84ff 0%, #5eb5ff 100%)',
+              background: 'linear-gradient(90deg, var(--accent-default) 0%, var(--text-link) 100%)',
               transition: 'width 460ms cubic-bezier(0.23, 1, 0.32, 1)',
             }}
           />
@@ -107,7 +122,7 @@ export const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
                 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
               fontVariantNumeric: 'tabular-nums',
               fontSize: 11,
-              color: '#7ec2ff',
+              color: colors.text.link,
               fontWeight: 700,
               minWidth: 40,
             }}
@@ -129,6 +144,11 @@ export const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({
             {step}
           </span>
         </div>
+      </div>
+
+      {/* Screen reader progress announcements at 25% milestones */}
+      <div aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+        {announcement}
       </div>
     </div>
   );

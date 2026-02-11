@@ -268,10 +268,10 @@ export interface StatusTooltipProps extends Omit<TooltipProps, 'content'> {
 }
 
 const STATUS_COLORS: Record<TooltipStatus, string> = {
-  info: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  error: '#ef4444',
+  info: 'var(--status-info)',
+  success: 'var(--status-success)',
+  warning: 'var(--status-warning)',
+  error: 'var(--status-error)',
 };
 
 export const StatusTooltip: React.FC<StatusTooltipProps> = ({
@@ -308,7 +308,7 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'fixed',
     padding: '8px 12px',
     backgroundColor: 'rgba(17, 24, 39, 0.95)',
-    color: '#f3f4f6',
+    color: 'var(--text-primary)',
     fontSize: 13,
     fontWeight: 500,
     borderRadius: 8,
@@ -324,7 +324,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12,
   },
   hotkeyAction: {
-    color: '#9ca3af',
+    color: 'var(--text-secondary)',
   },
   hotkeyKeys: {
     display: 'flex',
@@ -342,12 +342,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
     fontWeight: 600,
-    color: '#f9fafb',
+    color: 'var(--text-primary)',
     border: '1px solid rgba(75, 85, 99, 0.5)',
     boxShadow: '0 1px 2px rgba(0, 0, 0, 0.2)',
   },
   keySeparator: {
-    color: '#6b7280',
+    color: 'var(--text-tertiary)',
     fontSize: 10,
   },
   statusContent: {

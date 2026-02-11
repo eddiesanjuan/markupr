@@ -21,13 +21,12 @@ export default defineConfig({
         '**/*.config.ts',
         '**/index.ts', // Re-exports
       ],
-      // Coverage thresholds (aspirational - can be adjusted)
-      // thresholds: {
-      //   lines: 70,
-      //   functions: 70,
-      //   branches: 60,
-      //   statements: 70,
-      // },
+      thresholds: {
+        lines: 8,
+        functions: 30,
+        branches: 55,
+        statements: 8,
+      },
     },
     // Test timeouts
     testTimeout: 10000,

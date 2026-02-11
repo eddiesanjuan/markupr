@@ -20,67 +20,9 @@ import Store from 'electron-store';
 import * as keytar from 'keytar';
 import { app, ipcMain, safeStorage } from 'electron';
 import { join } from 'path';
-import type { HotkeyConfig } from '../HotkeyManager';
+import { IPC_CHANNELS, type AppSettings, type HotkeyConfig } from '../../shared/types';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/**
- * Complete application settings schema
- */
-export interface AppSettings {
-  // General
-  outputDirectory: string;
-  launchAtLogin: boolean;
-  checkForUpdates: boolean;
-
-  // Recording
-  defaultCountdown: 0 | 3 | 5;
-  showTranscriptionPreview: boolean;
-  showAudioWaveform: boolean;
-
-  // Capture
-  pauseThreshold: number; // 500-3000ms
-  minTimeBetweenCaptures: number; // 300-2000ms
-  imageFormat: 'png' | 'jpeg';
-  imageQuality: number; // 1-100 for jpeg
-  maxImageWidth: number; // 800-2400
-
-  // Transcription
-  transcriptionService: 'openai';
-  language: string;
-  enableKeywordTriggers: boolean;
-
-  // Hotkeys
-  hotkeys: HotkeyConfig;
-
-  // Appearance
-  theme: 'dark' | 'light' | 'system';
-  accentColor: string;
-
-  // Audio
-  audioDeviceId: string | null;
-
-  // Advanced
-  debugMode: boolean;
-  keepAudioBackups: boolean;
-
-  // Onboarding
-  hasCompletedOnboarding: boolean;
-
-  // Legacy (for migration compatibility - these are mapped to secure storage or new fields)
-  /** @deprecated Use audioDeviceId instead */
-  preferredAudioDevice?: string;
-  /** @deprecated Output format is always markdown */
-  outputFormat?: 'markdown' | 'json';
-  /** @deprecated Use imageQuality instead */
-  screenshotQuality?: number;
-  /** @deprecated Use pauseThreshold instead */
-  pauseThresholdMs?: number;
-  /** @deprecated Clipboard is always available */
-  autoClipboard?: boolean;
-}
+// AppSettings is imported from '../../shared/types' (single source of truth)
 
 /**
  * Settings change callback type
@@ -707,46 +649,40 @@ export class SettingsManager implements ISettingsManager {
     }
 
     // Get single setting
-    ipcMain.handle('settings:get', (_, key: keyof AppSettings) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, (_, key: keyof AppSettings) => {
       return this.get(key);
     });
 
     // Get all settings
-    ipcMain.handle('settings:getAll', () => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_ALL, () => {
       return this.getAll();
     });
 
     // Set single setting
-    ipcMain.handle('settings:set', (_, key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_, key: keyof AppSettings, value: AppSettings[keyof AppSettings]) => {
       this.set(key, value);
       return this.get(key);
     });
 
-    // Reset to defaults
-    ipcMain.handle('settings:reset', () => {
-      this.reset();
-      return this.getAll();
-    });
-
     // Get API key (secure)
-    ipcMain.handle('settings:getApiKey', async (_, service: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_API_KEY, async (_, service: string) => {
       return this.getApiKey(service);
     });
 
     // Set API key (secure)
-    ipcMain.handle('settings:setApiKey', async (_, service: string, key: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_SET_API_KEY, async (_, service: string, key: string) => {
       await this.setApiKey(service, key);
       return true;
     });
 
     // Delete API key (secure)
-    ipcMain.handle('settings:deleteApiKey', async (_, service: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_DELETE_API_KEY, async (_, service: string) => {
       await this.deleteApiKey(service);
       return true;
     });
 
     // Check if API key exists
-    ipcMain.handle('settings:hasApiKey', async (_, service: string) => {
+    ipcMain.handle(IPC_CHANNELS.SETTINGS_HAS_API_KEY, async (_, service: string) => {
       return this.hasApiKey(service);
     });
 
@@ -789,5 +725,6 @@ export function createSettingsManager(): SettingsManager {
 export const settingsManager = getSettingsManager();
 
 export { DEFAULT_SETTINGS, SETTINGS_VERSION };
-// Note: AppSettings and ISettingsManager are already exported via `export interface` above
+// Re-export AppSettings from shared/types for downstream consumers
+export type { AppSettings } from '../../shared/types';
 export default settingsManager;

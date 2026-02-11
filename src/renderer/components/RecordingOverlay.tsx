@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CompactAudioIndicator } from './AudioWaveform';
+import { useTheme } from '../hooks/useTheme';
 
 interface RecordingOverlayProps {
   duration: number; // seconds
@@ -113,21 +114,22 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   }, [screenshotCount]);
 
   // Dynamic styles based on theme
+  const { colors } = useTheme();
   const theme = {
     bg: isDarkMode
       ? 'rgba(12, 18, 30, 0.44)'
       : 'rgba(244, 247, 252, 0.42)',
     border: isDarkMode ? 'rgba(177, 192, 214, 0.22)' : 'rgba(95, 106, 121, 0.14)',
-    text: isDarkMode ? '#f8fafc' : '#1f2937',
-    textMuted: isDarkMode ? '#b7bfd2' : '#626d7d',
+    text: colors.text.primary,
+    textMuted: colors.text.secondary,
     hintBg: isDarkMode ? 'rgba(67, 77, 97, 0.22)' : 'rgba(218, 225, 235, 0.24)',
-    stopBg: '#ff3b30',
+    stopBg: colors.status.error,
     stopHover: '#d92f25',
     pauseBg: isDarkMode ? 'rgba(255, 159, 10, 0.26)' : 'rgba(255, 159, 10, 0.2)',
-    badgeBg: '#10b981',
-    recordingDot: '#ef4444',
-    micActive: '#0a84ff',
-    micIdle: '#b6bbc6',
+    badgeBg: colors.status.success,
+    recordingDot: colors.status.error,
+    micActive: colors.accent.default,
+    micIdle: colors.text.tertiary,
   };
   const manualShortcutText = formatCompactShortcut(manualShortcut, isMac);
   const toggleShortcutText = formatCompactShortcut(toggleShortcut, isMac);
@@ -169,42 +171,12 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 
   return (
     <>
-      {/* Keyframe animations */}
-      <style>
-        {`
-          @keyframes markupr-pulse {
-            0%, 100% {
-              opacity: 1;
-              transform: scale(1);
-            }
-            50% {
-              opacity: 0.6;
-              transform: scale(0.95);
-            }
-          }
-
-          @keyframes markupr-badge-pop {
-            0% {
-              transform: scale(0) translateY(0);
-              opacity: 0;
-            }
-            20% {
-              transform: scale(1.2) translateY(-2px);
-              opacity: 1;
-            }
-            40% {
-              transform: scale(1) translateY(-4px);
-            }
-            100% {
-              transform: scale(0.8) translateY(-16px);
-              opacity: 0;
-            }
-          }
-
-        `}
-      </style>
+      {/* pulseScale, badgeFloat keyframes provided by animations.css */}
 
       <div
+        role="status"
+        aria-live="polite"
+        aria-label="Recording in progress"
         style={{
           position: 'fixed',
           left: '50%',
@@ -260,7 +232,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
                 height: 10,
                 backgroundColor: theme.recordingDot,
                 borderRadius: '50%',
-                animation: 'markupr-pulse 1.5s ease-in-out infinite',
+                animation: 'pulseScale 1.5s ease-in-out infinite',
               }}
             />
           </div>
@@ -310,7 +282,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
             />
             <span
               style={{
-                color: isPaused ? '#f2bd66' : isVoiceActive ? theme.text : theme.textMuted,
+                color: isPaused ? colors.status.warning : isVoiceActive ? theme.text : theme.textMuted,
                 fontVariantNumeric: 'tabular-nums',
                 minWidth: 36,
                 textAlign: 'right',
@@ -343,7 +315,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
               backgroundColor: theme.stopBg,
               border: 'none',
               borderRadius: 9,
-              color: '#ffffff',
+              color: colors.text.inverse,
               fontSize: 8.5,
               fontWeight: 700,
               cursor: 'pointer',
@@ -431,11 +403,11 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
               right: 50,
               padding: '2px 6px',
               backgroundColor: theme.badgeBg,
-              color: '#ffffff',
+              color: colors.text.inverse,
               fontSize: 10,
               fontWeight: 700,
               borderRadius: 10,
-              animation: 'markupr-badge-pop 1.2s ease-out forwards',
+              animation: 'badgeFloat 1.2s ease-out forwards',
               pointerEvents: 'none',
             }}
           >

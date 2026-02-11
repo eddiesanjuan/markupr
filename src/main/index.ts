@@ -23,12 +23,10 @@
 import {
   app,
   BrowserWindow,
-  ipcMain,
   desktopCapturer,
   screen,
   shell,
   Notification,
-  dialog,
 } from 'electron';
 import * as fs from 'fs/promises';
 import { join, dirname, basename, extname } from 'path';
@@ -48,31 +46,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import {
   IPC_CHANNELS,
-  DEFAULT_SETTINGS,
-  type AppSettings,
-  type HotkeyConfig,
-  type CaptureSource,
-  type AudioDevice,
   type PermissionType,
-  type PermissionStatus,
-  type SessionStatusPayload,
+  type SessionState,
   type SessionPayload,
-  type SaveResult,
   type TrayState,
-  type ApiKeyValidationResult,
-  type TranscriptionTier as UiTranscriptionTier,
-  type TranscriptionTierStatus,
 } from '../shared/types';
 import { hotkeyManager, type HotkeyAction } from './HotkeyManager';
-import { sessionController, type Session, type SessionState } from './SessionController';
+import { sessionController, type Session } from './SessionController';
 import { trayManager } from './TrayManager';
 import { audioCapture } from './audio/AudioCapture';
 import { SettingsManager } from './settings';
-import { fileManager, outputManager, clipboardService, generateDocumentForFileManager, adaptSessionForMarkdown } from './output';
+import { fileManager, clipboardService, generateDocumentForFileManager, adaptSessionForMarkdown } from './output';
 import { processSession as aiProcessSession } from './ai';
 import { modelDownloadManager } from './transcription/ModelDownloadManager';
-import { tierManager } from './transcription/TierManager';
-import type { WhisperModel } from './transcription/types';
 import { errorHandler } from './ErrorHandler';
 import { autoUpdaterManager } from './AutoUpdater';
 import { crashRecovery, type RecoverableFeedbackItem } from './CrashRecovery';
@@ -81,12 +67,27 @@ import {
   type PostProcessResult,
   type PostProcessProgress,
   type TranscriptSegment,
-  type KeyMoment,
 } from './pipeline';
 import { menuManager } from './MenuManager';
 import { WindowsTaskbar, createWindowsTaskbar } from './platform';
 import { PopoverManager, POPOVER_SIZES } from './windows';
 import { permissionManager } from './PermissionManager';
+import {
+  registerAllHandlers,
+  extensionFromMimeType,
+  finalizeScreenRecording,
+  getScreenRecordingSnapshot,
+  deleteFinalizedRecording,
+  getActiveScreenRecordings,
+  getFinalizedScreenRecordings,
+} from './ipc';
+import {
+  extractAiFrameHintsFromMarkdown,
+  appendExtractedFramesToReport,
+  syncExtractedFrameMetadata,
+  syncExtractedFrameSummary,
+  writeProcessingTrace,
+} from './output/MarkdownPatcher';
 
 // Guard against stdio EIO crashes when the parent terminal/PTY closes.
 type ConsoleMethod = (...args: unknown[]) => void;
@@ -151,24 +152,6 @@ let teardownAudioTelemetry: Array<() => void> = [];
 // Windows taskbar integration (Windows only)
 let windowsTaskbar: WindowsTaskbar | null = null;
 
-interface RecordingArtifact {
-  tempPath: string;
-  mimeType: string;
-  bytesWritten: number;
-  writeChain: Promise<void>;
-  lastChunkAt: number;
-  startTime?: number;
-}
-
-interface FinalizedRecordingArtifact {
-  tempPath: string;
-  mimeType: string;
-  bytesWritten: number;
-  startTime?: number;
-}
-
-const activeScreenRecordings = new Map<string, RecordingArtifact>();
-const finalizedScreenRecordings = new Map<string, FinalizedRecordingArtifact>();
 const DEV_RENDERER_URL = 'http://localhost:5173';
 const DEV_RENDERER_LOAD_RETRIES = 10;
 
@@ -320,7 +303,7 @@ function createWindow(): void {
 
     // Check if onboarding needed
     if (!hasCompletedOnboarding) {
-      mainWindow?.webContents.send('markupr:show-onboarding');
+      mainWindow?.webContents.send(IPC_CHANNELS.SHOW_ONBOARDING);
     }
   });
 
@@ -510,7 +493,7 @@ function handleTrayClick(): void {
   if (currentState === 'idle') {
     // Show window to start a new session
     showWindow();
-    mainWindow?.webContents.send('markupr:show-window-selector');
+    mainWindow?.webContents.send(IPC_CHANNELS.SHOW_WINDOW_SELECTOR);
   } else if (currentState === 'recording') {
     // Stop recording
     stopSession();
@@ -525,7 +508,7 @@ function handleTrayClick(): void {
  */
 function handleSettingsClick(): void {
   showWindow();
-  mainWindow?.webContents.send('markupr:show-settings');
+  mainWindow?.webContents.send(IPC_CHANNELS.SHOW_SETTINGS);
 }
 
 /**
@@ -543,27 +526,27 @@ function handleMenuAction(action: string, data?: unknown): void {
       break;
     case 'show-history':
       showWindow();
-      mainWindow?.webContents.send('markupr:show-history');
+      mainWindow?.webContents.send(IPC_CHANNELS.SHOW_HISTORY);
       break;
     case 'show-export':
       showWindow();
-      mainWindow?.webContents.send('markupr:show-export');
+      mainWindow?.webContents.send(IPC_CHANNELS.SHOW_EXPORT);
       break;
     case 'show-shortcuts':
       showWindow();
-      mainWindow?.webContents.send('markupr:show-shortcuts');
+      mainWindow?.webContents.send(IPC_CHANNELS.SHOW_SHORTCUTS);
       break;
     case 'check-updates':
       autoUpdaterManager.checkForUpdates();
       break;
     case 'open-session':
       showWindow();
-      mainWindow?.webContents.send('markupr:open-session-dialog');
+      mainWindow?.webContents.send(IPC_CHANNELS.OPEN_SESSION_DIALOG);
       break;
     case 'open-session-path':
       if (data && typeof data === 'object' && 'path' in data) {
         showWindow();
-        mainWindow?.webContents.send('markupr:open-session', (data as { path: string }).path);
+        mainWindow?.webContents.send(IPC_CHANNELS.OPEN_SESSION, (data as { path: string }).path);
       }
       break;
     default:
@@ -728,93 +711,6 @@ async function resolveDefaultCaptureSource(): Promise<{ sourceId: string; source
   };
 }
 
-function extensionFromMimeType(mimeType?: string): string {
-  const normalized = (mimeType || '').toLowerCase();
-  if (normalized.includes('mp4')) {
-    return '.mp4';
-  }
-  if (normalized.includes('quicktime') || normalized.includes('mov')) {
-    return '.mov';
-  }
-  return '.webm';
-}
-
-async function finalizeScreenRecording(sessionId: string): Promise<{
-  tempPath: string;
-  mimeType: string;
-  bytesWritten: number;
-  startTime?: number;
-} | null> {
-  const active = activeScreenRecordings.get(sessionId);
-  if (active) {
-    const QUIET_PERIOD_MS = 750;
-    const MAX_WAIT_MS = 6000;
-    const waitStartedAt = Date.now();
-
-    // Wait for writes to settle so we don't finalize while the renderer is still
-    // flushing the tail of MediaRecorder chunks.
-    while (Date.now() - waitStartedAt < MAX_WAIT_MS) {
-      try {
-        await active.writeChain;
-      } catch (error) {
-        console.warn('[Main] Screen recording write chain failed during finalize:', error);
-      }
-
-      const idleMs = Date.now() - active.lastChunkAt;
-      if (idleMs >= QUIET_PERIOD_MS) {
-        break;
-      }
-
-      await sleep(Math.min(180, QUIET_PERIOD_MS - idleMs));
-    }
-
-    try {
-      await active.writeChain;
-    } catch (error) {
-      console.warn('[Main] Screen recording write chain failed during finalize:', error);
-    }
-
-    activeScreenRecordings.delete(sessionId);
-    finalizedScreenRecordings.set(sessionId, {
-      tempPath: active.tempPath,
-      mimeType: active.mimeType,
-      bytesWritten: active.bytesWritten,
-      startTime: active.startTime,
-    });
-  }
-
-  return finalizedScreenRecordings.get(sessionId) || null;
-}
-
-function getScreenRecordingSnapshot(sessionId: string): {
-  tempPath: string;
-  mimeType: string;
-  bytesWritten: number;
-  startTime?: number;
-} | null {
-  const active = activeScreenRecordings.get(sessionId);
-  if (active) {
-    return {
-      tempPath: active.tempPath,
-      mimeType: active.mimeType,
-      bytesWritten: active.bytesWritten,
-      startTime: active.startTime,
-    };
-  }
-
-  const finalized = finalizedScreenRecordings.get(sessionId);
-  if (finalized) {
-    return {
-      tempPath: finalized.tempPath,
-      mimeType: finalized.mimeType,
-      bytesWritten: finalized.bytesWritten,
-      startTime: finalized.startTime,
-    };
-  }
-
-  return null;
-}
-
 function buildPostProcessTranscriptSegments(session: Session): TranscriptSegment[] {
   const sessionStartSec = session.startTime / 1000;
   const events = session.transcriptBuffer
@@ -840,264 +736,6 @@ function buildPostProcessTranscriptSegments(session: Session): TranscriptSegment
       confidence: Number.isFinite(event.confidence) ? event.confidence : 0.8,
     };
   });
-}
-
-function formatSecondsAsTimestamp(seconds: number): string {
-  const total = Math.max(0, Math.floor(seconds));
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-function normalizeForMatch(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[`*_~[\]().,!?;:'"\\/|-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function buildTokenSet(value: string): Set<string> {
-  const tokens = normalizeForMatch(value)
-    .split(' ')
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 3);
-  return new Set(tokens);
-}
-
-function overlapScore(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 || b.size === 0) {
-    return 0;
-  }
-  let overlap = 0;
-  for (const token of a) {
-    if (b.has(token)) {
-      overlap += 1;
-    }
-  }
-  return overlap / Math.min(a.size, b.size);
-}
-
-function extractAiFrameHintsFromMarkdown(
-  markdown: string,
-  transcriptSegments: TranscriptSegment[]
-): KeyMoment[] {
-  if (!markdown) {
-    return [];
-  }
-
-  const parseTimestampToSeconds = (value: string): number | null => {
-    const trimmed = value.trim();
-    const parts = trimmed.split(':').map((part) => Number.parseInt(part, 10));
-    if (parts.some((part) => !Number.isFinite(part) || part < 0)) {
-      return null;
-    }
-    if (parts.length === 2) {
-      return parts[0] * 60 + parts[1];
-    }
-    if (parts.length === 3) {
-      return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
-    return null;
-  };
-
-  const timestampHints = Array.from(markdown.matchAll(/\*\*Timestamp:\*\*\s*([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)/g))
-    .map((match) => parseTimestampToSeconds(match[1]))
-    .filter((value): value is number => value !== null)
-    .map((seconds) => ({
-      timestamp: Math.max(0, seconds),
-      reason: 'AI-timestamped issue context',
-      confidence: 0.96,
-    }));
-
-  const quoteLines = Array.from(markdown.matchAll(/^\s*>\s+(.+)$/gm))
-    .map((match) => match[1].trim())
-    .filter((line) => line.length >= 10);
-  if (quoteLines.length === 0 && timestampHints.length === 0) {
-    return [];
-  }
-
-  const normalizedSegments = transcriptSegments.map((segment) => ({
-    segment,
-    normalized: normalizeForMatch(segment.text || ''),
-    tokens: buildTokenSet(segment.text || ''),
-  }));
-
-  const hints: KeyMoment[] = [...timestampHints];
-  const seenQuotes = new Set<string>();
-
-  for (const quote of quoteLines) {
-    const normalizedQuote = normalizeForMatch(quote);
-    if (!normalizedQuote || seenQuotes.has(normalizedQuote)) {
-      continue;
-    }
-    seenQuotes.add(normalizedQuote);
-
-    const quoteTokens = buildTokenSet(quote);
-    let bestMatch: { score: number; segment: TranscriptSegment } | null = null;
-
-    for (const candidate of normalizedSegments) {
-      if (!candidate.normalized) {
-        continue;
-      }
-
-      let score = overlapScore(quoteTokens, candidate.tokens);
-      if (
-        normalizedQuote.length >= 16 &&
-        (candidate.normalized.includes(normalizedQuote) || normalizedQuote.includes(candidate.normalized))
-      ) {
-        score = Math.max(score, 0.9);
-      }
-
-      if (!bestMatch || score > bestMatch.score) {
-        bestMatch = { score, segment: candidate.segment };
-      }
-    }
-
-    if (!bestMatch || bestMatch.score < 0.34) {
-      continue;
-    }
-
-    const midpoint =
-      bestMatch.segment.startTime +
-      Math.max(0, (bestMatch.segment.endTime - bestMatch.segment.startTime) / 2);
-    hints.push({
-      timestamp: Math.max(0, midpoint),
-      reason: 'AI-highlighted context',
-      confidence: Math.min(0.98, 0.58 + bestMatch.score * 0.35),
-    });
-  }
-
-  if (hints.length === 0) {
-    return [];
-  }
-
-  const sorted = hints.sort((a, b) => a.timestamp - b.timestamp);
-  const deduped: KeyMoment[] = [];
-  for (const hint of sorted) {
-    const previous = deduped[deduped.length - 1];
-    if (!previous || Math.abs(previous.timestamp - hint.timestamp) >= 1.0) {
-      deduped.push(hint);
-      continue;
-    }
-    if (hint.confidence > previous.confidence) {
-      deduped[deduped.length - 1] = hint;
-    }
-  }
-
-  return deduped.slice(0, 12);
-}
-
-async function appendExtractedFramesToReport(
-  markdownPath: string,
-  extractedFrames: Array<{ path: string; timestamp: number; reason: string }>
-): Promise<void> {
-  if (!extractedFrames.length) {
-    return;
-  }
-
-  const verifiedFrames: Array<{ path: string; timestamp: number; reason: string }> = [];
-  for (const frame of extractedFrames) {
-    try {
-      await fs.access(frame.path);
-      verifiedFrames.push(frame);
-    } catch {
-      // Skip stale frame references so markdown never links missing files.
-    }
-  }
-  if (!verifiedFrames.length) {
-    return;
-  }
-
-  let markdown = await fs.readFile(markdownPath, 'utf-8');
-  if (markdown.includes('## Auto-Extracted Screenshots')) {
-    return;
-  }
-
-  const lines = verifiedFrames
-    .slice()
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .map((frame, index) => {
-      const filename = basename(frame.path) || `frame-${String(index + 1).padStart(3, '0')}.png`;
-      const timestamp = formatSecondsAsTimestamp(frame.timestamp);
-      const reason = frame.reason?.trim() || 'Auto-extracted frame';
-      return `### [${timestamp}] ${reason}\n\n![${reason}](./screenshots/${filename})`;
-    })
-    .join('\n\n');
-
-  markdown += `\n## Auto-Extracted Screenshots\n\n${lines}\n`;
-
-  // Keep report header/session info counts aligned with the post-processed frame output.
-  const screenshotCount = verifiedFrames.length;
-  markdown = markdown.replace(
-    /(\|\s*Duration:\s*[^|]+\|\s*)\d+\s+screenshots(\s*\|\s*\d+\s+items identified\s*\n)/,
-    `$1${screenshotCount} screenshots$2`
-  );
-  markdown = markdown.replace(
-    /(-\s*\*\*Screenshots:\*\*\s*)\d+/,
-    `$1${screenshotCount}`
-  );
-
-  await fs.writeFile(markdownPath, markdown, 'utf-8');
-}
-
-async function syncExtractedFrameMetadata(
-  sessionDir: string,
-  screenshotCount: number
-): Promise<void> {
-  const metadataPath = join(sessionDir, 'metadata.json');
-  try {
-    const raw = await fs.readFile(metadataPath, 'utf-8');
-    const metadata = JSON.parse(raw) as { screenshotCount?: number };
-    metadata.screenshotCount = Math.max(
-      Number.isFinite(metadata.screenshotCount) ? Number(metadata.screenshotCount) : 0,
-      screenshotCount
-    );
-    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
-  } catch (error) {
-    console.warn('[Main] Failed to sync extracted frame metadata:', error);
-  }
-}
-
-async function syncExtractedFrameSummary(
-  sessionDir: string,
-  screenshotCount: number
-): Promise<void> {
-  const summaryPath = join(sessionDir, 'feedback-summary.md');
-  try {
-    const raw = await fs.readFile(summaryPath, 'utf-8');
-    const updated = raw.replace(/(\*\*Screenshots:\*\*\s*)\d+/, `$1${screenshotCount}`);
-    if (updated !== raw) {
-      await fs.writeFile(summaryPath, updated, 'utf-8');
-    }
-  } catch (error) {
-    console.warn('[Main] Failed to sync extracted frame summary:', error);
-  }
-}
-
-async function writeProcessingTrace(
-  sessionDir: string,
-  trace: {
-    reportPath: string;
-    totalMs: number;
-    aiMs: number;
-    saveMs: number;
-    postProcessMs: number;
-    audioBytes: number;
-    recordingBytes: number;
-    transcriptBufferEvents: number;
-    providedTranscriptSegments: number;
-    aiFrameHints: number;
-    postProcessSegments: number;
-    extractedFrames: number;
-    aiTier: 'free' | 'byok' | 'premium';
-    aiEnhanced: boolean;
-    aiFallbackReason?: string;
-    completedAt: string;
-  }
-): Promise<void> {
-  const tracePath = join(sessionDir, 'processing-trace.json');
-  await fs.writeFile(tracePath, JSON.stringify(trace, null, 2), 'utf-8');
 }
 
 async function copyReportPathToClipboard(path: string): Promise<boolean> {
@@ -1149,7 +787,7 @@ async function attachRecordingToSessionOutput(
     console.warn('[Main] Failed to attach session recording to output:', error);
     return undefined;
   } finally {
-    finalizedScreenRecordings.delete(sessionId);
+    deleteFinalizedRecording(sessionId);
     await fs.unlink(artifact.tempPath).catch(() => {
       // Best-effort cleanup for temp artifacts.
     });
@@ -1290,14 +928,14 @@ async function stopSession(): Promise<{
   const cleanupRecordingArtifacts = async (sessionId: string): Promise<void> => {
     const artifact = await finalizeScreenRecording(sessionId).catch(() => null);
     if (!artifact?.tempPath) {
-      finalizedScreenRecordings.delete(sessionId);
+      deleteFinalizedRecording(sessionId);
       return;
     }
 
     await fs.unlink(artifact.tempPath).catch(() => {
       // Best-effort cleanup of orphaned temp recordings.
     });
-    finalizedScreenRecordings.delete(sessionId);
+    deleteFinalizedRecording(sessionId);
   };
 
   const emitProcessingProgress = (percent: number, step: string): void => {
@@ -1518,7 +1156,7 @@ async function stopSession(): Promise<{
         );
 
         // Notify renderer that post-processing is complete
-        mainWindow?.webContents.send('markupr:processing:complete', postProcessResult);
+        mainWindow?.webContents.send(IPC_CHANNELS.PROCESSING_COMPLETE, postProcessResult);
       } catch (postProcessError) {
         console.warn('[Main:stopSession] Step 5/6 FAILED: Post-processing pipeline error, continuing with basic output:', postProcessError);
         // Non-fatal: we still have the basic markdown report from the AI/rule-based pipeline
@@ -1659,1236 +1297,38 @@ function cancelSession(): { success: boolean } {
           // Best-effort cleanup for canceled session recordings.
         });
       }
-      finalizedScreenRecordings.delete(currentSessionId);
+      deleteFinalizedRecording(currentSessionId);
     });
   }
 
   return { success: true };
 }
 
-interface ListedSessionMetadata {
-  sessionId: string;
-  startTime: number;
-  endTime?: number;
-  itemCount: number;
-  screenshotCount: number;
-  source?: {
-    id: string;
-    name?: string;
-  };
-}
-
-interface SessionHistoryItem {
-  id: string;
-  startTime: number;
-  endTime: number;
-  itemCount: number;
-  screenshotCount: number;
-  sourceName: string;
-  firstThumbnail?: string;
-  folder: string;
-  transcriptionPreview?: string;
-}
-
-function extractPreviewFromMarkdown(content: string): string | undefined {
-  const blockMatch = content.match(/#### Feedback\s*\n> ([\s\S]*?)(?:\n\n|\n---|$)/);
-  const fallbackLine = content.split('\n').find((line) => line.startsWith('> '));
-  const rawPreview = blockMatch?.[1] || fallbackLine?.replace(/^>\s*/, '');
-
-  if (!rawPreview) {
-    return undefined;
-  }
-
-  const singleLine = rawPreview.replace(/\n>\s*/g, ' ').replace(/\s+/g, ' ').trim();
-  return singleLine.slice(0, 220);
-}
-
-async function resolveSessionThumbnail(sessionDir: string): Promise<string | undefined> {
-  const screenshotsDir = join(sessionDir, 'screenshots');
-
-  try {
-    const files = await fs.readdir(screenshotsDir);
-    const firstImage = files
-      .filter((file) => /\.(png|jpe?g|webp)$/i.test(file))
-      .sort()[0];
-
-    if (!firstImage) {
-      return undefined;
-    }
-
-    return join(screenshotsDir, firstImage);
-  } catch {
-    return undefined;
-  }
-}
-
-async function buildSessionHistoryItem(
-  dir: string,
-  metadata: ListedSessionMetadata
-): Promise<SessionHistoryItem> {
-  const markdownPath = join(dir, 'feedback-report.md');
-
-  let transcriptionPreview: string | undefined;
-  try {
-    const markdown = await fs.readFile(markdownPath, 'utf-8');
-    transcriptionPreview = extractPreviewFromMarkdown(markdown);
-  } catch {
-    transcriptionPreview = undefined;
-  }
-
-  return {
-    id: metadata.sessionId,
-    startTime: metadata.startTime,
-    endTime: metadata.endTime || metadata.startTime,
-    itemCount: metadata.itemCount || 0,
-    screenshotCount: metadata.screenshotCount || 0,
-    sourceName: metadata.source?.name || 'Feedback Session',
-    firstThumbnail: await resolveSessionThumbnail(dir),
-    folder: dir,
-    transcriptionPreview,
-  };
-}
-
-async function listSessionHistoryItems(): Promise<SessionHistoryItem[]> {
-  const sessions = await fileManager.listSessions();
-  const items = await Promise.all(
-    sessions.map(({ dir, metadata }) =>
-      buildSessionHistoryItem(dir, metadata as ListedSessionMetadata)
-    )
-  );
-  return items.sort((a, b) => b.startTime - a.startTime);
-}
-
-async function getSessionHistoryItem(sessionId: string): Promise<SessionHistoryItem | null> {
-  const sessions = await listSessionHistoryItems();
-  return sessions.find((session) => session.id === sessionId) || null;
-}
-
-async function exportSessionFolders(sessionIds: string[]): Promise<string> {
-  const sessions = await listSessionHistoryItems();
-  const selected = sessions.filter((session) => sessionIds.includes(session.id));
-
-  if (!selected.length) {
-    throw new Error('No sessions found to export.');
-  }
-
-  const exportRoot = join(fileManager.getOutputDirectory(), 'exports');
-  const bundleDir = join(exportRoot, `bundle-${Date.now()}`);
-  await fs.mkdir(bundleDir, { recursive: true });
-
-  for (const session of selected) {
-    const destination = join(bundleDir, basename(session.folder));
-    await fs.cp(session.folder, destination, { recursive: true });
-  }
-
-  return bundleDir;
-}
-
-type ApiKeyProvider = 'openai' | 'anthropic';
-
-async function validateProviderApiKey(
-  service: ApiKeyProvider,
-  key: string,
-): Promise<ApiKeyValidationResult> {
-  const trimmedKey = typeof key === 'string' ? key.trim() : '';
-
-  if (trimmedKey.length < 10) {
-    return {
-      valid: false,
-      error: 'Please enter a valid API key.',
-    };
-  }
-
-  const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), 12000);
-
-  const requestConfig = service === 'openai'
-    ? {
-        url: 'https://api.openai.com/v1/audio/transcriptions',
-        method: 'POST' as const,
-        headers: {
-          Authorization: `Bearer ${trimmedKey}`,
-        } as Record<string, string>,
-        // Intentionally empty form: valid OpenAI keys return 400 for missing file.
-        body: new FormData() as BodyInit,
-      }
-    : {
-        url: 'https://api.anthropic.com/v1/models?limit=1',
-        method: 'GET' as const,
-        headers: {
-          'x-api-key': trimmedKey,
-          'anthropic-version': '2023-06-01',
-        } as Record<string, string>,
-        body: undefined as BodyInit | undefined,
-      };
-
-  try {
-    const response = await fetch(requestConfig.url, {
-      method: requestConfig.method,
-      headers: requestConfig.headers,
-      body: requestConfig.body,
-      signal: controller.signal,
-    });
-
-    if (service === 'openai' && response.status === 400) {
-      return { valid: true };
-    }
-
-    if (response.ok) {
-      return { valid: true };
-    }
-
-    if (service === 'openai' && (response.status === 401 || response.status === 403)) {
-      return {
-        valid: false,
-        status: response.status,
-        error:
-          response.status === 401
-            ? 'Invalid OpenAI API key. Please check and try again.'
-            : 'OpenAI key is valid but missing required permissions. Enable model/audio access for this project key and try again.',
-      };
-    }
-
-    if (service === 'anthropic' && (response.status === 401 || response.status === 403)) {
-      return {
-        valid: false,
-        status: response.status,
-        error: 'Invalid Anthropic API key. Please check and try again.',
-      };
-    }
-
-    const providerLabel = service === 'openai' ? 'OpenAI' : 'Anthropic';
-    return {
-      valid: false,
-      status: response.status,
-      error: `${providerLabel} API error (${response.status}). Please try again.`,
-    };
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return {
-        valid: false,
-        error: 'Request timed out. Please check your connection and try again.',
-      };
-    }
-
-    return {
-      valid: false,
-      error: 'Unable to reach API service. Check internet/VPN/firewall and try again.',
-    };
-  } finally {
-    clearTimeout(timeoutHandle);
-  }
-}
-
 // =============================================================================
-// IPC Handlers Setup
+// IPC Handlers Setup (delegated to src/main/ipc/ modules)
 // =============================================================================
 
 function setupIPC(): void {
-  // ---------------------------------------------------------------------------
-  // Session Channels
-  // ---------------------------------------------------------------------------
-
-  // Start session with intelligent capture
-  ipcMain.handle(IPC_CHANNELS.SESSION_START, async (_, sourceId?: string, sourceName?: string) => {
-    console.log('[Main] Starting session');
-    return startSession(sourceId, sourceName);
-  });
-
-  // Stop session with output generation
-  ipcMain.handle(IPC_CHANNELS.SESSION_STOP, async () => {
-    console.log('[Main] Stopping session');
-    return stopSession();
-  });
-
-  // Pause active recording session
-  ipcMain.handle(IPC_CHANNELS.SESSION_PAUSE, async () => {
-    console.log('[Main] Pausing session');
-    return pauseSession();
-  });
-
-  // Resume paused recording session
-  ipcMain.handle(IPC_CHANNELS.SESSION_RESUME, async () => {
-    console.log('[Main] Resuming session');
-    return resumeSession();
-  });
-
-  // Cancel session without saving
-  ipcMain.handle(IPC_CHANNELS.SESSION_CANCEL, async () => {
-    console.log('[Main] Cancelling session');
-    return cancelSession();
-  });
-
-  // Get session status
-  ipcMain.handle(IPC_CHANNELS.SESSION_GET_STATUS, (): SessionStatusPayload => {
-    const status = sessionController.getStatus();
-    return {
-      ...status,
-      screenshotCount: 0, // Screenshots are now extracted in post-processing
-    };
-  });
-
-  // Get current session
-  ipcMain.handle(IPC_CHANNELS.SESSION_GET_CURRENT, (): SessionPayload | null => {
-    const session = sessionController.getSession();
-    return session ? serializeSession(session) : null;
-  });
-
-  // Legacy session handlers (for backwards compatibility)
-  ipcMain.handle(IPC_CHANNELS.START_SESSION, async (_, sourceId?: string) => {
-    return startSession(sourceId);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STOP_SESSION, async () => {
-    return stopSession();
-  });
-
-  // ---------------------------------------------------------------------------
-  // Capture Channels
-  // ---------------------------------------------------------------------------
-
-  // Get available capture sources (screens and windows)
-  ipcMain.handle(IPC_CHANNELS.CAPTURE_GET_SOURCES, async (): Promise<CaptureSource[]> => {
-    try {
-      const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window'],
-        thumbnailSize: { width: 320, height: 180 },
-        fetchWindowIcons: true,
-      });
-
-      return sources.map((source) => ({
-        id: source.id,
-        name: source.name,
-        type: source.id.startsWith('screen') ? 'screen' : 'window',
-        thumbnail: source.thumbnail.toDataURL(),
-        appIcon: source.appIcon?.toDataURL(),
-      }));
-    } catch (error) {
-      console.error('[Main] Failed to get capture sources:', error);
-      return [];
-    }
-  });
-
-  // Manual screenshot (no-op in post-process architecture; frames extracted from video)
-  ipcMain.handle(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT, async () => {
-    console.log('[Main] Manual screenshot IPC called (no-op in post-process architecture)');
-    return { success: false };
-  });
-
-  // Start persisted screen recording for the active session
-  ipcMain.handle(
-    IPC_CHANNELS.SCREEN_RECORDING_START,
-    async (_, sessionId: string, mimeType: string, startTime?: number): Promise<{ success: boolean; path?: string; error?: string }> => {
-      try {
-        const currentSession = sessionController.getSession();
-        if (!currentSession || currentSession.id !== sessionId) {
-          return { success: false, error: 'No matching active session for screen recording.' };
-        }
-
-        const extension = extensionFromMimeType(mimeType);
-        const recordingsDir = join(app.getPath('temp'), 'markupr-recordings');
-        await fs.mkdir(recordingsDir, { recursive: true });
-
-        const tempPath = join(recordingsDir, `${sessionId}${extension}`);
-        await fs.writeFile(tempPath, Buffer.alloc(0));
-
-        activeScreenRecordings.set(sessionId, {
-          tempPath,
-          mimeType: mimeType || 'video/webm',
-          bytesWritten: 0,
-          writeChain: Promise.resolve(),
-          lastChunkAt: Date.now(),
-          startTime,
-        });
-
-        return { success: true, path: tempPath };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to initialize screen recording.',
-        };
-      }
-    }
+  registerAllHandlers(
+    {
+      getMainWindow: () => mainWindow,
+      getPopover: () => popover,
+      getSettingsManager: () => settingsManager,
+      getWindowsTaskbar: () => windowsTaskbar,
+      getHasCompletedOnboarding: () => hasCompletedOnboarding,
+      setHasCompletedOnboarding: (value: boolean) => { hasCompletedOnboarding = value; },
+    },
+    {
+      startSession,
+      stopSession,
+      pauseSession,
+      resumeSession,
+      cancelSession,
+      serializeSession,
+      checkPermission,
+      requestPermission,
+    },
   );
-
-  // Append screen recording chunk data
-  ipcMain.handle(
-    IPC_CHANNELS.SCREEN_RECORDING_CHUNK,
-    async (
-      _,
-      sessionId: string,
-      chunk: Uint8Array | ArrayBuffer
-    ): Promise<{ success: boolean; error?: string }> => {
-      const recording = activeScreenRecordings.get(sessionId);
-      if (!recording) {
-        return { success: false, error: 'No active recording writer for this session.' };
-      }
-
-      let buffer: Buffer;
-      if (chunk instanceof ArrayBuffer) {
-        buffer = Buffer.from(chunk);
-      } else if (ArrayBuffer.isView(chunk)) {
-        buffer = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-      } else {
-        return { success: false, error: 'Unsupported recording chunk format.' };
-      }
-
-      recording.writeChain = recording.writeChain
-        .then(() => fs.appendFile(recording.tempPath, buffer))
-        .then(() => {
-          recording.bytesWritten += buffer.byteLength;
-          recording.lastChunkAt = Date.now();
-        });
-
-      try {
-        await recording.writeChain;
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to append recording chunk.',
-        };
-      }
-    }
-  );
-
-  // Finalize persisted screen recording
-  ipcMain.handle(
-    IPC_CHANNELS.SCREEN_RECORDING_STOP,
-    async (
-      _,
-      sessionId: string
-    ): Promise<{ success: boolean; path?: string; bytes?: number; mimeType?: string; error?: string }> => {
-      try {
-        const artifact = await finalizeScreenRecording(sessionId);
-        if (!artifact) {
-          return { success: true };
-        }
-
-        return {
-          success: true,
-          path: artifact.tempPath,
-          bytes: artifact.bytesWritten,
-          mimeType: artifact.mimeType,
-        };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to finalize screen recording.',
-        };
-      }
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Audio Channels
-  // ---------------------------------------------------------------------------
-
-  // Get audio devices - renderer handles this via Web Audio API
-  ipcMain.handle(IPC_CHANNELS.AUDIO_GET_DEVICES, async (): Promise<AudioDevice[]> => {
-    // Audio device enumeration happens in renderer via Web Audio API
-    // This handler is for settings persistence
-    return [];
-  });
-
-  // Set preferred audio device
-  ipcMain.handle(IPC_CHANNELS.AUDIO_SET_DEVICE, async (_, deviceId: string) => {
-    const settings = settingsManager?.getAll() || DEFAULT_SETTINGS;
-    settingsManager?.update({ ...settings, preferredAudioDevice: deviceId });
-    mainWindow?.webContents.send(IPC_CHANNELS.AUDIO_SET_DEVICE, deviceId);
-    return { success: true };
-  });
-
-  // ---------------------------------------------------------------------------
-  // Settings Channels
-  // ---------------------------------------------------------------------------
-
-  // Get specific setting
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, (_, key: keyof AppSettings) => {
-    return settingsManager?.get(key) ?? DEFAULT_SETTINGS[key];
-  });
-
-  // Get all settings
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET_ALL, (): AppSettings => {
-    return settingsManager?.getAll() ?? { ...DEFAULT_SETTINGS };
-  });
-
-  // Set setting(s)
-  ipcMain.handle(
-    IPC_CHANNELS.SETTINGS_SET,
-    (_, key: keyof AppSettings, value: unknown): AppSettings => {
-      const updates = { [key]: value } as Partial<AppSettings>;
-      return settingsManager?.update(updates) ?? { ...DEFAULT_SETTINGS, ...updates };
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SELECT_DIRECTORY, async (): Promise<string | null> => {
-    const options: Electron.OpenDialogOptions = {
-      title: 'Select Feedback Output Folder',
-      buttonLabel: 'Use Folder',
-      properties: ['openDirectory', 'createDirectory'],
-    };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
-      : await dialog.showOpenDialog(options);
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
-
-    const selected = result.filePaths[0];
-    if (settingsManager) {
-      settingsManager.update({ outputDirectory: selected });
-    }
-
-    return selected;
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_CLEAR_ALL_DATA, async (): Promise<void> => {
-    if (!settingsManager) {
-      return;
-    }
-
-    const outputDirectory = settingsManager.get('outputDirectory');
-    await fs.rm(outputDirectory, { recursive: true, force: true }).catch(() => {
-      // Ignore missing directories.
-    });
-
-    await settingsManager.deleteApiKey('openai').catch(() => {
-      // Ignore missing keychain entries.
-    });
-    await settingsManager.deleteApiKey('anthropic').catch(() => {
-      // Ignore missing keychain entries.
-    });
-
-    settingsManager.reset();
-    crashRecovery.discardIncompleteSession();
-    crashRecovery.clearCrashLogs();
-    sessionController.reset();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_EXPORT, async (): Promise<void> => {
-    if (!settingsManager) {
-      return;
-    }
-
-    const options: Electron.SaveDialogOptions = {
-      title: 'Export markupr Settings',
-      defaultPath: join(app.getPath('documents'), 'markupr-settings.json'),
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    };
-    const result = mainWindow
-      ? await dialog.showSaveDialog(mainWindow, options)
-      : await dialog.showSaveDialog(options);
-
-    if (result.canceled || !result.filePath) {
-      return;
-    }
-
-    const payload = JSON.stringify(settingsManager.getAll(), null, 2);
-    await fs.writeFile(result.filePath, payload, 'utf-8');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_IMPORT, async (): Promise<AppSettings | null> => {
-    if (!settingsManager) {
-      return null;
-    }
-
-    const options: Electron.OpenDialogOptions = {
-      title: 'Import markupr Settings',
-      properties: ['openFile'],
-      filters: [{ name: 'JSON', extensions: ['json'] }],
-    };
-    const result = mainWindow
-      ? await dialog.showOpenDialog(mainWindow, options)
-      : await dialog.showOpenDialog(options);
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
-    }
-
-    const raw = await fs.readFile(result.filePaths[0], 'utf-8');
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('Invalid settings file format.');
-    }
-
-    const entries = Object.entries(parsed as Record<string, unknown>);
-    const allowedKeys = new Set(Object.keys(DEFAULT_SETTINGS));
-    const sanitized: Partial<AppSettings> = {};
-
-    for (const [key, value] of entries) {
-      if (!allowedKeys.has(key)) {
-        continue;
-      }
-      (sanitized as Record<string, unknown>)[key] = value;
-    }
-
-    return settingsManager.update(sanitized);
-  });
-
-  // Legacy settings handlers
-  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
-    return settingsManager?.getAll() ?? { ...DEFAULT_SETTINGS };
-  });
-
-  ipcMain.handle(IPC_CHANNELS.SET_SETTINGS, (_, newSettings: Partial<AppSettings>) => {
-    const settings = settingsManager?.update(newSettings) ?? {
-      ...DEFAULT_SETTINGS,
-      ...newSettings,
-    };
-
-    // Re-register hotkeys if changed
-    if (newSettings.hotkeys) {
-      const results = hotkeyManager.updateConfig(newSettings.hotkeys);
-      console.log('[Main] Hotkeys updated:', results);
-    }
-
-    // Update in-memory onboarding flag when persisted
-    if (newSettings.hasCompletedOnboarding) {
-      hasCompletedOnboarding = true;
-    }
-
-    return settings;
-  });
-
-  // ---------------------------------------------------------------------------
-  // API Key Channels (Secure Storage)
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(
-    IPC_CHANNELS.SETTINGS_GET_API_KEY,
-    async (_, service: string): Promise<string | null> => {
-      if (!settingsManager) {
-        return null;
-      }
-      return settingsManager.getApiKey(service);
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.SETTINGS_SET_API_KEY,
-    async (_, service: string, key: string): Promise<boolean> => {
-      if (!settingsManager) {
-        return false;
-      }
-
-      try {
-        await settingsManager.setApiKey(service, key);
-
-        // Keychain/safeStorage reads can occasionally lag immediately after write
-        // (especially in unsigned dev builds), so verify with a short retry window
-        // before surfacing a save failure to the renderer.
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const persisted = await settingsManager.getApiKey(service);
-          if (persisted && persisted.trim().length > 0) {
-            return true;
-          }
-
-          if (attempt < 2) {
-            await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
-          }
-        }
-
-        // setApiKey only returns without throwing when a storage path accepted
-        // the key. Treat delayed verification as success to avoid false-negative UX.
-        if (key.trim().length > 0) {
-          console.warn(
-            `[Main] ${service} API key write verification timed out; accepting write success.`
-          );
-          return true;
-        }
-
-        return false;
-      } catch (error) {
-        console.error(`[Main] Failed to store ${service} API key:`, error);
-        return false;
-      }
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.SETTINGS_DELETE_API_KEY,
-    async (_, service: string): Promise<boolean> => {
-      if (!settingsManager) {
-        return false;
-      }
-
-      await settingsManager.deleteApiKey(service);
-      return true;
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.SETTINGS_HAS_API_KEY,
-    async (_, service: string): Promise<boolean> => {
-      if (!settingsManager) {
-        return false;
-      }
-
-      return settingsManager.hasApiKey(service);
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.SETTINGS_TEST_API_KEY,
-    async (_, service: ApiKeyProvider, key: string): Promise<ApiKeyValidationResult> => {
-      if (service !== 'openai' && service !== 'anthropic') {
-        return {
-          valid: false,
-          error: 'Unsupported API provider.',
-        };
-      }
-
-      try {
-        return await validateProviderApiKey(service, key);
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : 'Unknown validation error';
-        console.error(`[Main] API key validation failed for ${service}:`, error);
-        return {
-          valid: false,
-          error: `Unable to validate ${service} API key (${detail}).`,
-        };
-      }
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Permissions Channels
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(
-    IPC_CHANNELS.PERMISSIONS_CHECK,
-    async (_, type: PermissionType): Promise<boolean> => {
-      return checkPermission(type);
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.PERMISSIONS_REQUEST,
-    async (_, type: PermissionType): Promise<boolean> => {
-      return requestPermission(type);
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.PERMISSIONS_GET_ALL, async (): Promise<PermissionStatus> => {
-    return {
-      microphone: await checkPermission('microphone'),
-      screen: await checkPermission('screen'),
-      accessibility: await checkPermission('accessibility'),
-    };
-  });
-
-  // ---------------------------------------------------------------------------
-  // Output Channels
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_SAVE, async (): Promise<SaveResult> => {
-    try {
-      const session = sessionController.getSession();
-      if (!session) {
-        return { success: false, error: 'No session to save' };
-      }
-
-      const { document } = settingsManager
-        ? await aiProcessSession(session, {
-            settingsManager,
-            projectName: session.metadata?.sourceName || 'Feedback Session',
-            screenshotDir: './screenshots',
-          })
-        : {
-            document: generateDocumentForFileManager(session, {
-              projectName: session.metadata?.sourceName || 'Feedback Session',
-              screenshotDir: './screenshots',
-            }),
-          };
-
-      const result = await fileManager.saveSession(session, document);
-      return {
-        success: result.success,
-        path: result.sessionDir,
-        error: result.error,
-      };
-    } catch (error) {
-      console.error('[Main] Failed to save session:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_COPY_CLIPBOARD, async (): Promise<boolean> => {
-    try {
-      const session = sessionController.getSession();
-      if (!session) {
-        console.warn('[Main] No session to copy');
-        return false;
-      }
-
-      return await outputManager.copySessionSummary(session);
-    } catch (error) {
-      console.error('[Main] Failed to copy to clipboard:', error);
-      return false;
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_OPEN_FOLDER, async (_, sessionDir?: string) => {
-    try {
-      const dir = sessionDir || fileManager.getOutputDirectory();
-      await shell.openPath(dir);
-      return { success: true };
-    } catch (error) {
-      console.error('[Main] Failed to open folder:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_LIST_SESSIONS, async () => {
-    try {
-      return await listSessionHistoryItems();
-    } catch (error) {
-      console.error('[Main] Failed to list sessions:', error);
-      return [];
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_GET_SESSION_METADATA, async (_, sessionId: string) => {
-    try {
-      return await getSessionHistoryItem(sessionId);
-    } catch (error) {
-      console.error('[Main] Failed to get session metadata:', error);
-      return null;
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_DELETE_SESSION, async (_, sessionId: string) => {
-    try {
-      const session = await getSessionHistoryItem(sessionId);
-      if (!session) {
-        return { success: false, error: 'Session not found' };
-      }
-
-      await fs.rm(session.folder, { recursive: true, force: true });
-      return { success: true };
-    } catch (error) {
-      console.error('[Main] Failed to delete session:', error);
-      return { success: false, error: (error as Error).message };
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.OUTPUT_DELETE_SESSIONS, async (_, sessionIds: string[]) => {
-    const deleted: string[] = [];
-    const failed: string[] = [];
-
-    for (const sessionId of sessionIds) {
-      try {
-        const session = await getSessionHistoryItem(sessionId);
-        if (!session) {
-          failed.push(sessionId);
-          continue;
-        }
-
-        await fs.rm(session.folder, { recursive: true, force: true });
-        deleted.push(sessionId);
-      } catch {
-        failed.push(sessionId);
-      }
-    }
-
-    return {
-      success: failed.length === 0,
-      deleted,
-      failed,
-    };
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.OUTPUT_EXPORT_SESSION,
-    async (_, sessionId: string, format: 'markdown' | 'json' | 'pdf' = 'markdown') => {
-      try {
-        // TODO: For json/pdf formats, reconstruct Session from disk and use exportService.export()
-        // For now, all formats fall through to folder export which includes pre-generated markdown
-        console.log(`[Main] Exporting session ${sessionId} as ${format}`);
-        const exportPath = await exportSessionFolders([sessionId]);
-        return { success: true, path: exportPath };
-      } catch (error) {
-        console.error('[Main] Failed to export session:', error);
-        return { success: false, error: (error as Error).message };
-      }
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.OUTPUT_EXPORT_SESSIONS,
-    async (_, sessionIds: string[], format: 'markdown' | 'json' | 'pdf' = 'markdown') => {
-      try {
-        // TODO: For json/pdf formats, reconstruct Sessions from disk and use exportService.export()
-        console.log(`[Main] Exporting ${sessionIds.length} sessions as ${format}`);
-        const exportPath = await exportSessionFolders(sessionIds);
-        return { success: true, path: exportPath };
-      } catch (error) {
-        console.error('[Main] Failed to export sessions:', error);
-        return { success: false, error: (error as Error).message };
-      }
-    }
-  );
-
-  // Legacy clipboard handler
-  ipcMain.handle(IPC_CHANNELS.COPY_TO_CLIPBOARD, async (_, text: string) => {
-    const success = await clipboardService.copyWithNotification(text);
-    return { success };
-  });
-
-  // ---------------------------------------------------------------------------
-  // App Version Handler
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle('markupr:app:version', () => {
-    return app.getVersion();
-  });
-
-  // ---------------------------------------------------------------------------
-  // Window Control Handlers
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(IPC_CHANNELS.WINDOW_MINIMIZE, () => {
-    mainWindow?.minimize();
-    return { success: true };
-  });
-
-  ipcMain.handle(IPC_CHANNELS.WINDOW_HIDE, () => {
-    // In popover mode, hide the popover
-    if (popover) {
-      popover.hide();
-    } else {
-      mainWindow?.hide();
-    }
-    return { success: true };
-  });
-
-  ipcMain.handle(IPC_CHANNELS.WINDOW_CLOSE, () => {
-    mainWindow?.close();
-    return { success: true };
-  });
-
-  // ---------------------------------------------------------------------------
-  // Popover Control Handlers (Menu Bar Mode)
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle('markupr:popover:resize', (_, width: number, height: number) => {
-    if (popover) {
-      popover.resize(width, height);
-      return { success: true };
-    }
-    return { success: false, error: 'Popover not initialized' };
-  });
-
-  ipcMain.handle('markupr:popover:resize-to-state', (_, state: string) => {
-    if (popover && state in POPOVER_SIZES) {
-      popover.resizeToState(state as keyof typeof POPOVER_SIZES);
-      return { success: true };
-    }
-    return { success: false, error: 'Popover not initialized or invalid state' };
-  });
-
-  ipcMain.handle('markupr:popover:show', () => {
-    popover?.show();
-    return { success: true };
-  });
-
-  ipcMain.handle('markupr:popover:hide', () => {
-    popover?.hide();
-    return { success: true };
-  });
-
-  ipcMain.handle('markupr:popover:toggle', () => {
-    popover?.toggle();
-    return { success: true };
-  });
-
-  // ---------------------------------------------------------------------------
-  // Hotkey Channels
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(IPC_CHANNELS.HOTKEY_CONFIG, (): HotkeyConfig => {
-    return hotkeyManager.getConfig();
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.HOTKEY_UPDATE,
-    (_, newConfig: Partial<HotkeyConfig>) => {
-      const results = hotkeyManager.updateConfig(newConfig);
-      settingsManager?.update({ hotkeys: hotkeyManager.getConfig() });
-      return { config: hotkeyManager.getConfig(), results };
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Crash Recovery Channels
-  // ---------------------------------------------------------------------------
-
-  // Check for incomplete sessions
-  ipcMain.handle(IPC_CHANNELS.CRASH_RECOVERY_CHECK, () => {
-    const session = crashRecovery.getIncompleteSession();
-    return {
-      hasIncomplete: !!session,
-      session: session,
-    };
-  });
-
-  // Recover an incomplete session
-  ipcMain.handle(IPC_CHANNELS.CRASH_RECOVERY_RECOVER, (_, sessionId: string) => {
-    const session = crashRecovery.getIncompleteSession();
-    if (!session || session.id !== sessionId) {
-      return {
-        success: false,
-        error: 'Session not found or ID mismatch',
-      };
-    }
-
-    // Clear the incomplete session from storage
-    crashRecovery.discardIncompleteSession();
-
-    // Return the session data for the renderer to display in review mode
-    return {
-      success: true,
-      session: {
-        id: session.id,
-        feedbackItems: session.feedbackItems,
-        startTime: session.startTime,
-        sourceName: session.sourceName,
-        screenshotCount: session.screenshotCount,
-      },
-    };
-  });
-
-  // Discard an incomplete session
-  ipcMain.handle(IPC_CHANNELS.CRASH_RECOVERY_DISCARD, () => {
-    crashRecovery.discardIncompleteSession();
-    return { success: true };
-  });
-
-  // Get recent crash logs
-  ipcMain.handle(IPC_CHANNELS.CRASH_RECOVERY_GET_LOGS, (_, limit?: number) => {
-    return crashRecovery.getCrashLogs(limit);
-  });
-
-  // Clear crash logs
-  ipcMain.handle(IPC_CHANNELS.CRASH_RECOVERY_CLEAR_LOGS, () => {
-    crashRecovery.clearCrashLogs();
-    return { success: true };
-  });
-
-  // Update crash recovery settings
-  ipcMain.handle(
-    IPC_CHANNELS.CRASH_RECOVERY_UPDATE_SETTINGS,
-    (_, settings: Partial<{
-      enableAutoSave: boolean;
-      autoSaveIntervalMs: number;
-      enableCrashReporting: boolean;
-      maxCrashLogs: number;
-    }>) => {
-      crashRecovery.updateSettings(settings);
-      return { success: true };
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Windows Taskbar Channels (Windows-specific)
-  // ---------------------------------------------------------------------------
-
-  // Set taskbar progress bar
-  ipcMain.handle(
-    IPC_CHANNELS.TASKBAR_SET_PROGRESS,
-    (_, progress: number) => {
-      windowsTaskbar?.setProgress(progress);
-      return { success: true };
-    }
-  );
-
-  // Flash taskbar frame
-  ipcMain.handle(
-    IPC_CHANNELS.TASKBAR_FLASH_FRAME,
-    (_, count?: number) => {
-      windowsTaskbar?.flashFrame(count);
-      return { success: true };
-    }
-  );
-
-  // Set taskbar overlay icon
-  ipcMain.handle(
-    IPC_CHANNELS.TASKBAR_SET_OVERLAY,
-    (_, state: 'recording' | 'processing' | 'none') => {
-      windowsTaskbar?.setOverlayIcon(state);
-      return { success: true };
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Transcription Tier Control Channels
-  // ---------------------------------------------------------------------------
-
-  ipcMain.handle(
-    IPC_CHANNELS.TRANSCRIPTION_GET_TIER_STATUSES,
-    async (): Promise<TranscriptionTierStatus[]> => {
-      const statuses = await tierManager.getTierStatuses();
-
-      return statuses.map((status) => {
-        if (tierManager.tierProvidesTranscription(status.tier)) {
-          return status;
-        }
-
-        return {
-          ...status,
-          available: false,
-          reason: 'Not supported for narrated feedback reports',
-        };
-      });
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.TRANSCRIPTION_GET_CURRENT_TIER,
-    async (): Promise<UiTranscriptionTier | null> => {
-      const preferred = tierManager.getPreferredTier();
-      if (preferred !== 'auto') {
-        return preferred;
-      }
-
-      const active = tierManager.getCurrentTier();
-      if (active) {
-        return active;
-      }
-
-      const best = await tierManager.selectBestTier();
-      if (tierManager.tierProvidesTranscription(best)) {
-        return best;
-      }
-
-      return null;
-    }
-  );
-
-  ipcMain.handle(
-    IPC_CHANNELS.TRANSCRIPTION_SET_TIER,
-    (_, tier: UiTranscriptionTier): { success: boolean; error?: string } => {
-      try {
-        // Filter out tiers removed in post-process refactor (e.g. macos-dictation)
-        const validTiers = new Set(['auto', 'whisper', 'timer-only']);
-        if (!validTiers.has(tier)) {
-          return { success: false, error: `Tier "${tier}" is no longer supported.` };
-        }
-        tierManager.setPreferredTier(tier as 'auto' | 'whisper' | 'timer-only');
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to set transcription tier.',
-        };
-      }
-    }
-  );
-
-  // ---------------------------------------------------------------------------
-  // Whisper Model Channels
-  // ---------------------------------------------------------------------------
-
-  // Check if any Whisper model is downloaded
-  ipcMain.handle(IPC_CHANNELS.WHISPER_CHECK_MODEL, () => {
-    const hasAnyModel = modelDownloadManager.hasAnyModel();
-    const downloadedModels: string[] = [];
-    const models: WhisperModel[] = ['tiny', 'base', 'small', 'medium', 'large'];
-
-    for (const model of models) {
-      if (modelDownloadManager.isModelDownloaded(model)) {
-        downloadedModels.push(model);
-      }
-    }
-
-    const defaultModel = hasAnyModel ? modelDownloadManager.getDefaultModel() : null;
-    const recommendedModel = 'tiny'; // Fastest path to first usable transcripts
-    const recommendedInfo = modelDownloadManager.getModelInfo('tiny');
-
-    return {
-      hasAnyModel,
-      defaultModel,
-      downloadedModels,
-      recommendedModel,
-      recommendedModelSizeMB: recommendedInfo.sizeMB,
-    };
-  });
-
-  // Check if we have transcription capability (OpenAI or local Whisper)
-  ipcMain.handle(IPC_CHANNELS.WHISPER_HAS_TRANSCRIPTION_CAPABILITY, async () => {
-    return tierManager.hasTranscriptionCapability();
-  });
-
-  // Get available models with their info
-  ipcMain.handle(IPC_CHANNELS.WHISPER_GET_AVAILABLE_MODELS, () => {
-    const models = modelDownloadManager.getAvailableModels();
-    return models.map((info) => ({
-      name: info.name,
-      filename: info.filename,
-      sizeMB: info.sizeMB,
-      ramRequired: info.ramRequired,
-      quality: info.quality,
-      isDownloaded: modelDownloadManager.isModelDownloaded(info.name as WhisperModel),
-    }));
-  });
-
-  // Download a Whisper model
-  ipcMain.handle(IPC_CHANNELS.WHISPER_DOWNLOAD_MODEL, async (_, model: WhisperModel) => {
-    try {
-      // Set up progress listener to forward to renderer
-      const unsubProgress = modelDownloadManager.onProgress((progress) => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHISPER_DOWNLOAD_PROGRESS, {
-          model: progress.model,
-          downloadedBytes: progress.downloadedBytes,
-          totalBytes: progress.totalBytes,
-          percent: progress.percent,
-          speedBps: progress.speedBps,
-          estimatedSecondsRemaining: progress.estimatedSecondsRemaining,
-        });
-      });
-
-      // Set up completion listener
-      const unsubComplete = modelDownloadManager.onComplete((result) => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHISPER_DOWNLOAD_COMPLETE, {
-          model: result.model,
-          path: result.path,
-        });
-        unsubProgress();
-        unsubComplete();
-        unsubError();
-      });
-
-      // Set up error listener
-      const unsubError = modelDownloadManager.onError((error, errorModel) => {
-        mainWindow?.webContents.send(IPC_CHANNELS.WHISPER_DOWNLOAD_ERROR, {
-          model: errorModel,
-          error: error.message,
-        });
-        unsubProgress();
-        unsubComplete();
-        unsubError();
-      });
-
-      // Start the download
-      const result = await modelDownloadManager.downloadModel(model);
-
-      return { success: result.success };
-    } catch (error) {
-      console.error('[Main] Failed to download Whisper model:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  });
-
-  // Cancel a Whisper model download
-  ipcMain.handle(IPC_CHANNELS.WHISPER_CANCEL_DOWNLOAD, (_, model: WhisperModel) => {
-    modelDownloadManager.cancelDownload(model);
-    return { success: true };
-  });
 }
 
 // =============================================================================
@@ -3038,7 +1478,7 @@ app.whenReady().then(async () => {
     popoverWindow.once('ready-to-show', () => {
       console.log('[Main] Popover ready to show');
       if (!hasCompletedOnboarding) {
-        popoverWindow.webContents.send('markupr:show-onboarding');
+        popoverWindow.webContents.send(IPC_CHANNELS.SHOW_ONBOARDING);
       }
     });
 
@@ -3173,17 +1613,17 @@ app.on('will-quit', async () => {
   }
 
   // Best-effort cleanup of temporary recording artifacts.
-  for (const [sessionId] of activeScreenRecordings) {
+  for (const [sessionId] of getActiveScreenRecordings()) {
     const artifact = await finalizeScreenRecording(sessionId).catch(() => null);
     if (artifact?.tempPath) {
       await fs.unlink(artifact.tempPath).catch(() => {});
     }
-    finalizedScreenRecordings.delete(sessionId);
+    deleteFinalizedRecording(sessionId);
   }
-  for (const artifact of finalizedScreenRecordings.values()) {
+  for (const artifact of getFinalizedScreenRecordings().values()) {
     await fs.unlink(artifact.tempPath).catch(() => {});
   }
-  finalizedScreenRecordings.clear();
+  getFinalizedScreenRecordings().clear();
 
   // Cleanup services
   teardownAudioTelemetry.forEach((teardown) => teardown());

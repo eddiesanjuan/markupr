@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 // =============================================================================
 // Types
@@ -45,19 +46,32 @@ interface WaveformStyleProps {
   inactiveColor: string;
   peakLevel: number;
   showPeak: boolean;
+  peakColor: string;
+  peakWarningColor: string;
 }
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-const COLORS = {
-  active: '#22C55E',      // Green-500
-  inactive: '#4B5563',    // Gray-600
-  peak: '#EF4444',        // Red-500
-  peakWarning: '#F59E0B', // Amber-500
-  background: 'rgba(31, 41, 55, 0.5)', // Gray-800 with transparency
-};
+/**
+ * Hook that returns waveform-specific colors from the theme system.
+ * Replaces the former module-level COLORS constant.
+ */
+function useWaveformColors() {
+  const { colors } = useTheme();
+  return useMemo(
+    () => ({
+      active: colors.status.success,
+      inactive: colors.text.tertiary,
+      peak: colors.status.error,
+      peakWarning: colors.status.warning,
+      background: 'rgba(31, 41, 55, 0.5)',
+      textSecondary: colors.text.secondary,
+    }),
+    [colors]
+  );
+}
 
 const SIZE_CONFIG = {
   compact: { height: 16, width: 64, barCount: 8, barWidth: 2, gap: 2 },
@@ -109,6 +123,8 @@ function BarsWaveform({
   inactiveColor,
   peakLevel,
   showPeak,
+  peakColor,
+  peakWarningColor,
 }: WaveformStyleProps) {
   const barCount = levels.length;
 
@@ -133,9 +149,9 @@ function BarsWaveform({
         let barColor = inactiveColor;
         if (isVoiceActive) {
           if (adjustedLevel > 0.9) {
-            barColor = COLORS.peak;
+            barColor = peakColor;
           } else if (adjustedLevel > 0.75) {
-            barColor = COLORS.peakWarning;
+            barColor = peakWarningColor;
           } else {
             barColor = accentColor;
           }
@@ -166,7 +182,7 @@ function BarsWaveform({
             right: 4,
             height: 2,
             bottom: `${peakLevel * 100}%`,
-            backgroundColor: peakLevel > 0.9 ? COLORS.peak : COLORS.peakWarning,
+            backgroundColor: peakLevel > 0.9 ? peakColor : peakWarningColor,
             borderRadius: 1,
             opacity: 0.8,
             transition: 'bottom 50ms ease-out',
@@ -308,6 +324,7 @@ function LineWaveform({
   accentColor,
   inactiveColor,
   peakLevel,
+  peakColor,
 }: WaveformStyleProps) {
   const currentLevel = levels[levels.length - 1] || 0;
 
@@ -358,7 +375,7 @@ function LineWaveform({
             left: `calc(8px + min(${peakLevel * 100}%, calc(100% - 18px)))`,
             width: 4,
             height: 8,
-            backgroundColor: peakLevel > 0.9 ? COLORS.peak : accentColor,
+            backgroundColor: peakLevel > 0.9 ? peakColor : accentColor,
             borderRadius: 1,
             opacity: 0.9,
             transition: 'left 50ms ease-out',
@@ -378,12 +395,16 @@ export function AudioWaveform({
   isVoiceActive,
   style = 'bars',
   size = 'normal',
-  accentColor = COLORS.active,
-  inactiveColor = COLORS.inactive,
+  accentColor: accentColorProp,
+  inactiveColor: inactiveColorProp,
   resolution,
   showPeak = true,
   className,
 }: AudioWaveformProps) {
+  const waveformColors = useWaveformColors();
+  const accentColor = accentColorProp ?? waveformColors.active;
+  const inactiveColor = inactiveColorProp ?? waveformColors.inactive;
+
   const config = SIZE_CONFIG[size];
   const barCount = resolution || config.barCount;
 
@@ -450,15 +471,17 @@ export function AudioWaveform({
       inactiveColor,
       peakLevel,
       showPeak,
+      peakColor: waveformColors.peak,
+      peakWarningColor: waveformColors.peakWarning,
     }),
-    [levels, isVoiceActive, accentColor, inactiveColor, peakLevel, showPeak]
+    [levels, isVoiceActive, accentColor, inactiveColor, peakLevel, showPeak, waveformColors.peak, waveformColors.peakWarning]
   );
 
   // Container styles
   const containerStyle: React.CSSProperties = {
     width: size === 'large' ? '100%' : config.width,
     height: config.height,
-    backgroundColor: COLORS.background,
+    backgroundColor: waveformColors.background,
     borderRadius: size === 'compact' ? 8 : 12,
     overflow: 'hidden',
     position: 'relative',
@@ -485,28 +508,14 @@ export function AudioWaveform({
             width: size === 'compact' ? 4 : 6,
             height: size === 'compact' ? 4 : 6,
             borderRadius: '50%',
-            backgroundColor: COLORS.active,
-            boxShadow: `0 0 4px ${COLORS.active}`,
-            animation: 'audioWaveformPulse 1.5s ease-in-out infinite',
+            backgroundColor: waveformColors.active,
+            boxShadow: `0 0 4px ${waveformColors.active}`,
+            animation: 'pulseScale 1.5s ease-in-out infinite',
           }}
         />
       )}
 
-      {/* Keyframe animations */}
-      <style>
-        {`
-          @keyframes audioWaveformPulse {
-            0%, 100% {
-              opacity: 1;
-              transform: scale(1);
-            }
-            50% {
-              opacity: 0.7;
-              transform: scale(0.9);
-            }
-          }
-        `}
-      </style>
+      {/* pulseScale keyframe provided by animations.css */}
     </div>
   );
 }
@@ -546,8 +555,8 @@ interface CompactAudioIndicatorProps {
 export function CompactAudioIndicator({
   audioLevel,
   isVoiceActive,
-  accentColor = COLORS.active,
-  inactiveColor = '#c7c7cc',
+  accentColor: accentColorProp,
+  inactiveColor: inactiveColorProp,
   barCount = 5,
   barWidth = 2,
   barGap = 1,
@@ -555,6 +564,9 @@ export function CompactAudioIndicator({
   minBarHeight = 4,
   maxBarHeight = 16,
 }: CompactAudioIndicatorProps) {
+  const waveformColors = useWaveformColors();
+  const accentColor = accentColorProp ?? waveformColors.active;
+  const inactiveColor = inactiveColorProp ?? waveformColors.inactive;
   const [smoothedLevel, setSmoothedLevel] = useState(0);
   const [phase, setPhase] = useState(0);
   const animationRef = useRef<number>();
@@ -669,6 +681,7 @@ export function AudioLevelMeter({
   showLabels = false,
   size = 'medium',
 }: AudioLevelMeterProps) {
+  const waveformColors = useWaveformColors();
   const [smoothedLevel, setSmoothedLevel] = useState(0);
   const [peakLevel, setPeakLevel] = useState(0);
   const peakHoldTimeRef = useRef(0);
@@ -749,11 +762,11 @@ export function AudioLevelMeter({
             [isVertical ? 'height' : 'width']: `${smoothedLevel * 100}%`,
             background: isVoiceActive
               ? `linear-gradient(${isVertical ? 'to top' : 'to right'},
-                  ${COLORS.active} 0%,
-                  ${COLORS.active} 75%,
-                  ${COLORS.peakWarning} 90%,
-                  ${COLORS.peak} 100%)`
-              : COLORS.inactive,
+                  ${waveformColors.active} 0%,
+                  ${waveformColors.active} 75%,
+                  ${waveformColors.peakWarning} 90%,
+                  ${waveformColors.peak} 100%)`
+              : waveformColors.inactive,
             transition: `${isVertical ? 'height' : 'width'} 50ms ease-out`,
           }}
         />
@@ -766,7 +779,7 @@ export function AudioLevelMeter({
             [isVertical ? 'left' : 'top']: 0,
             [isVertical ? 'width' : 'height']: '100%',
             [isVertical ? 'height' : 'width']: 2,
-            backgroundColor: peakLevel > 0.9 ? COLORS.peak : COLORS.peakWarning,
+            backgroundColor: peakLevel > 0.9 ? waveformColors.peak : waveformColors.peakWarning,
             opacity: peakLevel > 0.1 ? 0.9 : 0,
             transition: `${isVertical ? 'bottom' : 'left'} 50ms ease-out, opacity 100ms ease`,
           }}
@@ -779,7 +792,7 @@ export function AudioLevelMeter({
           style={{
             fontSize: config.labelSize,
             fontFamily: 'ui-monospace, monospace',
-            color: smoothedLevel > 0.9 ? COLORS.peak : '#9CA3AF',
+            color: smoothedLevel > 0.9 ? waveformColors.peak : waveformColors.textSecondary,
             minWidth: 36,
             textAlign: 'right',
           }}

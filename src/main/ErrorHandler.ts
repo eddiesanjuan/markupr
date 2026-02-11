@@ -11,6 +11,7 @@
 import { app, dialog, shell, BrowserWindow, Notification } from 'electron';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { IPC_CHANNELS } from '../shared/types';
 
 // ============================================================================
 // Types
@@ -182,7 +183,7 @@ class ErrorHandler {
     });
 
     // Notify renderer to show settings
-    this.emitToRenderer('markupr:show-settings', { tab: 'api-key' });
+    this.emitToRenderer(IPC_CHANNELS.SHOW_SETTINGS, { tab: 'api-key' });
 
     // Show notification
     this.notifyUser('API Key Invalid', 'Please check your OpenAI API key in settings.');
@@ -200,7 +201,7 @@ class ErrorHandler {
       defaultId: 0,
     }).then(({ response }) => {
       if (response === 0) {
-        this.emitToRenderer('markupr:show-settings', { tab: 'api-key' });
+        this.emitToRenderer(IPC_CHANNELS.SHOW_SETTINGS, { tab: 'api-key' });
       }
     });
   }
@@ -221,7 +222,7 @@ class ErrorHandler {
     });
 
     // Emit to renderer for UI updates
-    this.emitToRenderer('markupr:network-error', {
+    this.emitToRenderer(IPC_CHANNELS.NETWORK_ERROR, {
       message: 'Connection issue detected',
       isBuffering: true,
     });
@@ -242,7 +243,7 @@ class ErrorHandler {
       operation: 'handleNetworkRecovery',
     });
 
-    this.emitToRenderer('markupr:network-restored', {});
+    this.emitToRenderer(IPC_CHANNELS.NETWORK_RESTORED, {});
     this.notifyUser('Connection Restored', 'Transcription service reconnected.');
   }
 
@@ -266,7 +267,7 @@ class ErrorHandler {
     // (e.g., window closed, minimized, etc.)
 
     // Just emit to renderer for potential UI feedback
-    this.emitToRenderer('markupr:capture-warning', {
+    this.emitToRenderer(IPC_CHANNELS.CAPTURE_WARNING, {
       message: 'Screenshot capture skipped',
       reason: error.message,
     });
@@ -311,7 +312,7 @@ class ErrorHandler {
     }
 
     // Generic audio error
-    this.emitToRenderer('markupr:audio-error', {
+    this.emitToRenderer(IPC_CHANNELS.AUDIO_ERROR, {
       message: error.message,
     });
   }
@@ -350,7 +351,7 @@ class ErrorHandler {
     }
 
     // Generic transcription error
-    this.emitToRenderer('markupr:transcription-error', {
+    this.emitToRenderer(IPC_CHANNELS.TRANSCRIPTION_ERROR, {
       message: 'Transcription service error',
       detail: error.message,
     });
@@ -445,7 +446,7 @@ class ErrorHandler {
    */
   notifyUser(title: string, message: string): void {
     // First try to use renderer notification
-    this.emitToRenderer('markupr:notification', { title, message });
+    this.emitToRenderer(IPC_CHANNELS.NOTIFICATION, { title, message });
 
     // Also show system notification if supported
     if (Notification.isSupported()) {

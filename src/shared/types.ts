@@ -396,6 +396,48 @@ export const IPC_CHANNELS = {
   PROCESSING_COMPLETE: 'markupr:processing:complete',
 
   // ---------------------------------------------------------------------------
+  // Session Events (Main -> Renderer, non-standard)
+  // ---------------------------------------------------------------------------
+  SESSION_RECOVERED: 'markupr:session:recovered',
+  SESSION_WARNING: 'markupr:session:warning',
+
+  // ---------------------------------------------------------------------------
+  // Navigation Channels (Main -> Renderer)
+  // ---------------------------------------------------------------------------
+  SHOW_ONBOARDING: 'markupr:show-onboarding',
+  SHOW_SETTINGS: 'markupr:show-settings',
+  SHOW_HISTORY: 'markupr:show-history',
+  SHOW_EXPORT: 'markupr:show-export',
+  SHOW_SHORTCUTS: 'markupr:show-shortcuts',
+  SHOW_WINDOW_SELECTOR: 'markupr:show-window-selector',
+  OPEN_SESSION_DIALOG: 'markupr:open-session-dialog',
+  OPEN_SESSION: 'markupr:open-session',
+
+  // ---------------------------------------------------------------------------
+  // App Channels (Renderer -> Main)
+  // ---------------------------------------------------------------------------
+  APP_VERSION: 'markupr:app:version',
+
+  // ---------------------------------------------------------------------------
+  // Popover Channels (Renderer -> Main)
+  // ---------------------------------------------------------------------------
+  POPOVER_RESIZE: 'markupr:popover:resize',
+  POPOVER_RESIZE_TO_STATE: 'markupr:popover:resize-to-state',
+  POPOVER_SHOW: 'markupr:popover:show',
+  POPOVER_HIDE: 'markupr:popover:hide',
+  POPOVER_TOGGLE: 'markupr:popover:toggle',
+
+  // ---------------------------------------------------------------------------
+  // Error Channels (Main -> Renderer)
+  // ---------------------------------------------------------------------------
+  NETWORK_ERROR: 'markupr:network-error',
+  NETWORK_RESTORED: 'markupr:network-restored',
+  CAPTURE_WARNING: 'markupr:capture-warning',
+  AUDIO_ERROR: 'markupr:audio-error',
+  TRANSCRIPTION_ERROR: 'markupr:transcription-error',
+  NOTIFICATION: 'markupr:notification',
+
+  // ---------------------------------------------------------------------------
   // Legacy channels (backwards compatibility)
   // ---------------------------------------------------------------------------
   START_SESSION: 'session:start',

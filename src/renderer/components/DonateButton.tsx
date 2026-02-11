@@ -13,17 +13,7 @@ import {
   getCurrentDonateMessage,
   incrementDonateMessageIndex,
 } from '../donateMessages';
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const TEXT_COLOR = '#3a3a3c';
-const TEXT_HOVER = '#0077ed';
-const BORDER_COLOR = 'rgba(60, 60, 67, 0.24)';
-const BORDER_HOVER = 'rgba(0, 122, 255, 0.36)';
-const BG_COLOR = 'rgba(120, 120, 128, 0.12)';
-const BG_HOVER = 'rgba(0, 122, 255, 0.1)';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -54,6 +44,7 @@ export const DonateButton: React.FC<DonateButtonProps> = ({
   style: styleProp,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const { colors } = useTheme();
 
   // Track if we've already incremented this session
   const hasIncrementedRef = useRef(false);
@@ -83,9 +74,9 @@ export const DonateButton: React.FC<DonateButtonProps> = ({
       onMouseLeave={() => setIsHovered(false)}
       style={{
         ...styles.button,
-        color: isHovered ? TEXT_HOVER : TEXT_COLOR,
-        borderColor: isHovered ? BORDER_HOVER : BORDER_COLOR,
-        backgroundColor: isHovered ? BG_HOVER : BG_COLOR,
+        color: isHovered ? colors.accent.default : colors.text.secondary,
+        borderColor: isHovered ? colors.border.focus : colors.border.default,
+        backgroundColor: isHovered ? colors.accent.subtle : colors.bg.subtle,
         ...styleProp,
       }}
       className={className}
@@ -111,10 +102,9 @@ const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     gap: 7,
     padding: '6px 10px',
-    backgroundColor: BG_COLOR,
-    border: `1px solid ${BORDER_COLOR}`,
+    borderWidth: 1,
+    borderStyle: 'solid',
     borderRadius: 999,
-    color: TEXT_COLOR,
     fontSize: 12,
     fontWeight: 550,
     cursor: 'pointer',

@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTheme } from '../hooks/useTheme';
 
 // ============================================================================
 // Types
@@ -98,6 +99,8 @@ export function CrashRecoveryDialog({
   const [isRecovering, setIsRecovering] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [hoveredBtn, setHoveredBtn] = useState<'recover' | 'discard' | null>(null);
+  const { colors } = useTheme();
 
   const timeSince = Date.now() - session.lastSaveTime;
   const formattedTime = formatTimeSince(timeSince);
@@ -142,19 +145,69 @@ export function CrashRecoveryDialog({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isRecovering, isDiscarding, handleRecover, handleDiscard]);
 
+  const spinnerSvg = (
+    <svg style={{ width: 16, height: 16, animation: 'spin 1s linear infinite' }} fill="none" viewBox="0 0 24 24">
+      <circle
+        style={{ opacity: 0.25 }}
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        style={{ opacity: 0.75 }}
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 overflow-y-auto">
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: colors.bg.overlay,
+      backdropFilter: 'blur(8px)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 50,
+      padding: 12,
+      overflowY: 'auto',
+    }}>
+      {/* spin keyframe provided by animations.css */}
+
       {/* Dialog Container */}
       <div
-        className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full max-h-[calc(100vh-24px)] overflow-y-auto shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        style={{
+          backgroundColor: colors.bg.secondary,
+          border: `1px solid ${colors.border.default}`,
+          borderRadius: 16,
+          padding: 24,
+          maxWidth: 448,
+          width: '100%',
+          maxHeight: 'calc(100vh - 24px)',
+          overflowY: 'auto',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+        }}
         role="dialog"
         aria-labelledby="recovery-title"
         aria-describedby="recovery-description"
       >
         {/* Icon */}
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/20 flex items-center justify-center">
+        <div style={{
+          width: 64,
+          height: 64,
+          margin: '0 auto 16px',
+          borderRadius: '50%',
+          backgroundColor: colors.status.warningSubtle,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
           <svg
-            className="w-8 h-8 text-amber-500"
+            style={{ width: 32, height: 32, color: colors.status.warning }}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -172,7 +225,13 @@ export function CrashRecoveryDialog({
         {/* Title */}
         <h2
           id="recovery-title"
-          className="text-xl font-semibold text-white text-center mb-2"
+          style={{
+            fontSize: 20,
+            fontWeight: 600,
+            color: colors.text.primary,
+            textAlign: 'center',
+            marginBottom: 8,
+          }}
         >
           Recover Previous Session?
         </h2>
@@ -180,47 +239,77 @@ export function CrashRecoveryDialog({
         {/* Description */}
         <p
           id="recovery-description"
-          className="text-gray-400 text-center mb-4"
+          style={{
+            color: colors.text.secondary,
+            textAlign: 'center',
+            marginBottom: 16,
+            fontSize: 14,
+          }}
         >
           markupr found an incomplete session from{' '}
-          <span className="text-white font-medium">{formattedTime} ago</span>.
+          <span style={{ color: colors.text.primary, fontWeight: 500 }}>{formattedTime} ago</span>.
         </p>
 
         {/* Session Info Card */}
-        <div className="bg-gray-800 rounded-lg p-4 mb-4">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-400">Source:</span>
-            <span className="text-white font-medium truncate ml-2 max-w-[200px]">
-              {session.sourceName || 'Unknown'}
-            </span>
-          </div>
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-400">Feedback items:</span>
-            <span className="text-white font-medium">
-              {session.feedbackItems.length}
-            </span>
-          </div>
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-400">Screenshots:</span>
-            <span className="text-white font-medium">
-              {session.screenshotCount}
-            </span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Duration:</span>
-            <span className="text-white font-medium">
-              {formatDuration(sessionDuration)}
-            </span>
-          </div>
+        <div style={{
+          backgroundColor: colors.bg.tertiary,
+          borderRadius: 8,
+          padding: 16,
+          marginBottom: 16,
+        }}>
+          {[
+            { label: 'Source', value: session.sourceName || 'Unknown' },
+            { label: 'Feedback items', value: String(session.feedbackItems.length) },
+            { label: 'Screenshots', value: String(session.screenshotCount) },
+            { label: 'Duration', value: formatDuration(sessionDuration) },
+          ].map((row, i, arr) => (
+            <div key={row.label} style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: 14,
+              marginBottom: i < arr.length - 1 ? 8 : 0,
+            }}>
+              <span style={{ color: colors.text.secondary }}>{row.label}:</span>
+              <span style={{
+                color: colors.text.primary,
+                fontWeight: 500,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                marginLeft: 8,
+                maxWidth: 200,
+              }}>
+                {row.value}
+              </span>
+            </div>
+          ))}
         </div>
 
         {/* Expandable Details */}
         <button
           onClick={() => setShowDetails(!showDetails)}
-          className="w-full text-sm text-gray-400 hover:text-gray-300 flex items-center justify-center gap-1 mb-4 transition-colors"
+          style={{
+            width: '100%',
+            fontSize: 14,
+            color: colors.text.secondary,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            marginBottom: 16,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'color 150ms ease',
+          }}
         >
           <svg
-            className={`w-4 h-4 transition-transform ${showDetails ? 'rotate-180' : ''}`}
+            style={{
+              width: 16,
+              height: 16,
+              transition: 'transform 200ms ease',
+              transform: showDetails ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -237,41 +326,55 @@ export function CrashRecoveryDialog({
 
         {/* Expandable Content */}
         {showDetails && (
-          <div className="bg-gray-800/50 rounded-lg p-3 mb-4 text-xs space-y-2 animate-in slide-in-from-top-2 duration-200 max-h-48 overflow-y-auto">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Session ID:</span>
-              <span className="text-gray-400 font-mono">{session.id.slice(0, 8)}...</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Started:</span>
-              <span className="text-gray-400">{formatDate(session.startTime)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Last saved:</span>
-              <span className="text-gray-400">{formatDate(session.lastSaveTime)}</span>
-            </div>
-            {session.metadata && (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">App version:</span>
-                  <span className="text-gray-400">{session.metadata.appVersion}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Platform:</span>
-                  <span className="text-gray-400">{session.metadata.platform}</span>
-                </div>
-              </>
-            )}
+          <div style={{
+            backgroundColor: colors.surface.inset,
+            borderRadius: 8,
+            padding: 12,
+            marginBottom: 16,
+            fontSize: 12,
+            maxHeight: 192,
+            overflowY: 'auto',
+            display: 'grid',
+            gap: 8,
+          }}>
+            {[
+              { label: 'Session ID', value: `${session.id.slice(0, 8)}...`, mono: true },
+              { label: 'Started', value: formatDate(session.startTime) },
+              { label: 'Last saved', value: formatDate(session.lastSaveTime) },
+              ...(session.metadata ? [
+                { label: 'App version', value: session.metadata.appVersion },
+                { label: 'Platform', value: session.metadata.platform },
+              ] : []),
+            ].map((row) => (
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: colors.text.tertiary }}>{row.label}:</span>
+                <span style={{
+                  color: colors.text.secondary,
+                  ...(row.mono ? { fontFamily: "'SF Mono', Menlo, Monaco, monospace" } : {}),
+                }}>
+                  {row.value}
+                </span>
+              </div>
+            ))}
 
             {/* Preview first few feedback items */}
             {session.feedbackItems.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-700">
-                <p className="text-gray-500 mb-2">Recent feedback:</p>
-                <ul className="space-y-1">
+              <div style={{
+                marginTop: 12,
+                paddingTop: 12,
+                borderTop: `1px solid ${colors.border.default}`,
+              }}>
+                <p style={{ color: colors.text.tertiary, marginBottom: 8 }}>Recent feedback:</p>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 4 }}>
                   {session.feedbackItems.slice(0, 3).map((item, index) => (
-                    <li key={item.id || index} className="text-gray-400 truncate">
+                    <li key={item.id || index} style={{
+                      color: colors.text.secondary,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
                       {item.hasScreenshot && (
-                        <span className="text-blue-400 mr-1" title="Has screenshot">
+                        <span style={{ color: colors.text.link, marginRight: 4 }} title="Has screenshot">
                           [img]
                         </span>
                       )}
@@ -279,7 +382,7 @@ export function CrashRecoveryDialog({
                     </li>
                   ))}
                   {session.feedbackItems.length > 3 && (
-                    <li className="text-gray-500 italic">
+                    <li style={{ color: colors.text.tertiary, fontStyle: 'italic' }}>
                       ...and {session.feedbackItems.length - 3} more
                     </li>
                   )}
@@ -290,9 +393,19 @@ export function CrashRecoveryDialog({
         )}
 
         {/* Warning about data loss */}
-        <div className="flex items-start gap-2 text-xs text-amber-500/80 mb-6 bg-amber-500/10 rounded-lg p-3">
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+          fontSize: 12,
+          color: colors.status.warning,
+          marginBottom: 24,
+          backgroundColor: colors.status.warningSubtle,
+          borderRadius: 8,
+          padding: 12,
+        }}>
           <svg
-            className="w-4 h-4 flex-shrink-0 mt-0.5"
+            style={{ width: 16, height: 16, flexShrink: 0, marginTop: 2 }}
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -311,42 +424,39 @@ export function CrashRecoveryDialog({
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div style={{ display: 'flex', gap: 12 }}>
           <button
             onClick={handleDiscard}
             disabled={isRecovering || isDiscarding}
-            className={`
-              flex-1 px-4 py-2.5 rounded-lg font-medium transition-all
-              ${isDiscarding
-                ? 'bg-gray-700 text-gray-400 cursor-wait'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800 active:bg-gray-700'
-              }
-              disabled:opacity-50 disabled:cursor-not-allowed
-            `}
+            onMouseEnter={() => setHoveredBtn('discard')}
+            onMouseLeave={() => setHoveredBtn(null)}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              borderRadius: 8,
+              fontWeight: 500,
+              fontSize: 14,
+              border: 'none',
+              cursor: isDiscarding ? 'wait' : (isRecovering ? 'not-allowed' : 'pointer'),
+              opacity: (isRecovering || isDiscarding) ? 0.5 : 1,
+              transition: 'all 200ms ease',
+              backgroundColor: isDiscarding
+                ? colors.bg.tertiary
+                : (hoveredBtn === 'discard' ? colors.bg.tertiary : 'transparent'),
+              color: isDiscarding
+                ? colors.text.secondary
+                : (hoveredBtn === 'discard' ? colors.text.primary : colors.text.secondary),
+            }}
           >
             {isDiscarding ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {spinnerSvg}
                 Discarding...
               </span>
             ) : (
               <>
                 Discard
-                <span className="text-xs text-gray-500 ml-1">(D)</span>
+                <span style={{ fontSize: 12, color: colors.text.tertiary, marginLeft: 4 }}>(D)</span>
               </>
             )}
           </button>
@@ -354,47 +464,52 @@ export function CrashRecoveryDialog({
           <button
             onClick={handleRecover}
             disabled={isRecovering || isDiscarding}
-            className={`
-              flex-1 px-4 py-2.5 rounded-lg font-medium transition-all
-              ${isRecovering
-                ? 'bg-blue-700 text-blue-200 cursor-wait'
-                : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white'
-              }
-              disabled:opacity-50 disabled:cursor-not-allowed
-            `}
+            onMouseEnter={() => setHoveredBtn('recover')}
+            onMouseLeave={() => setHoveredBtn(null)}
+            style={{
+              flex: 1,
+              padding: '10px 16px',
+              borderRadius: 8,
+              fontWeight: 500,
+              fontSize: 14,
+              border: 'none',
+              cursor: isRecovering ? 'wait' : (isDiscarding ? 'not-allowed' : 'pointer'),
+              opacity: (isRecovering || isDiscarding) ? 0.5 : 1,
+              transition: 'all 200ms ease',
+              backgroundColor: isRecovering
+                ? colors.accent.hover
+                : (hoveredBtn === 'recover' ? colors.accent.hover : colors.accent.default),
+              color: colors.text.inverse,
+            }}
           >
             {isRecovering ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
-                </svg>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                {spinnerSvg}
                 Recovering...
               </span>
             ) : (
               <>
                 Recover Session
-                <span className="text-xs text-blue-300 ml-1">(R)</span>
+                <span style={{ fontSize: 12, marginLeft: 4, opacity: 0.8 }}>(R)</span>
               </>
             )}
           </button>
         </div>
 
         {/* Keyboard hint */}
-        <p className="text-center text-xs text-gray-500 mt-4">
-          Press <kbd className="px-1 py-0.5 bg-gray-800 rounded text-gray-400">Enter</kbd> to recover or{' '}
-          <kbd className="px-1 py-0.5 bg-gray-800 rounded text-gray-400">Esc</kbd> to discard
+        <p style={{ textAlign: 'center', fontSize: 12, color: colors.text.tertiary, marginTop: 16 }}>
+          Press <kbd style={{
+            padding: '2px 6px',
+            backgroundColor: colors.bg.tertiary,
+            borderRadius: 4,
+            color: colors.text.secondary,
+          }}>Enter</kbd> to recover or{' '}
+          <kbd style={{
+            padding: '2px 6px',
+            backgroundColor: colors.bg.tertiary,
+            borderRadius: 4,
+            color: colors.text.secondary,
+          }}>Esc</kbd> to discard
         </p>
       </div>
     </div>
