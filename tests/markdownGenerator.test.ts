@@ -181,8 +181,10 @@ describe('MarkdownGenerator', () => {
       const result = generator.generateFullDocument(emptySession, defaultOptions);
 
       expect(result.content).toContain('# TestApp Feedback Report');
-      expect(result.content).toContain('Items: 0');
+      expect(result.content).toContain('_No feedback items were captured during this session._');
+      expect(result.content).not.toContain('## Actionable Feedback');
       expect(result.metadata.itemCount).toBe(0);
+      expect(result.metadata.screenshotCount).toBe(0);
     });
 
     it('should handle special characters in project name', () => {

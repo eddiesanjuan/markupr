@@ -1021,11 +1021,11 @@ async function appendExtractedFramesToReport(
       const filename = basename(frame.path) || `frame-${String(index + 1).padStart(3, '0')}.png`;
       const timestamp = formatSecondsAsTimestamp(frame.timestamp);
       const reason = frame.reason?.trim() || 'Auto-extracted frame';
-      return `- [${timestamp}] ${reason} ([${filename}](./screenshots/${filename}))`;
+      return `### [${timestamp}] ${reason}\n\n![${reason}](./screenshots/${filename})`;
     })
-    .join('\n');
+    .join('\n\n');
 
-  markdown += `\n## Auto-Extracted Screenshots\n${lines}\n`;
+  markdown += `\n## Auto-Extracted Screenshots\n\n${lines}\n`;
 
   // Keep report header/session info counts aligned with the post-processed frame output.
   const screenshotCount = verifiedFrames.length;
