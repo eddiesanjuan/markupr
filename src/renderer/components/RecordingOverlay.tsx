@@ -85,8 +85,10 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
 }) => {
   const [showBadge, setShowBadge] = useState(false);
   const [badgeKey, setBadgeKey] = useState(0);
+  const [displayedMicPercent, setDisplayedMicPercent] = useState(0);
 
   const prevCountRef = useRef(screenshotCount);
+  const micPercentTargetRef = useRef(0);
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
 
   // Format duration as MM:SS
@@ -127,11 +129,38 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   const manualShortcutText = formatCompactShortcut(manualShortcut, isMac);
   const toggleShortcutText = formatCompactShortcut(toggleShortcut, isMac);
   const pauseShortcutText = formatCompactShortcut(pauseShortcut, isMac);
-  const visualAudioLevel = Math.max(
-    0,
-    Math.min(1, (isVoiceActive ? Math.max(audioLevel, 0.12) : audioLevel) * 3.4)
-  );
-  const micPercent = Math.round(visualAudioLevel * 100);
+  const normalizedAudioLevel = Math.max(0, Math.min(1, audioLevel));
+  const visualAudioLevel = isVoiceActive
+    ? Math.max(0.08, 1 - Math.exp(-normalizedAudioLevel * 2.4))
+    : normalizedAudioLevel * 0.35;
+  const micPercentTarget = isVoiceActive
+    ? Math.min(96, Math.max(8, Math.round(visualAudioLevel * 100)))
+    : 0;
+
+  useEffect(() => {
+    micPercentTargetRef.current = micPercentTarget;
+  }, [micPercentTarget]);
+
+  useEffect(() => {
+    let frame = 0;
+
+    const tick = () => {
+      setDisplayedMicPercent((previous) => {
+        const target = micPercentTargetRef.current;
+        const delta = target - previous;
+        if (Math.abs(delta) < 1) {
+          return target;
+        }
+        return previous + delta * 0.2;
+      });
+      frame = window.requestAnimationFrame(tick);
+    };
+
+    frame = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   return (
     <>
@@ -282,7 +311,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
                 textAlign: 'right',
               }}
             >
-              {isVoiceActive ? `${micPercent}%` : 'Mic'}
+              {isVoiceActive ? `${Math.round(displayedMicPercent)}%` : 'Mic'}
             </span>
           </div>
 
