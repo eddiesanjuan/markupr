@@ -26,7 +26,7 @@ interface RecordingOverlayProps {
   pauseShortcut?: string;
 }
 
-const DEFAULT_WIDTH = 232;
+const DEFAULT_WIDTH = 300;
 
 function formatCompactShortcut(accelerator: string, isMac: boolean): string {
   if (!accelerator || accelerator.trim().length === 0) {
@@ -111,12 +111,12 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   // Dynamic styles based on theme
   const theme = {
     bg: isDarkMode
-      ? 'linear-gradient(142deg, rgba(14, 20, 32, 0.14), rgba(14, 20, 32, 0.06))'
-      : 'linear-gradient(142deg, rgba(252, 254, 255, 0.14), rgba(237, 243, 251, 0.06))',
-    border: isDarkMode ? 'rgba(180, 194, 214, 0.12)' : 'rgba(95, 106, 121, 0.08)',
+      ? 'rgba(12, 18, 30, 0.44)'
+      : 'rgba(244, 247, 252, 0.42)',
+    border: isDarkMode ? 'rgba(177, 192, 214, 0.22)' : 'rgba(95, 106, 121, 0.14)',
     text: isDarkMode ? '#f8fafc' : '#1f2937',
     textMuted: isDarkMode ? '#b7bfd2' : '#626d7d',
-    hintBg: isDarkMode ? 'rgba(67, 77, 97, 0.15)' : 'rgba(218, 225, 235, 0.18)',
+    hintBg: isDarkMode ? 'rgba(67, 77, 97, 0.22)' : 'rgba(218, 225, 235, 0.24)',
     stopBg: '#ff3b30',
     stopHover: '#d92f25',
     badgeBg: '#10b981',
@@ -127,6 +127,11 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
   const manualShortcutText = formatCompactShortcut(manualShortcut, isMac);
   const toggleShortcutText = formatCompactShortcut(toggleShortcut, isMac);
   const pauseShortcutText = formatCompactShortcut(pauseShortcut, isMac);
+  const visualAudioLevel = Math.max(
+    0,
+    Math.min(1, (isVoiceActive ? Math.max(audioLevel, 0.12) : audioLevel) * 3.4)
+  );
+  const micPercent = Math.round(visualAudioLevel * 100);
 
   return (
     <>
@@ -174,21 +179,29 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           zIndex: 9999,
           display: 'grid',
           gap: 3,
-          padding: '4px 7px',
-          width: `min(${DEFAULT_WIDTH - 8}px, calc(100vw - 14px))`,
-          background: theme.bg,
-          border: `1px solid ${theme.border}`,
-          borderRadius: 11,
-          boxShadow: '0 1px 1px rgba(9, 13, 19, 0.06)',
-          backdropFilter: 'blur(18px) saturate(1.08)',
-          WebkitBackdropFilter: 'blur(18px) saturate(1.08)',
+          width: `min(${DEFAULT_WIDTH}px, calc(100vw - 16px))`,
+          justifyItems: 'center',
           userSelect: 'none',
           transition: 'box-shadow 0.2s ease',
           // Electron-specific: prevent window drag
           WebkitAppRegion: 'no-drag',
         } as React.CSSProperties & { WebkitAppRegion?: string }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            width: '100%',
+            padding: '3px 7px',
+            background: theme.bg,
+            border: `1px solid ${theme.border}`,
+            borderRadius: 999,
+            boxShadow: '0 1px 2px rgba(8, 12, 19, 0.12)',
+            backdropFilter: 'blur(24px) saturate(1.05)',
+            WebkitBackdropFilter: 'blur(24px) saturate(1.05)',
+          }}
+        >
           {/* Recording dot */}
           <div
             style={{
@@ -239,24 +252,37 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 4,
+              gap: 5,
               borderRadius: 999,
               padding: '2px 5px',
               background: theme.hintBg,
               color: theme.textMuted,
-              fontSize: 8.5,
+              fontSize: 8,
               fontWeight: 600,
-              minWidth: 70,
+              minWidth: 78,
             }}
           >
             <CompactAudioIndicator
-              audioLevel={audioLevel}
+              audioLevel={visualAudioLevel}
               isVoiceActive={isVoiceActive}
               accentColor={theme.micActive}
               inactiveColor={theme.micIdle}
+              barCount={11}
+              barWidth={2.6}
+              barGap={1.2}
+              meterHeight={16}
+              minBarHeight={4}
+              maxBarHeight={16}
             />
-            <span style={{ color: isVoiceActive ? theme.text : theme.textMuted }}>
-              {isVoiceActive ? 'Mic active' : 'Listening'}
+            <span
+              style={{
+                color: isVoiceActive ? theme.text : theme.textMuted,
+                fontVariantNumeric: 'tabular-nums',
+                minWidth: 36,
+                textAlign: 'right',
+              }}
+            >
+              {isVoiceActive ? `${micPercent}%` : 'Mic'}
             </span>
           </div>
 
@@ -264,7 +290,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
           <span
             style={{
               marginLeft: 'auto',
-              fontSize: 8.5,
+              fontSize: 8,
               color: theme.textMuted,
               borderRadius: 999,
               padding: '2px 5px',
@@ -290,6 +316,7 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
               transition: 'all 0.15s ease',
               outline: 'none',
               letterSpacing: '0.01em',
+              whiteSpace: 'nowrap',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.backgroundColor = theme.stopHover;
@@ -321,6 +348,8 @@ export const RecordingOverlay: React.FC<RecordingOverlayProps> = ({
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            width: '100%',
+            justifyContent: 'center',
           }}
         >
           <span

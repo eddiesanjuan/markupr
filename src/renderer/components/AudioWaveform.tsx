@@ -526,6 +526,16 @@ interface CompactAudioIndicatorProps {
   inactiveColor?: string;
   /** Number of bars */
   barCount?: number;
+  /** Width of each bar in pixels */
+  barWidth?: number;
+  /** Gap between bars in pixels */
+  barGap?: number;
+  /** Container height in pixels */
+  meterHeight?: number;
+  /** Minimum bar height in pixels */
+  minBarHeight?: number;
+  /** Maximum bar height in pixels */
+  maxBarHeight?: number;
 }
 
 /**
@@ -539,6 +549,11 @@ export function CompactAudioIndicator({
   accentColor = COLORS.active,
   inactiveColor = '#c7c7cc',
   barCount = 5,
+  barWidth = 2,
+  barGap = 1,
+  meterHeight = 16,
+  minBarHeight = 4,
+  maxBarHeight = 16,
 }: CompactAudioIndicatorProps) {
   const [smoothedLevel, setSmoothedLevel] = useState(0);
   const [phase, setPhase] = useState(0);
@@ -569,20 +584,20 @@ export function CompactAudioIndicator({
     return Array.from({ length: barCount }, (_, i) => {
       const motionBoost = isVoiceActive
         ? Math.max(0, Math.sin(phase + i * 0.92) * 0.16 + 0.18)
-        : 0;
+        : Math.max(0, Math.sin(phase + i * 0.74) * 0.045 + 0.03);
       const effectiveLevel = Math.min(
         1,
-        Math.max(0, smoothedLevel + motionBoost + (isVoiceActive ? 0.06 : 0))
+        Math.max(isVoiceActive ? 0.05 : 0.015, smoothedLevel + motionBoost + (isVoiceActive ? 0.06 : 0))
       );
       const threshold = i / barCount;
       const isActive = effectiveLevel > threshold;
       const intensity = isActive ? Math.min(1, (effectiveLevel - threshold) * barCount) : 0;
 
       // Height varies by position (taller in center)
-      const baseHeight = 4;
-      const centerBonus = 1 - Math.abs(i - (barCount - 1) / 2) / ((barCount - 1) / 2);
-      const maxHeight = baseHeight + (centerBonus * 12);
-      const height = baseHeight + (intensity * (maxHeight - baseHeight));
+      const centerRadius = Math.max(1, (barCount - 1) / 2);
+      const centerBonus = 1 - Math.abs(i - (barCount - 1) / 2) / centerRadius;
+      const centerMaxHeight = minBarHeight + centerBonus * (maxBarHeight - minBarHeight);
+      const height = minBarHeight + intensity * (centerMaxHeight - minBarHeight);
 
       return {
         height,
@@ -590,15 +605,22 @@ export function CompactAudioIndicator({
         intensity,
       };
     });
-  }, [barCount, isVoiceActive, phase, smoothedLevel]);
+  }, [
+    barCount,
+    isVoiceActive,
+    maxBarHeight,
+    minBarHeight,
+    phase,
+    smoothedLevel,
+  ]);
 
   return (
     <div
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 1,
-        height: 16,
+        gap: barGap,
+        height: meterHeight,
         padding: '0 2px',
       }}
     >
@@ -606,7 +628,7 @@ export function CompactAudioIndicator({
         <div
           key={i}
           style={{
-            width: 2,
+            width: barWidth,
             height: bar.height,
             borderRadius: 1,
             backgroundColor: isVoiceActive && bar.isActive ? accentColor : inactiveColor,

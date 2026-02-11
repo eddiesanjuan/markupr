@@ -479,9 +479,19 @@ const App: React.FC = () => {
     });
 
     const unsubReady = window.markupr.output.onReady((payload) => {
+      // Hard-stop any residual capture tracks immediately to prevent the macOS
+      // "is capturing your screen" indicator from lingering after completion.
+      recorder.releaseCaptureTracks();
+      recorder.forceReleaseOrphanedCapture();
       void queueScreenRecordingSync('idle', null, false).catch((error) => {
         console.warn('[App] Failed to force-release screen recorder on output ready:', error);
       });
+      window.setTimeout(() => {
+        recorder.forceReleaseOrphanedCapture();
+        void queueScreenRecordingSync('idle', null, false).catch(() => {
+          // Best effort follow-up cleanup.
+        });
+      }, 450);
       stopRequestedRef.current = false;
       outputReadyRef.current = true;
       setRawProcessingProgress({ percent: 100, step: 'complete' });

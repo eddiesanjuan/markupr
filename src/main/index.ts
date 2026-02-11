@@ -1059,6 +1059,22 @@ async function syncExtractedFrameMetadata(
   }
 }
 
+async function syncExtractedFrameSummary(
+  sessionDir: string,
+  screenshotCount: number
+): Promise<void> {
+  const summaryPath = join(sessionDir, 'feedback-summary.md');
+  try {
+    const raw = await fs.readFile(summaryPath, 'utf-8');
+    const updated = raw.replace(/(\*\*Screenshots:\*\*\s*)\d+/, `$1${screenshotCount}`);
+    if (updated !== raw) {
+      await fs.writeFile(summaryPath, updated, 'utf-8');
+    }
+  } catch (error) {
+    console.warn('[Main] Failed to sync extracted frame summary:', error);
+  }
+}
+
 async function writeProcessingTrace(
   sessionDir: string,
   trace: {
@@ -1074,6 +1090,9 @@ async function writeProcessingTrace(
     aiFrameHints: number;
     postProcessSegments: number;
     extractedFrames: number;
+    aiTier: 'free' | 'byok' | 'premium';
+    aiEnhanced: boolean;
+    aiFallbackReason?: string;
     completedAt: string;
   }
 ): Promise<void> {
@@ -1369,6 +1388,9 @@ async function stopSession(): Promise<{
       `hasTranscript=${hasTranscript}, hasRecording=${hasRecording})...`
     );
     const aiStartedAt = Date.now();
+    let aiTier: 'free' | 'byok' | 'premium' = 'free';
+    let aiEnhanced = false;
+    let aiFallbackReason: string | undefined;
     const { document } = settingsManager
       ? await aiProcessSession(session, {
           settingsManager,
@@ -1376,6 +1398,11 @@ async function stopSession(): Promise<{
           screenshotDir: './screenshots',
           hasRecording,
           recordingFilename,
+        }).then((result) => {
+          aiTier = result.pipelineOutput.tier;
+          aiEnhanced = result.pipelineOutput.aiEnhanced;
+          aiFallbackReason = result.pipelineOutput.fallbackReason;
+          return result;
         })
       : {
           document: generateDocumentForFileManager(session, {
@@ -1384,7 +1411,10 @@ async function stopSession(): Promise<{
           }),
         };
     aiDurationMs = Date.now() - aiStartedAt;
-    console.log(`[Main:stopSession] Step 2/6 complete: AI analysis took ${aiDurationMs}ms`);
+    console.log(
+      `[Main:stopSession] Step 2/6 complete: AI analysis took ${aiDurationMs}ms ` +
+      `(tier=${aiTier}, aiEnhanced=${aiEnhanced}${aiFallbackReason ? `, fallback=${aiFallbackReason}` : ''})`
+    );
     emitProcessingProgress(44, 'analyzing');
 
     // Update progress: saving to file system (66%)
@@ -1512,6 +1542,10 @@ async function stopSession(): Promise<{
         saveResult.sessionDir,
         postProcessResult.extractedFrames.length
       );
+      await syncExtractedFrameSummary(
+        saveResult.sessionDir,
+        postProcessResult.extractedFrames.length
+      );
     }
 
     const markdownForPayload = await fs
@@ -1551,6 +1585,9 @@ async function stopSession(): Promise<{
       aiFrameHints: aiFrameHintCount,
       postProcessSegments: postProcessResult?.transcriptSegments.length ?? 0,
       extractedFrames: postProcessResult?.extractedFrames.length ?? 0,
+      aiTier,
+      aiEnhanced,
+      aiFallbackReason,
       completedAt: new Date().toISOString(),
     }).catch((error) => {
       console.warn('[Main] Failed to write processing trace:', error);

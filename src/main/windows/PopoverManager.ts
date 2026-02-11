@@ -17,7 +17,7 @@ import { join } from 'path';
  */
 export const POPOVER_SIZES = {
   idle: { width: 460, height: 680 },
-  recording: { width: 288, height: 112 },
+  recording: { width: 316, height: 90 },
   processing: { width: 320, height: 140 },
   complete: { width: 460, height: 720 },
   settings: { width: 400, height: 520 },
@@ -270,10 +270,13 @@ export class PopoverManager {
 
     const isHudState = state === 'recording' || state === 'processing';
     try {
-      // During compact HUD states, disable popover vibrancy so the surrounding
-      // window fades away and only the floating overlay appears.
+      // During compact HUD states, disable popover vibrancy + shadow so only
+      // the overlay chip itself is visible (no boundary rectangle).
       this.window.setVibrancy(isHudState ? null : 'popover');
       this.window.setBackgroundColor('#00000000');
+      if (typeof this.window.setHasShadow === 'function') {
+        this.window.setHasShadow(!isHudState);
+      }
     } catch (error) {
       console.warn('[PopoverManager] Failed to apply state appearance:', error);
     }
