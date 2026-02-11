@@ -44,3 +44,12 @@ certificate-base64.txt
 # Temporary files
 *.tmp
 *.temp
+
+# Claude Code ephemeral state
+.claude/runs/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Root-level screenshots (design artifacts, not source)
+/*.png
