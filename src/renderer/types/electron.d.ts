@@ -90,6 +90,8 @@ interface AudioAPI {
     samples?: number[];
     encodedChunk?: Uint8Array;
     mimeType?: string;
+    audioLevel?: number;
+    rms?: number;
   }) => void;
   notifyCaptureStarted: () => void;
   notifyCaptureStopped: () => void;

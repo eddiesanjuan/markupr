@@ -608,6 +608,8 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
       samples?: number[];
       encodedChunk?: Buffer | Uint8Array | ArrayBuffer;
       mimeType?: string;
+      audioLevel?: number;
+      rms?: number;
       timestamp: number;
       duration: number;
     }
@@ -660,12 +662,19 @@ class AudioCaptureServiceImpl extends EventEmitter implements AudioCaptureServic
     this.encodedAudioMimeType = data.mimeType || this.encodedAudioMimeType || 'audio/webm';
     this.recoveryChunks.push(encodedBuffer);
 
-    // Approximate activity from encoded chunk size variance.
-    const baseline = 3200;
-    const level = Math.max(0, Math.min(1, encodedBuffer.byteLength / baseline));
+    // Prefer renderer-provided live RMS/level from real audio analysis.
+    const level =
+      Number.isFinite(data.audioLevel)
+        ? Math.max(0, Math.min(1, Number(data.audioLevel)))
+        : Math.max(0, Math.min(1, encodedBuffer.byteLength / 6000));
     this.currentAudioLevel = level;
     this.emit('audioLevel', level);
-    this.updateVAD(level * 0.1, data.timestamp);
+
+    const rms =
+      Number.isFinite(data.rms)
+        ? Math.max(0, Math.min(1, Number(data.rms)))
+        : Math.max(0, (level - 0.08) * 0.06);
+    this.updateVAD(rms, data.timestamp);
   }
 
   // ==========================================================================

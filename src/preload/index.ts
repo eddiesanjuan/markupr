@@ -282,6 +282,8 @@ const markuprApi = {
       samples?: number[];
       encodedChunk?: Uint8Array;
       mimeType?: string;
+      audioLevel?: number;
+      rms?: number;
     }): void => {
       ipcRenderer.send(IPC_CHANNELS.AUDIO_CHUNK, data);
     },

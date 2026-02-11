@@ -26,6 +26,13 @@ class AudioCaptureRenderer {
   private capturing = false;
   private stopping = false;
   private inFlightChunkReads: Set<Promise<void>> = new Set();
+  private audioContext: AudioContext | null = null;
+  private analyserNode: AnalyserNode | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private analyserData: Float32Array | null = null;
+  private levelMonitorFrame: number | null = null;
+  private latestRms = 0;
+  private latestLevel = 0;
   private config: CaptureConfig = {
     deviceId: null,
     sampleRate: 16000,
@@ -91,6 +98,7 @@ class AudioCaptureRenderer {
 
   destroy(): void {
     void this.stopCapture();
+    void this.stopLevelMonitor();
     this.cleanupFunctions.forEach((fn) => fn());
     this.cleanupFunctions = [];
   }
@@ -148,6 +156,12 @@ class AudioCaptureRenderer {
       await this.stopCapture();
       throw new Error(`Failed to initialize media recorder: ${(error as Error).message}`);
     }
+
+    await this.startLevelMonitor().catch((error) => {
+      console.warn('[AudioCaptureRenderer] Mic level monitor unavailable:', error);
+      this.latestRms = 0;
+      this.latestLevel = 0;
+    });
 
     this.mediaRecorder.ondataavailable = (event: BlobEvent) => {
       if ((!this.capturing && !this.stopping) || !event.data || event.data.size === 0) {
@@ -234,7 +248,112 @@ class AudioCaptureRenderer {
       timestamp,
       duration,
       mimeType,
+      audioLevel: this.latestLevel,
+      rms: this.latestRms,
     });
+  }
+
+  private async startLevelMonitor(): Promise<void> {
+    if (!this.mediaStream) {
+      return;
+    }
+
+    const AudioContextCtor =
+      window.AudioContext ||
+      (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    await this.stopLevelMonitor();
+
+    const context = new AudioContextCtor();
+    if (context.state === 'suspended') {
+      await context.resume().catch(() => {
+        // Best effort.
+      });
+    }
+
+    const source = context.createMediaStreamSource(this.mediaStream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.15;
+
+    source.connect(analyser);
+
+    this.audioContext = context;
+    this.sourceNode = source;
+    this.analyserNode = analyser;
+    this.analyserData = new Float32Array(analyser.fftSize);
+    this.latestRms = 0;
+    this.latestLevel = 0;
+
+    const tick = () => {
+      if (!this.analyserNode || !this.analyserData) {
+        return;
+      }
+
+      this.analyserNode.getFloatTimeDomainData(
+        this.analyserData as unknown as Float32Array<ArrayBuffer>
+      );
+      let sumSquares = 0;
+      for (let i = 0; i < this.analyserData.length; i += 1) {
+        const sample = this.analyserData[i];
+        sumSquares += sample * sample;
+      }
+      const rms = Math.sqrt(sumSquares / this.analyserData.length);
+
+      // Normalize voice energy while suppressing idle noise.
+      const noiseFloor = 0.004;
+      const normalized = Math.max(0, Math.min(1, (rms - noiseFloor) / 0.045));
+      const attack = 0.45;
+      const release = 0.18;
+      const smoothing = normalized > this.latestLevel ? attack : release;
+
+      this.latestRms = rms;
+      this.latestLevel += (normalized - this.latestLevel) * smoothing;
+      this.levelMonitorFrame = requestAnimationFrame(tick);
+    };
+
+    this.levelMonitorFrame = requestAnimationFrame(tick);
+  }
+
+  private async stopLevelMonitor(): Promise<void> {
+    if (this.levelMonitorFrame !== null) {
+      cancelAnimationFrame(this.levelMonitorFrame);
+      this.levelMonitorFrame = null;
+    }
+
+    if (this.sourceNode) {
+      try {
+        this.sourceNode.disconnect();
+      } catch {
+        // Best effort.
+      }
+      this.sourceNode = null;
+    }
+
+    if (this.analyserNode) {
+      try {
+        this.analyserNode.disconnect();
+      } catch {
+        // Best effort.
+      }
+      this.analyserNode = null;
+    }
+
+    if (this.audioContext) {
+      try {
+        await this.audioContext.close();
+      } catch {
+        // Best effort.
+      }
+      this.audioContext = null;
+    }
+
+    this.analyserData = null;
+    this.latestRms = 0;
+    this.latestLevel = 0;
   }
 
   async stopCapture(): Promise<void> {
@@ -286,6 +405,7 @@ class AudioCaptureRenderer {
 
     this.capturing = false;
     this.stopping = false;
+    await this.stopLevelMonitor();
 
     if (this.mediaStream) {
       try {
