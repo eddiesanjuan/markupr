@@ -5,7 +5,7 @@
 <h1 align="center">markupr</h1>
 
 <p align="center">
-  <strong>Capture developer feedback with voice narration and intelligent screenshots</strong>
+  <strong>Turn voice narration into AI-ready Markdown with intelligent screenshots</strong>
 </p>
 
 <p align="center">
@@ -20,68 +20,108 @@
 <p align="center">
   <a href="#features">Features</a> |
   <a href="#quick-start">Quick Start</a> |
-  <a href="#ai-agent-setup">AI Agent Setup</a> |
+  <a href="#how-it-works">How It Works</a> |
   <a href="#installation">Installation</a> |
   <a href="#usage">Usage</a> |
   <a href="#keyboard-shortcuts">Shortcuts</a> |
   <a href="#export-formats">Export</a> |
-  <a href="#development">Development</a>
+  <a href="#development">Development</a> |
+  <a href="#contributing">Contributing</a>
 </p>
 
 ---
 
-markupr is a desktop application that transforms how developers capture and communicate feedback. Simply press a hotkey, narrate what you see, and markupr automatically captures intelligent screenshots synchronized with your voice. The result is an AI-ready Markdown document perfect for Claude, ChatGPT, Cursor, or any coding assistant.
+markupr is a menu bar app that intelligently captures developer feedback. Press a hotkey, talk through what you see, and markupr records your screen while transcribing your voice. When you stop, an intelligent post-processing pipeline correlates your transcript timestamps with the screen recording to extract the right frames at the right moments -- then stitches everything into a structured, AI-ready Markdown document.
+
+One hotkey to start. One hotkey to stop. A Markdown file with your words, contextually-placed screenshots, and intelligent structure -- ready to hand to your AI coding agent, paste into a GitHub issue, or drop in a Slack thread.
 
 ## Features
 
 ### Voice-Driven Capture
-- **Real-time transcription** powered by OpenAI Whisper-1 model
-- **Intelligent screenshot timing** - captures automatically during voice pauses
+- **Local Whisper transcription** runs entirely on your machine -- no API key, no internet required
+- **Optional OpenAI cloud transcription** for higher accuracy (BYOK)
+- **Intelligent screenshot timing** captures automatically during voice pauses
 - **Audio waveform visualization** for real-time feedback
+
+### Intelligent Post-Processing Pipeline
+- **Timestamp-correlated frame extraction** -- every screenshot corresponds to what you were describing
+- **Key-moment detection** analyzes your transcript to find the most important moments
+- **Video frame extraction** via ffmpeg pulls precise frames from the screen recording
+- **Structured Markdown output** optimized for LLM consumption (llms.txt inspired)
 
 ### Smart Screenshots
 - **Voice Activity Detection (VAD)** triggers captures at natural pause points
-- **Manual screenshot hotkey** for precise control
+- **Manual screenshot hotkey** (`Cmd+Shift+S`) for precise control
 - **Multi-monitor support** with display selection
 - **Window-specific capture** for focused feedback
 
 ### AI-Ready Output
-- **Markdown format** optimized for LLM consumption (llms.txt inspired)
-- **Structured feedback items** with timestamps and categories
-- **Embedded screenshots** or linked references
+- **Markdown format** with contextually-placed screenshots and structured feedback items
 - **Multiple export formats**: Markdown, PDF, HTML, JSON
+- **Clipboard bridge** -- file path is copied to clipboard so AI tools can read the full document
+
+### Bulletproof Reliability
+- **7-state finite state machine** with watchdog timer -- no state the app can enter and not exit
+- **Crash recovery** with 5-second auto-save -- never lose a feedback session
+- **Graceful degradation** -- if transcription fails, frame extraction continues; if ffmpeg is missing, transcript-only output is generated
+- **Auto-updater** for seamless updates
 
 ### Professional Experience
-- **Native macOS menu bar** integration
-- **System tray** with status indicators
+- **Native macOS menu bar** integration (no dock icon)
+- **Windows system tray** support
 - **Global hotkeys** that work from any application
-- **Auto-updater** for seamless updates
-- **Crash recovery** to never lose your work
-
-### Annotation Tools
-- Arrow, circle, rectangle, and freehand drawing
-- Text annotations
-- Undo/redo support
+- **Annotation tools** (arrow, circle, rectangle, freehand, text)
+- **Session history browser** with search and export
+- **Dark/light/system theme** support
+- **Onboarding experience** for first-run setup
 
 ## Quick Start
 
 1. **Download** the latest release for your platform
 2. **Install** the application (DMG for macOS, installer for Windows)
 3. **Press** `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows) to start recording
-4. **Narrate** your feedback while markupr captures screenshots
-5. **Press** the hotkey again to stop - your feedback is copied to clipboard
+4. **Narrate** your feedback while markupr captures screenshots at pause points
+5. **Press** the hotkey again to stop -- the post-processing pipeline runs automatically
+6. **Paste** the file path from your clipboard into your AI coding agent
 
-**No API key required!** markupr uses local AI (Whisper) by default. Add your OpenAI API key in Settings for cloud post-session transcription.
+**No API key required!** markupr uses local Whisper transcription by default. Add your OpenAI API key in Settings for cloud transcription.
 
-## AI Agent Setup
+## How It Works
 
-For coding agents, use the one-liner from repo root:
+### The Post-Processing Pipeline
 
-```bash
-npm run setup:markupr
+When you press stop, markupr's intelligent pipeline takes over:
+
+1. **Transcribe** -- Your audio is transcribed using local Whisper (or OpenAI API if configured)
+2. **Analyze** -- The transcript is analyzed to identify key moments, topic changes, and important observations
+3. **Extract** -- Video frames are extracted at the exact timestamps corresponding to each key moment
+4. **Generate** -- Everything is stitched into a structured Markdown document with screenshots placed exactly where they belong
+
+The result isn't just "screenshots taken during pauses" -- it's contextually-aware frame extraction that ensures every image in the document shows exactly what you were talking about.
+
+### The Clipboard Bridge
+
+When a session completes, the **file path** to your Markdown document is copied to clipboard. Not the content -- the path. This is deliberate:
+
+- If your clipboard gets overwritten, the file lives on disk permanently
+- AI tools like Claude Code can read the file path and process the full document including screenshots
+- The file is yours -- local, private, no cloud dependency
+
+### Session State Machine
+
+The recording session is governed by a 7-state FSM with timeouts:
+
+```
+idle ─→ starting (5s timeout) ─→ recording (30min max) ─→ stopping (3s timeout)
+                                                              │
+                                                              ▼
+                                                         processing (10s timeout) ─→ complete (30s auto-idle)
+                                                              │
+                                                              ▼
+                                                            error (5s auto-recover)
 ```
 
-Detailed agent setup notes are in [`docs/AI_AGENT_QUICKSTART.md`](docs/AI_AGENT_QUICKSTART.md).
+Every state has a maximum duration. A watchdog timer monitors state age and forces recovery if anything gets stuck.
 
 ## Installation
 
@@ -117,11 +157,11 @@ sudo dpkg -i markupr_*.deb
 
 ## Configuration
 
-### Transcription Options
+### Transcription
 
-markupr works out of the box with **local Whisper** transcription - no API key needed.
+markupr works out of the box with **local Whisper** transcription -- no API key needed. On first run, you'll be prompted to download a Whisper model (~75MB for tiny, ~500MB for base).
 
-For cloud post-session transcription, add your OpenAI API key:
+For cloud post-session transcription with higher accuracy, add your OpenAI API key:
 
 1. Sign up at [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 2. Create an API key with "Usage" permissions
@@ -129,6 +169,16 @@ For cloud post-session transcription, add your OpenAI API key:
 4. Enter your OpenAI API key
 
 OpenAI usage is billed to your own API account.
+
+### AI-Enhanced Analysis (Optional)
+
+Add your Anthropic API key for Claude-powered document analysis:
+
+1. Get an API key at [console.anthropic.com](https://console.anthropic.com/)
+2. Open Settings > Advanced > AI Analysis
+3. Enter your Anthropic API key
+
+Claude analyzes your transcript alongside screenshots to produce an intelligent document -- grouping related feedback, identifying patterns, and writing actionable summaries.
 
 ### Settings Overview
 
@@ -146,8 +196,6 @@ OpenAI usage is billed to your own API account.
 | **Hotkeys** | Toggle Recording | Default: `Cmd/Ctrl+Shift+F` |
 | | Manual Screenshot | Default: `Cmd/Ctrl+Shift+S` |
 
-See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for complete settings documentation.
-
 ## Usage
 
 ### Basic Workflow
@@ -157,25 +205,48 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for complete settings documen
 3. **Narrate**: Speak naturally about what you see
 4. **Screenshots**: Captured automatically during pauses (or press `Cmd+Shift+S` manually)
 5. **Stop Recording**: Press the hotkey again
-6. **Review**: Edit, reorder, or delete items in the review panel
-7. **Export**: Copy to clipboard or export to your preferred format
+6. **Post-Processing**: Pipeline automatically transcribes, analyzes, extracts frames, and generates output
+7. **Use Output**: File path is on your clipboard -- paste into your AI tool
 
 ### Recording Tips
 
-- **Speak naturally** - markupr detects pauses to time screenshots
+- **Speak naturally** -- markupr detects pauses to time screenshots
 - **Pause briefly** when you want a screenshot captured
 - **Use manual capture** (`Cmd+Shift+S`) for precise timing
 - **Review before export** to remove unwanted items
 
-### Session Review
+### Using with AI Coding Agents
 
-After stopping a recording, the Session Review panel lets you:
+After a session completes, the file path is on your clipboard. Paste it into:
 
-- **Reorder items** by dragging
-- **Edit transcriptions** inline
-- **Delete unwanted** screenshots or feedback
-- **Preview output** in real-time
-- **Add annotations** to screenshots
+- **Claude Code**: `Read the feedback session at [paste path]`
+- **Cursor/Windsurf**: Reference the file path in your prompt
+- **GitHub Issues**: Copy the Markdown content directly
+
+### AI Agent Setup
+
+For coding agents, use the one-liner from repo root:
+
+```bash
+npm run setup:markupr
+```
+
+Detailed agent setup notes are in [`docs/AI_AGENT_QUICKSTART.md`](docs/AI_AGENT_QUICKSTART.md).
+
+### Session Output
+
+Sessions are saved to an organized folder:
+
+```
+~/markupr/sessions/2026-02-05_14-23-41/
+  feedback-report.md     # Structured Markdown with inline screenshots
+  metadata.json          # Session metadata (source, duration, environment)
+  screenshots/
+    fb-001.png           # Extracted frames from key moments
+    fb-002.png
+    fb-003.png
+  session-recording.webm # Full screen recording (optional)
+```
 
 ## Keyboard Shortcuts
 
@@ -219,18 +290,16 @@ After stopping a recording, the Session Review panel lets you:
 | Text | `5` |
 | Clear Annotations | `Cmd/Ctrl+Backspace` |
 
-See [docs/KEYBOARD_SHORTCUTS.md](docs/KEYBOARD_SHORTCUTS.md) for the complete reference.
-
 ## Export Formats
 
 ### Markdown (.md)
 
 AI-optimized format inspired by [llms.txt](https://llms.txt). Includes:
 
-- Structured headings
-- Timestamped feedback items
-- Image references (embedded or linked)
-- Summary table
+- Structured headings with timestamps
+- Feedback items with categories and severity
+- Inline screenshot references
+- Summary table with session metadata
 
 ```markdown
 # Feedback Report: My App
@@ -252,52 +321,46 @@ AI-optimized format inspired by [llms.txt](https://llms.txt). Includes:
 
 ### PDF (.pdf)
 
-Professional document with:
-- Embedded screenshots
-- Print-ready layout
-- Dark or light theme
-- Professional typography
+Professional document with embedded screenshots, print-ready layout, and theme support.
 
 ### HTML (.html)
 
-Self-contained web page with:
-- No external dependencies
-- Dark/light theme toggle
-- Mobile responsive
-- Embedded images as base64
+Self-contained web page with embedded images, dark/light theme toggle, and mobile responsive design.
 
 ### JSON (.json)
 
-Machine-readable format for integrations:
+Machine-readable format for integrations and automation.
 
-```json
-{
-  "version": "1.0",
-  "session": {
-    "id": "session-123",
-    "startTime": 1704067200000,
-    "endTime": 1704067354000,
-    "source": "My App - Chrome"
-  },
-  "feedbackItems": [
-    {
-      "id": "FB-001",
-      "timestamp": 1704067215000,
-      "transcription": "The login button is hidden...",
-      "category": "bug",
-      "confidence": 0.95,
-      "screenshot": {
-        "id": "screenshot-001",
-        "path": "./screenshots/fb-001.png",
-        "width": 1920,
-        "height": 1080
-      }
-    }
-  ]
-}
+## Architecture
+
 ```
-
-See [docs/EXPORT_FORMATS.md](docs/EXPORT_FORMATS.md) for complete schema documentation.
+markupr/
+├── src/
+│   ├── main/                  # Electron main process
+│   │   ├── index.ts           # Entry point, orchestration
+│   │   ├── SessionController  # 7-state FSM with watchdog
+│   │   ├── CrashRecovery      # Auto-save and crash detection
+│   │   ├── ai/                # Claude AI analysis pipeline
+│   │   ├── audio/             # Audio capture and VAD
+│   │   ├── capture/           # Screen capture services
+│   │   ├── output/            # Document generation (MD, PDF, HTML, JSON)
+│   │   ├── pipeline/          # Post-processing (transcribe → analyze → extract → generate)
+│   │   ├── settings/          # Settings with secure API key storage
+│   │   ├── transcription/     # Whisper + tier management
+│   │   └── windows/           # Window management (popover, taskbar)
+│   ├── renderer/              # React UI
+│   │   ├── App.tsx            # Main component
+│   │   ├── components/        # UI components (30+)
+│   │   ├── audio/             # Renderer-side audio bridge
+│   │   ├── capture/           # Renderer-side screen recording
+│   │   └── hooks/             # React hooks (theme, animation)
+│   ├── preload/               # Electron preload (secure IPC bridge)
+│   └── shared/                # Shared types and constants
+├── tests/                     # Test suite (356 tests)
+├── docs/                      # Documentation
+├── site/                      # Landing page
+└── package.json
+```
 
 ## Development
 
@@ -327,44 +390,34 @@ npm run dev
 |--------|-------------|
 | `npm run dev` | Start in development mode with hot reload |
 | `npm run build` | Build for production |
+| `npm run build:desktop` | Build desktop app only |
 | `npm run package` | Package for current platform |
 | `npm run package:mac` | Package for macOS |
 | `npm run package:win` | Package for Windows |
 | `npm run package:linux` | Package for Linux |
-| `npm test` | Run tests |
+| `npm test` | Run all tests |
+| `npm run test:unit` | Run unit tests only |
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run lint` | Lint code |
+| `npm run lint:fix` | Auto-fix lint issues |
 | `npm run typecheck` | TypeScript type checking |
 
-### Project Structure
+### Running Tests
 
-```
-markupr/
-├── src/
-│   ├── main/              # Electron main process
-│   │   ├── index.ts       # Entry point, orchestration
-│   │   ├── capture/       # Screen capture services
-│   │   ├── audio/         # Audio capture
-│   │   ├── transcription/ # Whisper + fallback tiers
-│   │   ├── output/        # Document generation
-│   │   ├── analysis/      # AI categorization
-│   │   └── settings/      # Settings management
-│   ├── renderer/          # React UI
-│   │   ├── App.tsx        # Main component
-│   │   ├── components/    # UI components
-│   │   └── hooks/         # React hooks
-│   ├── preload/           # Electron preload (IPC bridge)
-│   └── shared/            # Shared types
-├── tests/                 # Test files
-├── docs/                  # Documentation
-└── package.json
-```
+```bash
+# Run all tests
+npm test
 
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed development documentation.
+# Run with coverage
+npm run test:coverage
+
+# Run specific test file
+npx vitest tests/unit/postProcessor.test.ts
+```
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! markupr is MIT licensed and community-driven.
 
 ### Quick Start for Contributors
 
@@ -372,9 +425,20 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes
 4. Run tests: `npm test`
-5. Commit: `git commit -m 'Add amazing feature'`
-6. Push: `git push origin feature/amazing-feature`
-7. Open a Pull Request
+5. Run lint: `npm run lint`
+6. Commit: `git commit -m 'Add amazing feature'`
+7. Push: `git push origin feature/amazing-feature`
+8. Open a Pull Request
+
+### Guidelines
+
+- **Tests required** for new functionality
+- **Lint clean** -- run `npm run lint` before submitting
+- **TypeScript strict** -- run `npm run typecheck`
+- **Small PRs preferred** -- focused changes are easier to review
+- **Follow existing patterns** -- check CLAUDE.md for architecture details
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ## Troubleshooting
 
@@ -388,14 +452,23 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 - macOS: System Preferences > Security & Privacy > Screen Recording
 - Restart markupr after granting permission
 
+**Whisper model download failing**
+- Check your internet connection
+- Try a smaller model first (tiny: ~75MB)
+- Downloads support resume if interrupted
+
 **OpenAI API connection failed**
 - Verify your API key is correct
 - Check your internet connection
-- Ensure your OpenAI project has billing enabled and API access
+- Ensure your OpenAI project has billing enabled
 
 **Hotkeys not working**
 - Check for conflicts with other applications
 - Try customizing hotkeys in Settings > Hotkeys
+
+**ffmpeg not found for frame extraction**
+- Install ffmpeg: `brew install ffmpeg` (macOS) or download from [ffmpeg.org](https://ffmpeg.org/)
+- markupr gracefully degrades to transcript-only output without ffmpeg
 
 See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more solutions.
 
@@ -405,7 +478,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- [OpenAI](https://platform.openai.com/api-keys) for post-session transcription
+- [Whisper](https://github.com/openai/whisper) for local speech recognition
+- [Anthropic Claude](https://anthropic.com) for AI-enhanced document analysis
+- [OpenAI](https://platform.openai.com) for cloud transcription
 - [Electron](https://electronjs.org) for cross-platform desktop framework
 - [React](https://reactjs.org) for the UI framework
 - [Vite](https://vitejs.dev) for blazing fast builds
@@ -413,6 +488,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  Made with care by <a href="https://github.com/eddiesanjuan">Eddie San Juan</a><br>
+  Built by <a href="https://github.com/eddiesanjuan">Eddie San Juan</a>. Open source. MIT licensed.<br>
   <a href="https://ko-fi.com/eddiesanjuan">Support markupr on Ko-fi</a>
 </p>

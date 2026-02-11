@@ -33,8 +33,10 @@ export interface PipelineProcessOptions {
 async function determineTier(settingsManager: ISettingsManager): Promise<AITier> {
   const anthropicKey = await settingsManager.getApiKey('anthropic');
   if (anthropicKey && anthropicKey.length > 0) {
+    console.log('[AIPipelineManager] Tier decision: BYOK (Anthropic API key found in keychain)');
     return 'byok';
   }
+  console.log('[AIPipelineManager] Tier decision: FREE (no Anthropic API key configured)');
   return 'free';
 }
 
@@ -70,12 +72,20 @@ export async function processSession(
   const screenshotDir = options.screenshotDir || './screenshots';
 
   // ALWAYS generate free-tier output first as safety net
+  console.log('[AIPipelineManager] Generating free-tier output as safety net...');
   const freeTierDoc = generateFreeTierDocument(session, projectName, screenshotDir);
+  console.log('[AIPipelineManager] Free-tier output ready (rule-based markdown generated)');
 
   // Determine tier
   const tier = await determineTier(options.settingsManager);
 
   if (tier === 'free') {
+    console.log(
+      `[AIPipelineManager] Using free-tier output (no AI enhancement). ` +
+      `Session had ${session.feedbackItems.length} feedback items, ` +
+      `${session.transcriptBuffer.length} transcript events. ` +
+      `Completed in ${Date.now() - startTime}ms.`
+    );
     return {
       document: freeTierDoc,
       pipelineOutput: {
@@ -88,11 +98,12 @@ export async function processSession(
   }
 
   // BYOK tier: attempt AI enhancement
+  console.log('[AIPipelineManager] BYOK tier: attempting Claude AI enhancement...');
   try {
     const apiKey = await options.settingsManager.getApiKey('anthropic');
     if (!apiKey) {
       // Shouldn't happen since determineTier checked, but be defensive
-      console.warn('[AIPipelineManager] BYOK tier selected but no API key found, falling back to free tier');
+      console.warn('[AIPipelineManager] BYOK -> FREE fallback: API key disappeared between tier check and usage');
       return {
         document: freeTierDoc,
         pipelineOutput: {
@@ -105,13 +116,20 @@ export async function processSession(
       };
     }
 
-    console.log('[AIPipelineManager] Running AI analysis with BYOK tier...');
+    console.log(
+      `[AIPipelineManager] Calling Claude API (BYOK) with ` +
+      `${session.feedbackItems.length} feedback items, ` +
+      `${session.transcriptBuffer.length} transcript events...`
+    );
 
     const analyzer = new ClaudeAnalyzer(apiKey);
     const analysis = await analyzer.analyze(session);
 
     if (!analysis) {
-      console.warn('[AIPipelineManager] Claude analysis returned null, falling back to free tier');
+      console.warn(
+        `[AIPipelineManager] BYOK -> FREE fallback: Claude API returned null analysis ` +
+        `after ${Date.now() - startTime}ms. Using free-tier rule-based output instead.`
+      );
       return {
         document: freeTierDoc,
         pipelineOutput: {
@@ -161,9 +179,10 @@ export async function processSession(
     };
   } catch (error) {
     // ANY error in the AI path falls back to free tier - never lose the session
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(
-      '[AIPipelineManager] AI pipeline failed, falling back to free tier:',
-      error instanceof Error ? error.message : error,
+      `[AIPipelineManager] BYOK -> FREE fallback: AI pipeline threw after ${Date.now() - startTime}ms. ` +
+      `Error: ${errorMessage}. Using free-tier rule-based output instead.`
     );
 
     return {

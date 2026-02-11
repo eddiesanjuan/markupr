@@ -1315,6 +1315,7 @@ async function stopSession(): Promise<{
     startStopPhaseTicker();
 
     // Stop the session and get results
+    console.log('[Main:stopSession] Step 1/6: Stopping session controller...');
     const session = await sessionController.stop();
     stopStopPhaseTicker();
 
@@ -1329,6 +1330,11 @@ async function stopSession(): Promise<{
       };
     }
     stoppedSessionId = session.id;
+    console.log(
+      `[Main:stopSession] Session stopped: ${session.id}, ` +
+      `${session.feedbackItems.length} feedback items, ` +
+      `${session.transcriptBuffer.length} transcript events`
+    );
 
     const recordingProbe = getScreenRecordingSnapshot(session.id);
     const hasTranscript = session.transcriptBuffer.some((entry) => entry.text.trim().length > 0);
@@ -1355,8 +1361,13 @@ async function stopSession(): Promise<{
     windowsTaskbar?.setProgress(0.33);
     emitProcessingProgress(24, 'analyzing');
 
-    // Generate output document — uses AI pipeline if an Anthropic key is configured,
+    // Generate output document -- uses AI pipeline if an Anthropic key is configured,
     // otherwise falls back to the free-tier rule-based generator.
+    console.log(
+      `[Main:stopSession] Step 2/6: Running AI analysis pipeline ` +
+      `(settingsManager ${settingsManager ? 'available' : 'NOT available'}, ` +
+      `hasTranscript=${hasTranscript}, hasRecording=${hasRecording})...`
+    );
     const aiStartedAt = Date.now();
     const { document } = settingsManager
       ? await aiProcessSession(session, {
@@ -1373,6 +1384,7 @@ async function stopSession(): Promise<{
           }),
         };
     aiDurationMs = Date.now() - aiStartedAt;
+    console.log(`[Main:stopSession] Step 2/6 complete: AI analysis took ${aiDurationMs}ms`);
     emitProcessingProgress(44, 'analyzing');
 
     // Update progress: saving to file system (66%)
@@ -1380,9 +1392,11 @@ async function stopSession(): Promise<{
     emitProcessingProgress(56, 'saving');
 
     // Save to file system
+    console.log('[Main:stopSession] Step 3/6: Saving session to file system...');
     const saveStartedAt = Date.now();
     const saveResult = await fileManager.saveSession(session, document);
     saveDurationMs = Date.now() - saveStartedAt;
+    console.log(`[Main:stopSession] Step 3/6 complete: save took ${saveDurationMs}ms`);
     if (!saveResult.success) {
       await cleanupRecordingArtifacts(session.id);
       sessionController.clearCapturedAudio();
@@ -1394,6 +1408,7 @@ async function stopSession(): Promise<{
     }
     emitProcessingProgress(64, 'saving');
 
+    console.log('[Main:stopSession] Step 4/6: Attaching recording and audio artifacts...');
     const recordingArtifact = await attachRecordingToSessionOutput(
       session.id,
       saveResult.sessionDir,
@@ -1419,6 +1434,10 @@ async function stopSession(): Promise<{
         audioDurationMs: audioArtifact.durationMs,
       });
     }
+    console.log(
+      `[Main:stopSession] Step 4/6 complete: recording=${recordingArtifact ? `${recordingArtifact.bytesWritten}B` : 'none'}, ` +
+      `audio=${audioArtifact ? `${audioArtifact.bytesWritten}B, ${audioArtifact.durationMs}ms` : 'none'}`
+    );
     emitProcessingProgress(71, 'preparing');
 
     // ------------------------------------------------------------------
@@ -1433,6 +1452,13 @@ async function stopSession(): Promise<{
       providedTranscriptSegments
     );
     aiFrameHintCount = aiMomentHints.length;
+
+    console.log(
+      `[Main:stopSession] Step 5/6: Post-processing pipeline ` +
+      `(${providedTranscriptSegments.length} pre-provided segments, ` +
+      `${aiMomentHints.length} AI frame hints, ` +
+      `hasAudio=${!!audioArtifact}, hasRecording=${!!recordingArtifact})...`
+    );
 
     if (audioArtifact || recordingArtifact) {
       const postProcessStartedAt = Date.now();
@@ -1455,17 +1481,26 @@ async function stopSession(): Promise<{
           },
         });
 
+        console.log(
+          `[Main:stopSession] Step 5/6 complete: post-processing took ${Date.now() - postProcessStartedAt}ms, ` +
+          `${postProcessResult?.transcriptSegments.length ?? 0} segments, ` +
+          `${postProcessResult?.extractedFrames.length ?? 0} frames extracted`
+        );
+
         // Notify renderer that post-processing is complete
         mainWindow?.webContents.send('markupr:processing:complete', postProcessResult);
       } catch (postProcessError) {
-        console.warn('[Main] Post-processing pipeline failed, continuing with basic output:', postProcessError);
+        console.warn('[Main:stopSession] Step 5/6 FAILED: Post-processing pipeline error, continuing with basic output:', postProcessError);
         // Non-fatal: we still have the basic markdown report from the AI/rule-based pipeline
       } finally {
         postProcessDurationMs = Date.now() - postProcessStartedAt;
       }
+    } else {
+      console.log('[Main:stopSession] Step 5/6 skipped: no audio or recording artifacts available');
     }
     emitProcessingProgress(93, 'generating-report');
 
+    console.log('[Main:stopSession] Step 6/6: Finalizing report and copying to clipboard...');
     if (postProcessResult?.extractedFrames?.length) {
       await appendExtractedFramesToReport(
         saveResult.markdownPath,
@@ -1520,6 +1555,13 @@ async function stopSession(): Promise<{
     }).catch((error) => {
       console.warn('[Main] Failed to write processing trace:', error);
     });
+
+    const totalDurationMs = Date.now() - stopStartedAt;
+    console.log(
+      `[Main:stopSession] All steps complete in ${totalDurationMs}ms ` +
+      `(AI: ${aiDurationMs}ms, save: ${saveDurationMs}ms, postProcess: ${postProcessDurationMs}ms). ` +
+      `Report: ${saveResult.markdownPath}`
+    );
 
     // Notify renderer only after final post-processing/trace bookkeeping is finished.
     mainWindow?.webContents.send(IPC_CHANNELS.SESSION_COMPLETE, serializeSession(session));

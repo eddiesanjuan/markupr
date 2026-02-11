@@ -20,7 +20,6 @@ import type {
   DownloadResult,
   ProgressCallback,
   CompleteCallback,
-  ErrorCallback,
 } from './types';
 
 // ============================================================================
@@ -229,7 +228,7 @@ export class ModelDownloadManager extends EventEmitter {
         flags: downloadedBytes > 0 ? 'a' : 'w',
       });
 
-      const handleResponse = (response: any, redirectCount: number = 0): void => {
+      const handleResponse = (response: import('http').IncomingMessage, redirectCount: number = 0): void => {
         if (aborted) {
           return;
         }
@@ -468,7 +467,7 @@ export class ModelDownloadManager extends EventEmitter {
     }
   }
 
-  private handleDownloadError(error: Error, model: WhisperModel, tempPath: string): void {
+  private handleDownloadError(error: Error, model: WhisperModel, _tempPath: string): void {
     this.activeDownloads.delete(model);
 
     // Keep partial download for resume (don't delete tempPath)

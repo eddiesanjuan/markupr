@@ -21,7 +21,7 @@ import type { TranscriptEvent } from './transcription/types';
 import { getSettingsManager } from './settings';
 import { IPC_CHANNELS } from '../shared/types';
 import { errorHandler } from './ErrorHandler';
-import { postProcessor, type PostProcessResult, type PostProcessProgress } from './pipeline';
+import { type PostProcessResult, type PostProcessProgress } from './pipeline';
 // Note: CrashRecovery module runs independently for crash logging.
 // Session recovery is handled directly in SessionController for full access to session data.
 
@@ -726,58 +726,20 @@ export class SessionController {
     }
     this.session.state = 'processing';
 
-    // Run the post-processing pipeline if we have recorded assets.
-    // PostProcessor handles transcription, analysis, and frame extraction.
-    const videoPath = this.session.metadata.recordingPath;
-    const audioPath = this.session.metadata.audioPath;
-    const sessionDir = videoPath
-      ? videoPath.substring(0, videoPath.lastIndexOf('/'))
-      : undefined;
-
-    if (videoPath && audioPath && sessionDir) {
-      try {
-        this.postProcessResult = await this.withTimeout(
-          postProcessor.process({
-            videoPath,
-            audioPath,
-            sessionDir,
-            onProgress: (progress) => {
-              this.currentProcessingProgress = progress;
-              this.emitToRenderer(IPC_CHANNELS.SESSION_STATUS, this.getStatus());
-            },
-          }),
-          STATE_TIMEOUTS.processing! - 5_000, // leave 5s margin for cleanup
-          null as PostProcessResult | null,
-          'PostProcessor.process()'
-        );
-
-        if (this.postProcessResult) {
-          console.log(
-            `[SessionController] Post-processing complete: ` +
-              `${this.postProcessResult.transcriptSegments.length} segments, ` +
-              `${this.postProcessResult.extractedFrames.length} frames`
-          );
-        } else {
-          console.warn('[SessionController] Post-processing timed out or returned null');
-        }
-      } catch (error) {
-        console.error('[SessionController] Post-processing failed:', error);
-        // Continue with session completion even if post-processing fails
-      }
-    } else {
-      console.warn(
-        '[SessionController] Skipping post-processing: missing video/audio paths',
-        { videoPath: !!videoPath, audioPath: !!audioPath }
-      );
-
-      // Fall back to transcript recovery from captured audio buffer
-      await this.withTimeout(
-        this.recoverTranscriptFromCapturedAudio(),
-        Math.floor(STATE_TIMEOUTS.processing! * 0.8),
-        undefined,
-        'recoverTranscriptFromCapturedAudio'
-      );
-    }
+    // NOTE: The full PostProcessor pipeline (transcribe -> analyze -> extract frames)
+    // is NOT run here because recordingPath and audioPath are not yet available on
+    // session.metadata at this point. Those paths are set later in stopSession()
+    // (src/main/index.ts) after the recording and audio files are finalized and
+    // written to disk. The real PostProcessor call happens there with the actual
+    // file paths. Here we only attempt transcript recovery from the in-memory
+    // captured audio buffer as a fallback for when stop() is called directly
+    // (e.g., by the watchdog timer) without going through stopSession().
+    await this.withTimeout(
+      this.recoverTranscriptFromCapturedAudio(),
+      Math.floor(STATE_TIMEOUTS.processing! * 0.8),
+      undefined,
+      'recoverTranscriptFromCapturedAudio'
+    );
 
     // Set end time
     this.session.endTime = Date.now();

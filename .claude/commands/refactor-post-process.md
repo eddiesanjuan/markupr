@@ -116,10 +116,7 @@ New channels needed:
 - `markupr:processing:complete` — full pipeline done
 
 ### Branding Cleanup
-While we're in here, fix the 4 remaining feedbackflow references:
-- `src/renderer/types/electron.d.ts:370` — `feedbackflow` → `markupr`
-- `src/preload/index.ts:1019` — keep `feedbackflow` as alias for backward compat, add `markupr`
-- `src/preload/index.ts:1030` — same
+All feedbackflow references have been removed from source code. The only remaining reference is `LEGACY_KEYTAR_SERVICES` in SettingsManager.ts for API key migration from old installs.
 
 ---
 

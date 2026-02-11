@@ -162,7 +162,7 @@ const ConfettiCanvas: React.FC<{ active: boolean }> = ({ active }) => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [active]);
+  }, [active, prefersReducedMotion]);
 
   if (!active || prefersReducedMotion) return null;
 

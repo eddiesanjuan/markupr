@@ -377,7 +377,6 @@ export interface MarkuprAPI {
 declare global {
   interface Window {
     markupr: MarkuprAPI;
-    feedbackflow: MarkuprAPI;
   }
 }
 

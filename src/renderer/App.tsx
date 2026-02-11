@@ -284,6 +284,9 @@ const App: React.FC = () => {
 
       if (nextState === 'recording') {
         if (stopRequestedRef.current) {
+          // Release capture tracks immediately so macOS recording indicator clears
+          // even if this sync call was queued behind a long-running start operation.
+          recorder.releaseCaptureTracks();
           if (recorder.isRecording() || recorder.getSessionId()) {
             await recorder.stop().catch((error) => {
               console.warn('[App] Forced recorder stop during stop-request guard failed:', error);
@@ -782,6 +785,14 @@ const App: React.FC = () => {
     try {
       if (state === 'recording') {
         stopRequestedRef.current = true;
+
+        // IMMEDIATELY release screen capture tracks to clear macOS recording indicator.
+        // Don't wait for the serialized queue — this must happen NOW so the orange dot
+        // disappears the instant the user clicks stop, even if a prior
+        // syncScreenRecording('recording') call is still in-flight in the queue.
+        const recorder = screenRecorderRef.current;
+        recorder.releaseCaptureTracks();
+
         // Flush renderer-side screen recorder first so main-process post-processing
         // receives a finalized video artifact.
         try {

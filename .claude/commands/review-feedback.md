@@ -1,6 +1,6 @@
-# Review FeedbackFlow Session
+# Review markupr Session
 
-You are reviewing a FeedbackFlow session -- a structured feedback report with voice transcription and screenshots captured while a developer reviewed their application.
+You are reviewing a markupr session -- a structured feedback report with voice transcription and screenshots captured while a developer reviewed their application.
 
 ## Instructions
 
@@ -44,4 +44,4 @@ You are reviewing a FeedbackFlow session -- a structured feedback report with vo
 - The user's spoken words (in blockquotes) capture intent and nuance that the severity/category labels alone may miss
 - Treat "Suggested Next Step" as guidance, not a strict instruction -- use your judgment
 - If the report has 0 feedback items, tell the user the session captured no actionable feedback
-- The session directory path is typically copied to the clipboard by FeedbackFlow when a session ends
+- The session directory path is typically copied to the clipboard by markupr when a session ends

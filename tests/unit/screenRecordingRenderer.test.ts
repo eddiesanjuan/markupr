@@ -81,9 +81,6 @@ vi.stubGlobal('window', {
   markupr: {
     screenRecording: mockScreenRecordingIPC,
   },
-  feedbackflow: {
-    screenRecording: mockScreenRecordingIPC,
-  },
 });
 
 // ---------------------------------------------------------------------------

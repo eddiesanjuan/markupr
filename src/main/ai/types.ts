@@ -5,7 +5,7 @@
  * (transcript + screenshots) into structured, actionable feedback documents using Claude.
  */
 
-import type { Screenshot, Session } from '../SessionController';
+import type { Session } from '../SessionController';
 
 // =============================================================================
 // Tier & Configuration

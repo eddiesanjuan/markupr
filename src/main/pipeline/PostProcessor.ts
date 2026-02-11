@@ -109,15 +109,19 @@ export class PostProcessor {
       }))
       .filter((segment) => segment.text.length > 0);
 
-    if (providedSegments.length > 0) {
-      segments = providedSegments.sort((a, b) => a.startTime - b.startTime);
-      emitProgress({
-        step: 'transcribing',
-        percent: 40,
-        message: `Using captured transcript (${segments.length} segments)`,
-      });
-      this.log(`Using provided transcript segments: ${segments.length}`);
-    } else {
+    // Strategy: prefer Whisper file-based transcription when available because
+    // it produces higher quality output than the live-streamed segments captured
+    // during recording. Fall back to pre-provided segments only when Whisper is
+    // unavailable or fails.
+    const whisperAvailable = audioPath && whisperService.isModelAvailable();
+
+    if (whisperAvailable) {
+      this.log(
+        `Whisper model available, attempting file-based transcription` +
+        (providedSegments.length > 0
+          ? ` (${providedSegments.length} pre-provided segments available as fallback)`
+          : '')
+      );
       try {
         emitProgress({
           step: 'transcribing',
@@ -125,8 +129,6 @@ export class PostProcessor {
           message: 'Loading Whisper model...',
         });
 
-        // Call WhisperService.transcribeFile() - implemented by Agent B
-        // Returns an array compatible with TranscriptSegment
         const whisperResults = await whisperService.transcribeFile(audioPath);
 
         segments = whisperResults.map((result) => ({
@@ -136,18 +138,70 @@ export class PostProcessor {
           confidence: result.confidence,
         }));
 
-        emitProgress({
-          step: 'transcribing',
-          percent: 40,
-          message: `Transcription complete: ${segments.length} segments`,
-        });
-
-        this.log(`Transcription complete: ${segments.length} segments`);
+        if (segments.length > 0) {
+          emitProgress({
+            step: 'transcribing',
+            percent: 40,
+            message: `Whisper transcription complete: ${segments.length} segments`,
+          });
+          this.log(`Whisper file transcription complete: ${segments.length} segments`);
+        } else {
+          this.log('Whisper returned 0 segments, will try pre-provided segments as fallback');
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.log(`Transcription failed: ${message}`);
+        this.log(`Whisper file transcription failed: ${message}`);
+        // Fall through to use pre-provided segments below
+      }
+    } else {
+      this.log(
+        `Whisper file transcription skipped: ${!audioPath ? 'no audio file path' : 'model not available'}`
+      );
+    }
 
-        // Return empty result if transcription fails entirely
+    // Fall back to pre-provided segments if Whisper did not produce results
+    if (segments.length === 0 && providedSegments.length > 0) {
+      segments = providedSegments.sort((a, b) => a.startTime - b.startTime);
+      emitProgress({
+        step: 'transcribing',
+        percent: 40,
+        message: `Using captured transcript (${segments.length} segments)`,
+      });
+      this.log(`Using pre-provided transcript segments as fallback: ${segments.length}`);
+    }
+
+    // If neither Whisper nor pre-provided segments produced anything, and we
+    // have an audio path but Whisper was not available, attempt Whisper anyway
+    // as a last resort (it will throw if the model truly cannot load).
+    if (segments.length === 0 && audioPath && !whisperAvailable) {
+      try {
+        emitProgress({
+          step: 'transcribing',
+          percent: 5,
+          message: 'Attempting transcription...',
+        });
+
+        const whisperResults = await whisperService.transcribeFile(audioPath);
+        segments = whisperResults.map((result) => ({
+          text: result.text,
+          startTime: result.startTime,
+          endTime: result.endTime,
+          confidence: result.confidence,
+        }));
+
+        if (segments.length > 0) {
+          emitProgress({
+            step: 'transcribing',
+            percent: 40,
+            message: `Transcription complete: ${segments.length} segments`,
+          });
+          this.log(`Whisper last-resort transcription complete: ${segments.length} segments`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log(`Whisper last-resort transcription failed: ${message}`);
+
+        // No segments from any source - return empty result
         return {
           transcriptSegments: [],
           extractedFrames: [],

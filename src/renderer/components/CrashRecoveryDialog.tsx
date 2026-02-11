@@ -5,7 +5,7 @@
  * crash or abnormal exit. Offers the user the choice to recover or discard.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 // ============================================================================
 // Types
@@ -104,6 +104,26 @@ export function CrashRecoveryDialog({
   const sessionDuration = session.metadata?.sessionDurationMs ||
     (session.lastSaveTime - session.startTime);
 
+  const handleRecover = useCallback(async () => {
+    setIsRecovering(true);
+    try {
+      onRecover(session);
+    } catch (error) {
+      console.error('Recovery failed:', error);
+      setIsRecovering(false);
+    }
+  }, [onRecover, session]);
+
+  const handleDiscard = useCallback(async () => {
+    setIsDiscarding(true);
+    try {
+      onDiscard();
+    } catch (error) {
+      console.error('Discard failed:', error);
+      setIsDiscarding(false);
+    }
+  }, [onDiscard]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -120,27 +140,7 @@ export function CrashRecoveryDialog({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isRecovering, isDiscarding]);
-
-  const handleRecover = async () => {
-    setIsRecovering(true);
-    try {
-      onRecover(session);
-    } catch (error) {
-      console.error('Recovery failed:', error);
-      setIsRecovering(false);
-    }
-  };
-
-  const handleDiscard = async () => {
-    setIsDiscarding(true);
-    try {
-      onDiscard();
-    } catch (error) {
-      console.error('Discard failed:', error);
-      setIsDiscarding(false);
-    }
-  };
+  }, [isRecovering, isDiscarding, handleRecover, handleDiscard]);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 overflow-y-auto">

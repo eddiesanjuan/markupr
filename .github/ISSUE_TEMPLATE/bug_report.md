@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve FeedbackFlow
+about: Report a bug to help us improve markupr
 title: '[Bug] '
 labels: bug
 assignees: ''
@@ -31,7 +31,7 @@ If applicable, add screenshots to help explain the problem.
 ## Environment
 
 - **OS**: [e.g., macOS 14.0, Windows 11]
-- **FeedbackFlow Version**: [e.g., 0.4.0]
+- **markupr Version**: [e.g., 0.4.0]
 - **Installation Method**: [e.g., DMG, installer, AppImage]
 
 ## Logs
@@ -52,5 +52,5 @@ Add any other context about the problem here.
 ## Checklist
 
 - [ ] I have searched existing issues to ensure this is not a duplicate
-- [ ] I have tried the latest version of FeedbackFlow
+- [ ] I have tried the latest version of markupr
 - [ ] I have included all relevant information above

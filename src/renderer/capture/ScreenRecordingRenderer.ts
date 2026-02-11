@@ -419,6 +419,33 @@ export class ScreenRecordingRenderer {
     }
   }
 
+  /**
+   * Immediately release all capture tracks to clear the macOS recording indicator.
+   * This is a fast operation that does not wait for MediaRecorder finalization,
+   * in-flight chunk writes, or the main-process persistence layer. Call this
+   * before the full stop() for immediate user feedback when the user clicks stop.
+   *
+   * Idempotent: safe to call multiple times or when no tracks are active.
+   */
+  releaseCaptureTracks(): void {
+    if (this.mediaStream) {
+      this.stopTracks(this.mediaStream);
+      this.mediaStream = null;
+    }
+    // Also stop tracks on the recorder's internal stream reference if it differs
+    // from the stored mediaStream (e.g. after partial cleanup).
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      try {
+        const recorderStream = this.mediaRecorder.stream;
+        if (recorderStream) {
+          this.stopTracks(recorderStream);
+        }
+      } catch {
+        // Best effort.
+      }
+    }
+  }
+
   forceReleaseOrphanedCapture(): void {
     const hasStreamLeak = this.hasLiveTrack(this.mediaStream);
     const hasRecorderLeak = this.hasLiveTrack(this.mediaRecorder?.stream);
