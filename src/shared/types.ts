@@ -122,6 +122,9 @@ export interface AppSettings {
   debugMode: boolean;
   keepAudioBackups: boolean;
 
+  // Onboarding
+  hasCompletedOnboarding: boolean;
+
   // Legacy fields (for migration compatibility)
   /** @deprecated Use imageQuality instead */
   screenshotQuality?: number;
@@ -183,6 +186,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // Advanced
   debugMode: false,
   keepAudioBackups: false,
+
+  // Onboarding
+  hasCompletedOnboarding: false,
 };
 
 // =============================================================================

@@ -66,6 +66,9 @@ export interface AppSettings {
   debugMode: boolean;
   keepAudioBackups: boolean;
 
+  // Onboarding
+  hasCompletedOnboarding: boolean;
+
   // Legacy (for migration compatibility - these are mapped to secure storage or new fields)
   /** @deprecated Use audioDeviceId instead */
   preferredAudioDevice?: string;
@@ -169,6 +172,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   // Advanced
   debugMode: false,
   keepAudioBackups: false,
+
+  // Onboarding
+  hasCompletedOnboarding: false,
 };
 
 /**
@@ -202,6 +208,7 @@ const SETTINGS_SCHEMA = {
   audioDeviceId: { type: ['string', 'null'] },
   debugMode: { type: 'boolean' },
   keepAudioBackups: { type: 'boolean' },
+  hasCompletedOnboarding: { type: 'boolean' },
 } as const;
 
 // ============================================================================

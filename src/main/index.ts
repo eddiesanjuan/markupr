@@ -2244,6 +2244,11 @@ function setupIPC(): void {
       console.log('[Main] Hotkeys updated:', results);
     }
 
+    // Update in-memory onboarding flag when persisted
+    if (newSettings.hasCompletedOnboarding) {
+      hasCompletedOnboarding = true;
+    }
+
     return settings;
   });
 
@@ -2996,14 +3001,14 @@ app.whenReady().then(async () => {
   settingsManager = new SettingsManager();
   console.log('[Main] Settings loaded');
 
-  // 3. Determine onboarding readiness from BYOK keys + transcription path
+  // 3. Determine onboarding readiness from persisted flag or BYOK keys + transcription path
   const [hasOpenAiKey, hasAnthropicKey] = await Promise.all([
     settingsManager.hasApiKey('openai'),
     settingsManager.hasApiKey('anthropic'),
   ]);
   const hasLocalWhisperModel = modelDownloadManager.hasAnyModel();
   const hasTranscriptionPath = hasOpenAiKey || hasLocalWhisperModel;
-  hasCompletedOnboarding = hasAnthropicKey && hasTranscriptionPath;
+  hasCompletedOnboarding = settingsManager.get('hasCompletedOnboarding') || (hasAnthropicKey && hasTranscriptionPath);
 
   // 5. Initialize session controller
   await sessionController.initialize();

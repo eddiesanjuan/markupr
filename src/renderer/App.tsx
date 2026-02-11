@@ -978,6 +978,8 @@ const App: React.FC = () => {
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
+    // Persist onboarding completion so it doesn't repeat on next launch
+    window.markupr.setSettings({ hasCompletedOnboarding: true }).catch(() => {});
     // Refresh transcription capability after onboarding
     window.markupr.whisper
       .hasTranscriptionCapability()
@@ -987,6 +989,8 @@ const App: React.FC = () => {
 
   const handleOnboardingSkip = useCallback(() => {
     setShowOnboarding(false);
+    // Persist onboarding completion so it doesn't repeat on next launch
+    window.markupr.setSettings({ hasCompletedOnboarding: true }).catch(() => {});
   }, []);
 
   const handleOpenSession = useCallback(async (session: { folder: string }) => {

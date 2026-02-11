@@ -383,10 +383,7 @@ const MicrophoneStep: React.FC<{
   const handleRecheck = async () => {
     setIsRechecking(true);
     try {
-      const isGranted = await window.markupr.permissions.check('microphone');
-      if (!isGranted) {
-        onRequestPermission();
-      }
+      onRequestPermission();
     } finally {
       setTimeout(() => setIsRechecking(false), 500);
     }
@@ -566,13 +563,7 @@ const ScreenRecordingStep: React.FC<{
   const handleRecheck = async () => {
     setIsRechecking(true);
     try {
-      const isGranted = await window.markupr.permissions.check('screen');
-      // The parent component will update status via the onRequestPermission callback
-      // which triggers a re-render. We just need to wait a moment.
-      if (!isGranted) {
-        // Still not granted, trigger the request flow again
-        onRequestPermission();
-      }
+      onRequestPermission();
     } finally {
       setTimeout(() => setIsRechecking(false), 500);
     }
@@ -1003,7 +994,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
                 strokeLinecap="round"
               />
             </svg>
-            <span>Voice transcription enabled</span>
+            <span>Voice transcription ready</span>
           </div>
           <div style={styles.featureItem}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
