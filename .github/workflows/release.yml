@@ -33,7 +33,7 @@ jobs:
       is-prerelease: ${{ steps.version.outputs.is-prerelease }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Extract version from tag
         id: version
@@ -70,10 +70,10 @@ jobs:
     needs: validate-tag
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -83,7 +83,7 @@ jobs:
 
       # Cache Electron binaries
       - name: Cache Electron
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/Library/Caches/electron
           key: macos-electron-${{ hashFiles('package-lock.json') }}
@@ -145,7 +145,7 @@ jobs:
         run: ls -la release/
 
       - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-macos
           path: |
@@ -165,10 +165,10 @@ jobs:
     needs: validate-tag
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -178,7 +178,7 @@ jobs:
 
       # Cache Electron binaries
       - name: Cache Electron
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/AppData/Local/electron/Cache
           key: windows-electron-${{ hashFiles('package-lock.json') }}
@@ -207,7 +207,7 @@ jobs:
         run: dir release
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-windows
           path: |
@@ -230,12 +230,12 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
 
