@@ -364,6 +364,7 @@ const App: React.FC = () => {
         return;
       }
 
+      recorder.releaseCaptureTracks();
       if (recorder.isRecording() || recorder.getSessionId()) {
         await recorder.stop().catch((error) => {
           console.warn('[App] Failed to stop continuous screen recording:', error);
