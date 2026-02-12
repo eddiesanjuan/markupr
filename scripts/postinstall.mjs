@@ -7,11 +7,22 @@ function isRailwayEnvironment() {
 }
 
 function run(command, args) {
+  const commandLabel = [command, ...args].join(' ');
+  console.log(`[postinstall] Running: ${commandLabel}`);
+
   const result = spawnSync(command, args, {
     stdio: 'inherit',
     env: process.env,
+    shell: process.platform === 'win32',
   });
+
+  if (result.error) {
+    console.error(`[postinstall] Failed to execute "${commandLabel}":`, result.error);
+    process.exit(1);
+  }
+
   if (result.status !== 0) {
+    console.error(`[postinstall] Command failed: ${commandLabel} (exit ${result.status ?? 1})`);
     process.exit(result.status ?? 1);
   }
 }
