@@ -199,9 +199,9 @@ jobs:
       # Build unsigned if no signing credentials
       - name: Package Windows (unsigned)
         if: ${{ env.WIN_CSC_LINK == '' }}
-        run: npm run package:win
+        run: npx electron-builder --win --config electron-builder.yml
         env:
-          WIN_CSC_LINK: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: List build artifacts
         run: dir release
