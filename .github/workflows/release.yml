@@ -95,7 +95,7 @@ jobs:
 
       # Install certificates for code signing
       - name: Install Apple certificates
-        if: ${{ env.APPLE_CERTIFICATE != '' }}
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -122,8 +122,8 @@ jobs:
 
       # Build and sign for macOS
       - name: Package macOS (signed)
-        if: ${{ env.APPLE_ID != '' }}
-        run: npm run package:mac
+        if: ${{ secrets.APPLE_ID != '' && secrets.APPLE_CERTIFICATE != '' }}
+        run: npx electron-builder --mac --publish never --config electron-builder.yml
         env:
           # Code signing
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -136,8 +136,8 @@ jobs:
 
       # Build unsigned if no signing credentials
       - name: Package macOS (unsigned)
-        if: ${{ env.APPLE_ID == '' }}
-        run: npm run package:mac:unsigned
+        if: ${{ secrets.APPLE_ID == '' || secrets.APPLE_CERTIFICATE == '' }}
+        run: CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac --publish never --config electron-builder.yml
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
@@ -190,16 +190,16 @@ jobs:
 
       # Build and sign for Windows
       - name: Package Windows (signed)
-        if: ${{ env.WIN_CSC_LINK != '' }}
-        run: npm run package:win
+        if: ${{ secrets.WIN_CSC_LINK != '' }}
+        run: npx electron-builder --win --x64 --publish never --config electron-builder.yml
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       # Build unsigned if no signing credentials
       - name: Package Windows (unsigned)
-        if: ${{ env.WIN_CSC_LINK == '' }}
-        run: npx electron-builder --win --config electron-builder.yml
+        if: ${{ secrets.WIN_CSC_LINK == '' }}
+        run: npx electron-builder --win --x64 --publish never --config electron-builder.yml
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
