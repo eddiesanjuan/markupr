@@ -655,6 +655,265 @@
     }
 
     /* ========================================
+       QUICK VISUAL WALKTHROUGH
+       ======================================== */
+    .quickwalk {
+      background: var(--bg-primary);
+    }
+
+    .quickwalk__panel {
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      box-shadow: var(--shadow-lg);
+      padding: clamp(20px, 4vw, 32px);
+    }
+
+    .quickwalk__layout {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: clamp(20px, 3.5vw, 36px);
+      align-items: stretch;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    .quickwalk__sim {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .quickwalk__status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 12px;
+    }
+
+    .quickwalk__status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+      animation: quickwalk-recording-pulse 1200ms ease-in-out infinite;
+    }
+
+    .quickwalk__status-time {
+      margin-left: auto;
+      color: var(--text-tertiary);
+      letter-spacing: 0.02em;
+    }
+
+    .quickwalk__pipeline {
+      display: grid;
+      grid-template-columns: auto minmax(60px, 1fr) auto minmax(60px, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .quickwalk__node {
+      border: 2px solid var(--border-strong);
+      border-radius: 4px;
+      padding: 10px 12px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--text-secondary);
+      background: var(--bg-primary);
+    }
+
+    .quickwalk__node--capture {
+      animation: quickwalk-node-cycle 6s ease-in-out infinite;
+    }
+
+    .quickwalk__node--align {
+      animation: quickwalk-node-cycle 6s ease-in-out 2s infinite;
+    }
+
+    .quickwalk__node--report {
+      animation: quickwalk-node-cycle 6s ease-in-out 4s infinite;
+    }
+
+    .quickwalk__pipe {
+      position: relative;
+      height: 2px;
+      background: var(--border-strong);
+      overflow: hidden;
+    }
+
+    .quickwalk__pulse {
+      position: absolute;
+      inset: -2px auto -2px 0;
+      width: 28px;
+      background: linear-gradient(90deg, transparent 0%, var(--accent) 45%, transparent 100%);
+      transform: translateX(-120%);
+      animation: quickwalk-flow 3s linear infinite;
+    }
+
+    .quickwalk__pulse--delay {
+      animation-delay: 1.5s;
+    }
+
+    .quickwalk__caption {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .quickwalk__result {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .quickwalk__report {
+      border: 2px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      padding: 14px;
+      min-height: 170px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .quickwalk__line {
+      height: 10px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .quickwalk__line--title {
+      width: 74%;
+      height: 12px;
+      background: rgba(245, 158, 11, 0.45);
+      animation: quickwalk-line-cycle 6s ease-in-out infinite;
+    }
+
+    .quickwalk__line--full {
+      width: 100%;
+    }
+
+    .quickwalk__line--mid {
+      width: 86%;
+    }
+
+    .quickwalk__line--short {
+      width: 58%;
+    }
+
+    .quickwalk__image {
+      margin-top: 2px;
+      width: 100%;
+      height: 48px;
+      border: 2px solid var(--border-strong);
+      border-radius: 3px;
+      background:
+        linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.05)),
+        repeating-linear-gradient(
+          -45deg,
+          rgba(255, 255, 255, 0.08) 0px,
+          rgba(255, 255, 255, 0.08) 8px,
+          transparent 8px,
+          transparent 16px
+        );
+      animation: quickwalk-line-cycle 6s ease-in-out 4s infinite;
+    }
+
+    .quickwalk__paste {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--text-tertiary);
+    }
+
+    @keyframes quickwalk-recording-pulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+
+    @keyframes quickwalk-flow {
+      0% { transform: translateX(-130%); opacity: 0; }
+      15% { opacity: 1; }
+      100% { transform: translateX(240%); opacity: 0; }
+    }
+
+    @keyframes quickwalk-node-cycle {
+      0%, 100% {
+        border-color: var(--border-strong);
+        color: var(--text-secondary);
+        box-shadow: none;
+      }
+      10%, 36% {
+        border-color: var(--accent);
+        color: var(--text-primary);
+        box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+      }
+      50% {
+        border-color: var(--border-strong);
+        color: var(--text-secondary);
+        box-shadow: none;
+      }
+    }
+
+    @keyframes quickwalk-line-cycle {
+      0%, 100% { opacity: 0.35; }
+      16%, 44% { opacity: 1; }
+      58% { opacity: 0.4; }
+    }
+
+    @media (max-width: 840px) {
+      .quickwalk__layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .quickwalk__pipeline {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .quickwalk__pipe {
+        height: 12px;
+        width: 2px;
+        margin: 0 auto;
+      }
+
+      .quickwalk__pulse {
+        inset: 0;
+        width: 2px;
+        height: 20px;
+        background: linear-gradient(180deg, transparent 0%, var(--accent) 45%, transparent 100%);
+        transform: translateY(-130%);
+        animation-name: quickwalk-flow-mobile;
+      }
+    }
+
+    @keyframes quickwalk-flow-mobile {
+      0% { transform: translateY(-130%); opacity: 0; }
+      15% { opacity: 1; }
+      100% { transform: translateY(240%); opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .quickwalk__status-dot,
+      .quickwalk__node,
+      .quickwalk__pulse,
+      .quickwalk__line--title,
+      .quickwalk__image {
+        animation: none !important;
+      }
+    }
+
+    /* ========================================
        WHY IT MATTERS
        ======================================== */
     .why__grid {
@@ -1153,6 +1412,54 @@
         <kbd>&#8679;</kbd>
         <span class="kbd-plus">+</span>
         <kbd>F</kbd>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================
+       QUICK VISUAL WALKTHROUGH
+       ========================================== -->
+  <section class="quickwalk" aria-label="Quick visual walkthrough">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">Quick visual walkthrough</p>
+        <h2>See the full flow in a few seconds.</h2>
+        <p class="body-sm" style="max-width: 620px; margin-top: 14px;">
+          You record and mark shots. After you stop, markupR runs AI alignment on narration + frames and generates a clean report your agent can use.
+        </p>
+      </div>
+
+      <div class="quickwalk__layout">
+        <div class="quickwalk__panel quickwalk__sim reveal reveal-delay-1" aria-label="Animated capture to report pipeline">
+          <div class="quickwalk__status">
+            <span class="quickwalk__status-dot" aria-hidden="true"></span>
+            <span>Session active: recording + manual shot marks</span>
+            <span class="quickwalk__status-time">00:42</span>
+          </div>
+
+          <div class="quickwalk__pipeline" aria-hidden="true">
+            <div class="quickwalk__node quickwalk__node--capture">Capture</div>
+            <div class="quickwalk__pipe"><span class="quickwalk__pulse"></span></div>
+            <div class="quickwalk__node quickwalk__node--align">AI Aligns</div>
+            <div class="quickwalk__pipe"><span class="quickwalk__pulse quickwalk__pulse--delay"></span></div>
+            <div class="quickwalk__node quickwalk__node--report">Report Ready</div>
+          </div>
+
+          <p class="quickwalk__caption">
+            Shot markers confirm instantly while you narrate. Assembly happens after stop.
+          </p>
+        </div>
+
+        <div class="quickwalk__panel quickwalk__result reveal reveal-delay-2">
+          <div class="quickwalk__report" aria-hidden="true">
+            <div class="quickwalk__line quickwalk__line--title"></div>
+            <div class="quickwalk__line quickwalk__line--full"></div>
+            <div class="quickwalk__line quickwalk__line--mid"></div>
+            <div class="quickwalk__line quickwalk__line--short"></div>
+            <div class="quickwalk__image"></div>
+          </div>
+          <p class="quickwalk__paste">Output: AI-readable markdown ready to paste into GitHub, Linear, Slack, or your coding agent.</p>
+        </div>
       </div>
     </div>
   </section>
