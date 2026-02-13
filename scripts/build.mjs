@@ -27,7 +27,13 @@ function run(command, args) {
 }
 
 if (!isRailwayEnvironment()) {
+  console.log('[build] Building desktop app...');
   run('npx', ['electron-vite', 'build']);
+
+  console.log('[build] Building CLI...');
+  run('node', ['scripts/build-cli.mjs']);
+
+  console.log('[build] All builds complete.');
   process.exit(0);
 }
 

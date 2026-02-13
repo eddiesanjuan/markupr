@@ -13,7 +13,9 @@
 
 import { EventEmitter } from 'events';
 import { basename, join } from 'path';
-import { app } from 'electron';
+// NOTE: 'electron' is NOT imported at the top level. This allows WhisperService
+// to be used in non-Electron environments (e.g. the CLI). The `app` reference
+// is lazily required inside getModelsDirectory() with a try/catch fallback.
 import { existsSync } from 'fs';
 import { readFile, unlink } from 'fs/promises';
 import { execFile } from 'child_process';
@@ -119,6 +121,9 @@ export class WhisperService extends EventEmitter {
    */
   getModelsDirectory(): string {
     try {
+      // Dynamic require to avoid crash in non-Electron environments (e.g. CLI)
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { app } = require('electron');
       return join(app.getPath('userData'), 'whisper-models');
     } catch {
       const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';

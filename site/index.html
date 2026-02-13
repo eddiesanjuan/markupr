@@ -1047,6 +1047,105 @@
     .syn-op { color: var(--syn-operator); }
 
     /* ========================================
+       CLI INSTALL SECTION
+       ======================================== */
+    .cli {
+      background: var(--bg-primary);
+    }
+
+    .cli__content {
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    @media (min-width: 768px) {
+      .cli__content {
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        align-items: center;
+      }
+    }
+
+    .cli__text p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .cli__text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .terminal {
+      background: #0A0A0B;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .terminal__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .terminal__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .terminal__dot--red { background: #FF5F57; }
+    .terminal__dot--yellow { background: #FEBC2E; }
+    .terminal__dot--green { background: #28C840; }
+
+    .terminal__title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #666;
+      margin-left: 8px;
+    }
+
+    .terminal__body {
+      padding: 24px 20px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.8;
+      color: #E5E5E5;
+    }
+
+    .terminal__prompt {
+      color: #86EFAC;
+      user-select: none;
+    }
+
+    .terminal__command {
+      color: #93C5FD;
+    }
+
+    .terminal__line {
+      margin-bottom: 12px;
+    }
+
+    .terminal__line:last-child {
+      margin-bottom: 0;
+    }
+
+    .terminal__comment {
+      color: #666666;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* ========================================
        PREMIUM TEASER
        ======================================== */
     .premium__features {
@@ -1685,6 +1784,56 @@ I'm on the Settings page but the Dashboard tab
 is still highlighted. Looks like the active state
 isn't updating on route change.
 <span class="syn-fn">![Screenshot at 1:45]</span><span class="syn-str">(screenshots/fb-003.png)</span></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       CLI INSTALLATION
+       ========================================== -->
+  <section class="cli" aria-label="CLI installation">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">For developers and AI agents</p>
+        <h2>Install from your terminal.</h2>
+      </div>
+
+      <div class="cli__content">
+        <div class="cli__text reveal">
+          <p>
+            Same pipeline, no desktop app required. Process screen recordings from CI/CD, scripts, or AI agents.
+          </p>
+          <p>
+            The CLI runs the full markupr post-processing pipeline: transcription, frame extraction, and markdown generation. Point it at a video file and get the same AI-ready output.
+          </p>
+        </div>
+
+        <div class="terminal reveal reveal-delay-1">
+          <div class="terminal__header">
+            <span class="terminal__dot terminal__dot--red"></span>
+            <span class="terminal__dot terminal__dot--yellow"></span>
+            <span class="terminal__dot terminal__dot--green"></span>
+            <span class="terminal__title">terminal</span>
+          </div>
+          <div class="terminal__body">
+            <div class="terminal__line">
+              <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr analyze ./recording.mov</span>
+            </div>
+            <div class="terminal__comment">
+              <div class="terminal__line">
+                <span class="terminal__prompt">#</span> Or install globally:
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npm install -g markupr</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">bun install -g markupr</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

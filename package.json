@@ -4,6 +4,19 @@
   "description": "AI-ready developer feedback capture tool with voice narration and intelligent screenshots",
   "type": "module",
   "main": "dist/main/index.mjs",
+  "bin": {
+    "markupr": "./dist/cli/index.mjs"
+  },
+  "files": [
+    "dist/cli/**/*",
+    "dist/main/pipeline/**/*",
+    "dist/main/output/**/*",
+    "dist/main/transcription/**/*",
+    "dist/shared/**/*",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "author": "Eddie San Juan",
   "license": "MIT",
   "homepage": "https://markupr.com",
@@ -68,7 +81,9 @@
     "generate:icons": "node scripts/generate-icons.mjs",
     "generate:tray-icons": "node scripts/generate-tray-icons.mjs",
     "generate:installer-images": "node scripts/generate-installer-images.cjs",
-    "prebuild:win": "npm run generate:installer-images"
+    "prebuild:win": "npm run generate:installer-images",
+    "build:cli": "node scripts/build-cli.mjs",
+    "prepublishOnly": "npm run build:cli"
   },
   "devDependencies": {
     "@electron/notarize": "^2.2.0",
@@ -83,6 +98,7 @@
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0",
     "electron-vite": "^2.0.0",
+    "esbuild": "^0.27.3",
     "eslint": "^8.0.0",
     "eslint-plugin-react": "^7.0.0",
     "eslint-plugin-react-hooks": "^4.0.0",
@@ -94,6 +110,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.73.0",
+    "commander": "^14.0.3",
     "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.7.3",
