@@ -453,7 +453,7 @@ markupr/
 │   │   └── hooks/             # React hooks (theme, animation)
 │   ├── preload/               # Electron preload (secure IPC bridge)
 │   └── shared/                # Shared types and constants
-├── tests/                     # Test suite (356 tests)
+├── tests/                     # Test suite (366 tests)
 ├── docs/                      # Documentation
 ├── site/                      # Landing page
 └── package.json
