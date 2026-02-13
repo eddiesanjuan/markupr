@@ -18,10 +18,11 @@
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> |
   <a href="#quick-start">Quick Start</a> |
+  <a href="#features">Features</a> |
   <a href="#how-it-works">How It Works</a> |
   <a href="#installation">Installation</a> |
+  <a href="#cli-usage">CLI Usage</a> |
   <a href="#usage">Usage</a> |
   <a href="#keyboard-shortcuts">Shortcuts</a> |
   <a href="#export-formats">Export</a> |
@@ -36,6 +37,33 @@ markupr is a menu bar app that intelligently captures developer feedback. Press 
 One hotkey to start. One hotkey to stop. A Markdown file with your words, contextually-placed screenshots, and intelligent structure -- ready to hand to your AI coding agent, paste into a GitHub issue, or drop in a Slack thread.
 
 If markupr saves you hours, consider supporting development on [Ko-fi](https://ko-fi.com/eddiesanjuan) so updates and fixes ship faster.
+
+## Quick Start
+
+### CLI (for developers and AI agents)
+```bash
+npx markupr analyze ./recording.mov
+```
+
+Or install globally:
+```bash
+npm install -g markupr
+# or
+bun install -g markupr
+```
+
+### Desktop App
+Download from [markupr.com](https://markupr.com) or the [releases page](https://github.com/eddiesanjuan/markupr/releases) -- available for macOS, Windows, and Linux.
+
+**First-time setup:**
+1. Install the application (DMG for macOS, installer for Windows)
+2. Grant required permissions (Microphone, Screen Recording)
+3. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows) to start recording
+4. Narrate your feedback while markupr captures screenshots at pause points
+5. Press the hotkey again to stop -- post-processing runs automatically
+6. Paste the file path from your clipboard into your AI coding agent
+
+**No API key required!** markupr uses local Whisper transcription by default.
 
 ## Features
 
@@ -76,17 +104,6 @@ If markupr saves you hours, consider supporting development on [Ko-fi](https://k
 - **Session history browser** with search and export
 - **Dark/light/system theme** support
 - **Onboarding experience** for first-run setup
-
-## Quick Start
-
-1. **Download** the latest release for your platform
-2. **Install** the application (DMG for macOS, installer for Windows)
-3. **Press** `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows) to start recording
-4. **Narrate** your feedback while markupr captures screenshots at pause points
-5. **Press** the hotkey again to stop -- the post-processing pipeline runs automatically
-6. **Paste** the file path from your clipboard into your AI coding agent
-
-**No API key required!** markupr uses local Whisper transcription by default. Add your OpenAI API key in Settings for cloud transcription.
 
 ## How It Works
 
@@ -197,6 +214,84 @@ Claude analyzes your transcript alongside screenshots to produce an intelligent 
 | | Accent Color | Customize UI accent color |
 | **Hotkeys** | Toggle Recording | Default: `Cmd/Ctrl+Shift+F` |
 | | Manual Screenshot | Default: `Cmd/Ctrl+Shift+S` |
+
+## CLI Usage
+
+markupr can run as a standalone CLI tool -- no Electron or desktop app required. This is ideal for:
+- CI/CD pipelines processing screen recordings
+- AI coding agents that need to analyze recordings programmatically
+- Developers who prefer the command line
+
+### Installation
+
+```bash
+# Run without installing
+npx markupr analyze ./recording.mov
+
+# Install globally via npm
+npm install -g markupr
+
+# Install globally via bun
+bun install -g markupr
+```
+
+### Commands
+
+#### `markupr analyze <video-file>`
+
+Process a screen recording into a structured Markdown document with extracted frames and transcript.
+
+**Options:**
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--audio <file>` | Separate audio file (if not embedded in video) | Auto-extracted from video |
+| `--output <dir>` | Output directory | `./markupr-output` |
+| `--whisper-model <path>` | Path to local Whisper model file | Auto-detected in `~/.markupr/whisper-models/` |
+| `--openai-key <key>` | OpenAI API key for cloud transcription | — |
+| `--no-frames` | Skip frame extraction | `false` |
+| `--verbose` | Show detailed progress output | `false` |
+
+**Examples:**
+
+```bash
+# Basic usage - analyze a screen recording
+markupr analyze ./bug-demo.mov
+
+# Use a specific output directory
+markupr analyze ./recording.mov --output ./reports
+
+# Use OpenAI for transcription instead of local Whisper
+markupr analyze ./recording.mov --openai-key sk-...
+
+# Separate audio and video files
+markupr analyze ./screen.mov --audio ./voiceover.wav
+
+# Skip frame extraction (transcript only)
+markupr analyze ./recording.mov --no-frames
+```
+
+### Requirements
+
+- **Node.js** 18+
+- **ffmpeg** must be installed and on your PATH (for frame extraction and audio processing)
+  - macOS: `brew install ffmpeg`
+  - Ubuntu/Debian: `sudo apt install ffmpeg`
+  - Windows: `choco install ffmpeg` or download from ffmpeg.org
+
+### For AI Agents
+
+markupr is designed to be used by AI coding agents. An agent can:
+
+```bash
+# Install and process a recording in one command
+npx markupr analyze ./recording.mov --output ./feedback
+
+# The output is a structured Markdown file with embedded screenshots
+# Perfect for feeding into Claude, GPT, or any LLM
+cat ./feedback/markupr-report.md
+```
+
+The output Markdown follows the llms.txt convention -- structured, parseable, and optimized for AI consumption.
 
 ## Usage
 
