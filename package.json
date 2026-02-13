@@ -3,19 +3,11 @@
   "version": "2.1.8",
   "description": "AI-ready developer feedback capture tool with voice narration and intelligent screenshots",
   "type": "module",
-  "main": "dist/main/index.mjs",
   "bin": {
     "markupr": "./dist/cli/index.mjs"
   },
   "files": [
-    "dist/cli/**/*",
-    "dist/main/pipeline/**/*",
-    "dist/main/output/**/*",
-    "dist/main/transcription/**/*",
-    "dist/shared/**/*",
-    "package.json",
-    "README.md",
-    "LICENSE"
+    "dist/cli"
   ],
   "author": "Eddie San Juan",
   "license": "MIT",
