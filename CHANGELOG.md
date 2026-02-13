@@ -5,7 +5,65 @@ All notable changes to markupr will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0] - 2026-02-13
+
+### Highlights
+**Standalone CLI mode and npm distribution.** markupr can now be installed via `npm install -g markupr` or run with `npx markupr analyze` -- no Electron or desktop app required.
+
+### Added
+- **Standalone CLI mode** (`markupr analyze <video>`) for npm/bun install -- no Electron required (#21)
+- **Platform-aware download buttons** on website for Mac ARM, Mac Intel, and Windows
+- **Visual walkthrough animation** on homepage
+
+### Changed
+- **npm package trimmed from 509KB to 86KB** by removing Electron bloat from the published package
+
+### Fixed
+- Windows NSIS installer: resolved macro collision, simplified custom hooks
+- Windows release packaging: fixed unsigned builds, limited to x64
+- Release workflow conditionals for tag-based builds
+- Windows postinstall script and CI coverage
+- Landing page download links now always point to latest release
+- Download CTA no longer points to old v0.4.0 FeedbackFlow release
+- Direct DMG download link instead of releases page redirect
+
+## [2.1.0] - 2026-02-08
+
+### Highlights
+**Architecture refactor.** Decomposed god components, adopted a unified theme system, and improved accessibility across the entire UI.
+
+### Changed
+- Comprehensive architecture refactor: decomposed monolithic components into focused modules
+- Adopted unified theme system with CSS variables
+- Improved accessibility (a11y) across all components
+- Removed internal planning docs for public launch
+- CI dependency updates (GitHub Actions group bump)
+
+### Fixed
+- Shell styling regression
+
+## [2.0.0] - 2026-02-05
+
+### Highlights
+**Public launch release.** markupr goes open source under MIT license.
+
+### Added
+- **Post-processing pipeline**: transcribe -> analyze -> extract frames -> generate structured Markdown
+- **AI analysis pipeline** with Claude vision and video timestamp alignment
+- **Key-moment detection** correlates transcript timestamps with screen recording
+- **ffmpeg-based frame extraction** pulls precise frames from video at key moments
+- **Intelligent Markdown output** optimized for LLM consumption (llms.txt inspired)
+- **Clipboard bridge** copies file path (not content) to clipboard after session
+
+### Changed
+- Complete rebrand from FeedbackFlow to markupr
+- Replaced real-time capture with post-processing pipeline architecture
+- Removed Deepgram tier; transcription is now OpenAI API or local Whisper
+- Mic capture replaced with MediaRecorder pipeline
+
+### Removed
+- Deepgram transcription integration
+- Real-time screenshot capture (replaced by post-processing frame extraction)
 
 ## [1.0.0] - 2026-02-04
 
@@ -113,13 +171,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 2.2.0 | 2026-02-13 | **CLI mode**, npm distribution, package size reduction |
+| 2.1.0 | 2026-02-08 | Architecture refactor, theme system, a11y |
+| 2.0.0 | 2026-02-05 | **Public launch** - post-processing pipeline, markupr rebrand |
 | 1.0.0 | 2026-02-04 | **Initial Public Release** - Bulletproof state machine, offline Whisper |
 | 0.4.0 | 2026-02-02 | Export formats, crash recovery, auto-updater |
 | 0.3.0 | 2026-01-15 | Transcription preview, intelligent capture, settings |
 | 0.2.0 | 2026-01-01 | Window selector, manual screenshots |
 | 0.1.0 | 2025-12-15 | Initial scaffold |
 
-[Unreleased]: https://github.com/eddiesanjuan/markupr/compare/v1.0.0...HEAD
+[2.2.0]: https://github.com/eddiesanjuan/markupr/compare/v2.1.0...v2.2.0
+[2.1.0]: https://github.com/eddiesanjuan/markupr/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/eddiesanjuan/markupr/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/eddiesanjuan/markupr/compare/v0.4.0...v1.0.0
 [0.4.0]: https://github.com/eddiesanjuan/markupr/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eddiesanjuan/markupr/compare/v0.2.0...v0.3.0

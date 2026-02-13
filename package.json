@@ -1,6 +1,6 @@
 {
   "name": "markupr",
-  "version": "2.1.8",
+  "version": "2.2.0",
   "description": "AI-ready developer feedback capture tool with voice narration and intelligent screenshots",
   "type": "module",
   "bin": {
