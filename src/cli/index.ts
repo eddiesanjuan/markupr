@@ -221,6 +221,119 @@ program
     }
   });
 
+// ============================================================================
+// push command group
+// ============================================================================
+
+const pushCmd = program
+  .command('push')
+  .description('Push feedback to external services');
+
+// ============================================================================
+// push linear command
+// ============================================================================
+
+pushCmd
+  .command('linear')
+  .description('Create Linear issues from a markupr feedback report')
+  .argument('<report>', 'Path to the markupr markdown report')
+  .requiredOption('--team <key>', 'Linear team key (e.g., ENG, DES)')
+  .option('--token <token>', 'Linear API key (prefer LINEAR_API_KEY env var)')
+  .option('--project <name>', 'Linear project name to assign issues to')
+  .option('--dry-run', 'Show what would be created without creating anything', false)
+  .action(async (report: string, options: {
+    team: string;
+    token?: string;
+    project?: string;
+    dryRun: boolean;
+  }) => {
+    banner();
+
+    const reportPath = resolve(report);
+
+    if (!existsSync(reportPath)) {
+      fail(`Report file not found: ${reportPath}`);
+      process.exit(EXIT_USER_ERROR);
+    }
+
+    // Warn about insecure token passing
+    if (options.token) {
+      console.warn('  WARNING: Passing tokens via CLI args is insecure (visible in ps, shell history).');
+      console.warn('  Use LINEAR_API_KEY env var instead.');
+      console.warn();
+    }
+
+    // Resolve token: CLI flag overrides env var
+    const apiToken = options.token || process.env.LINEAR_API_KEY;
+    if (!apiToken) {
+      fail('No Linear API token found.');
+      console.log('  Provide via --token flag or LINEAR_API_KEY env var.');
+      process.exit(EXIT_USER_ERROR);
+    }
+
+    // Lazy import to keep startup fast
+    const { LinearIssueCreator } = await import(
+      '../integrations/linear/LinearIssueCreator'
+    );
+
+    try {
+      step(`Report: ${reportPath}`);
+      step(`Team:   ${options.team}`);
+      if (options.project) {
+        step(`Project: ${options.project}`);
+      }
+      if (options.dryRun) {
+        step('Mode:   DRY RUN');
+      }
+      console.log();
+
+      step('Parsing feedback report...');
+      const creator = new LinearIssueCreator(apiToken);
+      const result = await creator.pushReport(reportPath, {
+        token: apiToken,
+        teamKey: options.team,
+        projectName: options.project,
+        dryRun: options.dryRun,
+      });
+
+      console.log();
+
+      if (options.dryRun) {
+        success(`Dry run complete — ${result.created} issue(s) would be created:`);
+        console.log();
+        for (const issue of result.issues) {
+          if (issue.success) {
+            step(`${issue.identifier}: ${issue.issueUrl}`);
+          }
+        }
+      } else {
+        success(`Created ${result.created} issue(s):`);
+        console.log();
+        for (const issue of result.issues) {
+          if (issue.success) {
+            step(`${issue.identifier}: ${issue.issueUrl}`);
+          }
+        }
+      }
+
+      if (result.failed > 0) {
+        console.log();
+        fail(`${result.failed} error(s):`);
+        for (const issue of result.issues) {
+          if (!issue.success) {
+            fail(`  ${issue.error}`);
+          }
+        }
+      }
+
+      console.log();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      fail(message);
+      process.exit(EXIT_USER_ERROR);
+    }
+  });
+
 // Show help if no command provided
 if (process.argv.length <= 2) {
   banner();
