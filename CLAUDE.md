@@ -4,11 +4,12 @@
 
 markupr is a macOS/Windows menu bar app and CLI/MCP tool that intelligently captures developer feedback. It records your screen and voice simultaneously, then uses an intelligent post-processing pipeline to correlate transcript timestamps with the screen recording -- extracting the right frames at the right moments and stitching everything into a structured, AI-ready Markdown document. The output is purpose-built for AI coding agents: every screenshot placed exactly where it belongs, every issue clearly documented.
 
-As of v2.4.0, markupr also ships as:
+As of v2.5.0, markupr also ships as:
 - **CLI tool** (`npx markupr analyze ./recording.mov`) -- headless video analysis pipeline
 - **MCP server** (`npx markupr-mcp`) -- Model Context Protocol server for AI coding agents (capture screenshots, analyze video, start/stop recordings)
+- **GitHub Action** (`eddiesanjuan/markupr-action@v1`) -- CI/CD visual feedback on PRs
 
-**Version:** 2.4.0
+**Version:** 2.5.0
 **License:** MIT (Open Source)
 
 ## Tech Stack
