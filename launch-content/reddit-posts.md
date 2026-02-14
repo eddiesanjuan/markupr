@@ -1,8 +1,59 @@
 # Reddit Launch Posts
 
+## Subreddit Compliance Summary
+
+### r/ClaudeAI (483K members) -- GO
+- **Flair:** "Built with Claude" (required for project showcases)
+- **Format:** Text post (self-post). Must include: 1) what you built, 2) how you built it, 3) screenshots or demos, 4) at least one prompt you used
+- **Self-promotion:** Allowed with "Built with Claude" flair. Community is receptive to "I built" project showcases related to Claude tools
+- **Post type:** Text post with inline links (not link post)
+- **Restrictions:** Focus on demonstrating genuine use of Claude. Avoid purely promotional tone
+- **Account requirements:** Standard Reddit minimums (~25 karma suggested)
+- **Verdict:** SAFE TO POST. Our post fits perfectly -- MCP server for Claude Code. Added prompt example per flair requirements
+
+### r/cursor (77K members) -- GO
+- **Flair:** Use relevant flair if available (e.g., "Tool", "MCP", or general discussion)
+- **Format:** Text post. MCP server and tool sharing posts are common and welcomed in this community
+- **Self-promotion:** Allowed when providing genuine value/utility. Community actively shares MCP servers and extensions
+- **Post type:** Text post with setup instructions
+- **Restrictions:** Keep focus on practical utility for Cursor users. No hard self-promo ratio documented, but value-first approach recommended
+- **Account requirements:** Standard Reddit minimums
+- **Verdict:** SAFE TO POST. MCP tool posts are common here. Our post is practical and setup-focused
+
+### r/webdev (2M members) -- SATURDAY ONLY
+- **Flair:** "Showoff Saturday" (REQUIRED for project showcases)
+- **Format:** Text post. Must use "Showoff Saturday" flair
+- **Self-promotion:** Strictly limited to Saturdays. 9:1 ratio rule (9 non-promotional interactions per 1 promotional post). Posts showcasing projects on other days will be removed
+- **Post type:** Text post
+- **Restrictions:** Project showcases ONLY on Saturdays. Career questions go in monthly pinned thread. No blog spam
+- **Account requirements:** Standard Reddit minimums + established participation history recommended
+- **Verdict:** POST ON SATURDAY ONLY. Good fit for "Showoff Saturday" -- our post frames the problem/solution well for webdev audience. Ensure Eddie's account has some r/webdev participation history first
+
+### r/programming (5.8M members) -- PROCEED WITH CAUTION
+- **Flair:** None required (may not have project-specific flairs)
+- **Format:** Historically link-post oriented (linking to blog posts, GitHub repos, articles). Text posts about technical implementation are also accepted
+- **Self-promotion:** STRICT. Heavily scrutinized. Enforces 90/10 rule. Content must be primarily technical/educational, not promotional. Posts that read as product announcements get removed
+- **Post type:** Link post to GitHub repo OR technical text post. No "I built an app" product pitches
+- **Restrictions:** No questions ("how do I" posts). No low-effort showcases. Technical substance required. Moderators are aggressive about removing self-promo
+- **Account requirements:** Standard Reddit minimums + active programming discussion history strongly recommended
+- **Verdict:** SAFE TO POST -- our post is already heavily technical (pipeline architecture, state machine, design decisions). Frame as technical writeup, not product announcement. Consider posting as link to GitHub repo instead of text post
+
+## Recommended Posting Order and Timing
+
+1. **r/ClaudeAI** -- Post first (any day). Most receptive audience, highest conversion potential
+2. **r/cursor** -- Post same day as r/ClaudeAI or next day. Second most targeted audience
+3. **r/webdev** -- Post on the NEXT SATURDAY after r/ClaudeAI and r/cursor. Must use Showoff Saturday flair
+4. **r/programming** -- Post 1-2 days after r/webdev. Wait to build some engagement/karma on the other posts first. This is the riskiest sub but has the largest audience
+
+**Spacing tip:** Don't post all on the same day. Reddit's spam detection flags accounts that post similar content across multiple subs rapidly. Space posts at least 4-6 hours apart, ideally across different days.
+
 ---
 
 ## r/ClaudeAI
+
+> **Flair:** Built with Claude
+> **Post type:** Text post
+> **Compliance notes:** Added "prompt I use" section per "Built with Claude" flair requirements. Includes what I built, how I built it, and usage examples
 
 **Title:** I built an MCP server that lets Claude Code see your screen and hear your voice
 
@@ -41,6 +92,20 @@ I'll be reviewing a feature and spot something off. Instead of typing out what's
 
 For bigger reviews, I use `capture_with_voice` -- record for 30 seconds while narrating what I see. The pipeline transcribes with Whisper, finds the key moments in my narration, extracts video frames at those timestamps, and returns a structured report. Claude reads the whole thing and addresses each issue.
 
+### A prompt I use
+
+When I want Claude Code to do a visual review of what I'm working on, I say:
+
+> Take a screenshot of my screen and tell me if you see any layout or spacing issues on the page I have open.
+
+Claude calls `capture_screenshot`, gets the image, and responds with specific observations about what it sees. From there I can say "fix it" and it starts writing code.
+
+### How I built it
+
+The MCP server is a headless Node.js process (no Electron dependency) that exposes 6 tools via the Model Context Protocol. Screen capture uses the native macOS screenshot API. Voice recording captures audio + screen simultaneously, then pipes the audio through local Whisper for transcription. A heuristic analyzer finds key moments in the transcript and ffmpeg extracts video frames at those timestamps. Everything is stitched into structured Markdown.
+
+The desktop app, CLI, and MCP server all share the same post-processing pipeline -- I just built different interfaces on top of it.
+
 ### Privacy
 
 Everything runs locally. Whisper transcription is on your machine. No telemetry, no data collection. External calls only happen if you explicitly add API keys for cloud transcription.
@@ -50,6 +115,10 @@ Open source, MIT: https://github.com/eddiesanjuan/markupr
 ---
 
 ## r/cursor
+
+> **Flair:** Use "Tool" or "MCP" flair if available, otherwise general
+> **Post type:** Text post
+> **Compliance notes:** MCP server posts are common and well-received on r/cursor. Post is practical and setup-focused. No changes needed
 
 **Title:** MCP server that gives Cursor screenshot and screen recording capabilities
 
@@ -104,6 +173,11 @@ Full MCP docs: https://github.com/eddiesanjuan/markupr/blob/main/README-MCP.md
 ---
 
 ## r/webdev
+
+> **Flair:** Showoff Saturday (MANDATORY -- post will be removed without this flair)
+> **Post type:** Text post
+> **Post day:** SATURDAY ONLY
+> **Compliance notes:** Must be posted on Saturday with Showoff Saturday flair. No changes to content needed -- the post frames a genuine problem/solution for frontend developers and isn't purely promotional. Ensure 9:1 engagement ratio is met (participate in r/webdev discussions before posting)
 
 **Title:** How I closed the feedback loop between what I see and what my AI agent fixes
 
@@ -165,6 +239,10 @@ Site: https://markupr.com
 
 ## r/programming
 
+> **Flair:** None required
+> **Post type:** Text post OR link post to GitHub repo
+> **Compliance notes:** This is the strictest sub. Our post is already heavily technical (pipeline architecture, state machine, design tradeoffs) which is exactly what r/programming values. The post reads as a technical writeup, not a product pitch. Keep it as-is. Alternatively, can be posted as a link to the GitHub repo with a comment containing the technical breakdown. If posting as text, the technical depth should pass moderation. Avoid any "check out my app" framing -- lead with the engineering
+
 **Title:** Building a timestamp-correlated frame extraction pipeline for screen recordings
 
 **Body:**
@@ -180,17 +258,17 @@ Most screen-to-document tools either capture at fixed intervals (every N seconds
 markupr records screen and microphone simultaneously, then runs a post-processing pipeline:
 
 ```
-Audio ──→ Whisper (local) ──→ Timestamped transcript
-                                      │
-                                      ▼
+Audio --> Whisper (local) --> Timestamped transcript
+                                      |
+                                      v
                               Transcript Analyzer
                               (key-moment detection)
-                                      │
-                                      ▼
-                              Timestamp list ──→ ffmpeg ──→ Extracted frames
-                                                               │
-                                                               ▼
-                              Transcript + frames ──→ Structured Markdown
+                                      |
+                                      v
+                              Timestamp list --> ffmpeg --> Extracted frames
+                                                               |
+                                                               v
+                              Transcript + frames --> Structured Markdown
 ```
 
 **Step 1: Transcription.** Audio goes through local Whisper. The key detail is preserving word-level timestamps, not just segment-level. This gives us sub-second precision for frame extraction.
@@ -220,12 +298,12 @@ This is heuristic, not ML -- it runs instantly and doesn't need a model.
 The recording session is a 7-state FSM with a watchdog timer:
 
 ```
-idle → starting (5s) → recording (30min max) → stopping (3s)
-                                                     │
-                                                     ▼
-                                                processing (10s) → complete (30s auto-idle)
-                                                     │
-                                                     ▼
+idle -> starting (5s) -> recording (30min max) -> stopping (3s)
+                                                     |
+                                                     v
+                                                processing (10s) -> complete (30s auto-idle)
+                                                     |
+                                                     v
                                                    error (5s auto-recover)
 ```
 
