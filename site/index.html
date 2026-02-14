@@ -17,6 +17,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>markupR — App feedback, made effortless</title>
   <meta name="description" content="markupR closes the feedback loop between what you see on screen and what your AI coding agent fixes. Record your screen, say what's wrong, and get structured Markdown your agent can act on immediately.">
+  <meta name="keywords" content="developer tools, screen recording, AI feedback, voice narration, markdown, MCP server, model context protocol, whisper, transcription, screenshots, code review, AI agents, Claude Code, Cursor, Windsurf, open source, macOS, Windows, CLI, npx">
+  <meta name="author" content="Eddie San Juan">
+  <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#0A0A0B" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0A0A0B">
@@ -30,6 +33,9 @@
   <meta property="og:description" content="Record your screen, narrate what's wrong, and get structured Markdown with screenshots your AI coding agent can act on immediately. Open source developer tool for macOS and Windows.">
   <meta property="og:url" content="https://markupr.dev/">
   <meta property="og:image" content="https://markupr.dev/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
   <meta property="og:site_name" content="markupR">
 
   <!-- Twitter Card -->
@@ -1164,6 +1170,74 @@
     }
 
     /* ========================================
+       MCP SERVER
+       ======================================== */
+    .mcp {
+      background: var(--bg-secondary);
+    }
+
+    .mcp__content {
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 48px;
+    }
+
+    @media (min-width: 768px) {
+      .mcp__content {
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        align-items: start;
+      }
+    }
+
+    .mcp__tools {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .mcp__tool {
+      padding: 16px 20px;
+      border: 2px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      transition: border-color 150ms ease;
+    }
+
+    .mcp__tool:hover {
+      border-color: var(--accent);
+    }
+
+    .mcp__tool strong {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .mcp__tool span {
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    .mcp__note {
+      text-align: center;
+      max-width: 640px;
+      margin: 32px auto 0;
+    }
+
+    @media (min-width: 768px) {
+      .mcp__note {
+        grid-column: 1 / -1;
+      }
+    }
+
+    /* ========================================
        PREMIUM TEASER
        ======================================== */
     .premium__features {
@@ -1595,6 +1669,7 @@
     "@type": "SoftwareApplication",
     "name": "markupR",
     "description": "Record your screen, say what's wrong, and get structured Markdown your AI coding agent can act on immediately.",
+    "softwareVersion": "2.4.0",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Windows",
     "offers": {
@@ -1602,9 +1677,17 @@
       "price": "0",
       "priceCurrency": "USD"
     },
+    "author": {
+      "@type": "Person",
+      "name": "Eddie San Juan",
+      "url": "https://github.com/eddiesanjuan"
+    },
+    "datePublished": "2026-02-14",
     "license": "https://opensource.org/licenses/MIT",
     "url": "https://markupr.dev",
-    "downloadUrl": "https://github.com/eddiesanjuan/markupr/releases/latest"
+    "downloadUrl": "https://github.com/eddiesanjuan/markupr/releases/latest",
+    "codeRepository": "https://github.com/eddiesanjuan/markupr",
+    "image": "https://markupr.dev/og-image.png"
   }
   </script>
 </head>
@@ -1631,15 +1714,15 @@
     </p>
 
     <div class="hero__ctas">
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.2.0/markupr-2.2.0-arm64.dmg" class="btn btn--primary download-btn" data-platform="mac-arm" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.4.0/markupr-2.4.0-arm64.dmg" class="btn btn--primary download-btn" data-platform="mac-arm" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.5l.9-3.5h4.52l.9 3.5A10 10 0 0 0 12 2Z"/><path d="M12 2v7"/><path d="M8 9h8"/></svg>
         Download for macOS (Apple Silicon)<span class="sr-only"> (opens in new tab)</span>
       </a>
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.2.0/markupr-2.2.0-x64.dmg" class="btn btn--primary download-btn" data-platform="mac-intel" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.4.0/markupr-2.4.0-x64.dmg" class="btn btn--primary download-btn" data-platform="mac-intel" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.5l.9-3.5h4.52l.9 3.5A10 10 0 0 0 12 2Z"/><path d="M12 2v7"/><path d="M8 9h8"/></svg>
         Download for macOS (Intel)<span class="sr-only"> (opens in new tab)</span>
       </a>
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.2.0/markupr-Setup-2.2.0.exe" class="btn btn--primary download-btn" data-platform="windows" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.4.0/markupr-Setup-2.4.0.exe" class="btn btn--primary download-btn" data-platform="windows" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download for Windows<span class="sr-only"> (opens in new tab)</span>
       </a>
@@ -1966,6 +2049,73 @@ isn't updating on route change.
   <hr class="divider" aria-hidden="true">
 
   <!-- ==========================================
+       MCP SERVER — AI Agent Integration
+       ========================================== -->
+  <section class="mcp" aria-label="MCP Server for AI coding agents">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">MCP Server -- New in v2.4.0</p>
+        <h2>Give your AI agent eyes and ears.</h2>
+        <p class="body-sm section-header__subtitle">
+          Add markupr as an MCP server and your AI coding agent can capture screenshots, record your screen with voice, and receive structured reports -- all mid-conversation.
+        </p>
+      </div>
+
+      <div class="mcp__content">
+        <!-- Config snippet -->
+        <div class="code-block reveal">
+          <div class="code-block__header">
+            <span class="code-block__dot code-block__dot--red"></span>
+            <span class="code-block__dot code-block__dot--yellow"></span>
+            <span class="code-block__dot code-block__dot--green"></span>
+            <span class="code-block__title">claude_desktop_config.json</span>
+          </div>
+          <pre><code>{
+  <span class="syn-fn">"mcpServers"</span>: {
+    <span class="syn-fn">"markupr"</span>: {
+      <span class="syn-fn">"command"</span>: <span class="syn-str">"npx"</span>,
+      <span class="syn-fn">"args"</span>: [<span class="syn-str">"-y"</span>, <span class="syn-str">"markupr-mcp"</span>]
+    }
+  }
+}</code></pre>
+        </div>
+
+        <!-- Tools grid -->
+        <div class="mcp__tools reveal reveal-delay-1">
+          <div class="mcp__tool">
+            <strong>capture_screenshot</strong>
+            <span>Grab the current screen instantly. Your agent sees what you see.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>capture_with_voice</strong>
+            <span>Record screen + microphone for a set duration. Get a full report back.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>analyze_video</strong>
+            <span>Process any .mov or .mp4 into structured Markdown with extracted frames.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>analyze_screenshot</strong>
+            <span>Feed a screenshot to the pipeline for AI-enhanced analysis.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>start_recording</strong>
+            <span>Begin an interactive session. Narrate while you work.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>stop_recording</strong>
+            <span>End the session. The full pipeline runs and returns your report.</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="caption mcp__note reveal reveal-delay-2">Works with Claude Code, Cursor, Windsurf, and any MCP-compatible client. Zero install -- npx handles everything.</p>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
        PREMIUM TEASER
        ========================================== -->
   <section aria-label="Premium features">
@@ -2172,7 +2322,7 @@ isn't updating on route change.
       });
     })();
 
-    // Platform-aware download button detection
+    // Platform-aware download button detection + version-agnostic URLs
     (function() {
       var ua = navigator.userAgent || '';
       var platform = navigator.platform || '';
@@ -2199,6 +2349,26 @@ isn't updating on route change.
         var fallback = document.querySelector('.download-btn[data-platform="mac-arm"]');
         if (fallback) fallback.classList.add('active');
       }
+
+      // Resolve latest release URLs from GitHub API (non-blocking)
+      fetch('https://api.github.com/repos/eddiesanjuan/markupr/releases/latest')
+        .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function(release) {
+          if (!release || !release.assets) return;
+          var assetMap = {};
+          release.assets.forEach(function(a) {
+            if (/arm64\.dmg$/i.test(a.name)) assetMap['mac-arm'] = a.browser_download_url;
+            else if (/x64\.dmg$/i.test(a.name)) assetMap['mac-intel'] = a.browser_download_url;
+            else if (/Setup.*\.exe$/i.test(a.name)) assetMap['windows'] = a.browser_download_url;
+          });
+          buttons.forEach(function(btn) {
+            var plat = btn.getAttribute('data-platform');
+            if (plat && assetMap[plat]) btn.href = assetMap[plat];
+          });
+        })
+        .catch(function() {
+          // Fallback: leave hardcoded URLs as-is (they still work)
+        });
     })();
   </script>
 

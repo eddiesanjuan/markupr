@@ -13,6 +13,7 @@
   <a href="https://github.com/eddiesanjuan/markupr/actions/workflows/release.yml"><img src="https://github.com/eddiesanjuan/markupr/actions/workflows/release.yml/badge.svg" alt="Release"></a>
   <a href="https://github.com/eddiesanjuan/markupr/releases"><img src="https://img.shields.io/github/v/release/eddiesanjuan/markupr?style=flat-square" alt="Latest Release"></a>
   <a href="https://github.com/eddiesanjuan/markupr/releases"><img src="https://img.shields.io/github/downloads/eddiesanjuan/markupr/total?style=flat-square" alt="Downloads"></a>
+  <a href="https://www.npmjs.com/package/markupr"><img src="https://img.shields.io/npm/v/markupr?style=flat-square" alt="npm version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://ko-fi.com/eddiesanjuan"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi" alt="Ko-fi"></a>
 </p>
@@ -67,6 +68,11 @@ Download from [markupr.com](https://markupr.com) or the [releases page](https://
 **No API key required!** markupr uses local Whisper transcription by default.
 
 If markupr saves you hours, consider [supporting development on Ko-fi](https://ko-fi.com/eddiesanjuan).
+
+## See It In Action
+
+<!-- TODO: Replace with actual demo recording -->
+> **Demo video coming soon** -- Record your screen, talk through what you see, get structured Markdown with screenshots your AI coding agent can act on. One hotkey in, one hotkey out.
 
 ## Why markupr?
 
@@ -313,10 +319,13 @@ The output Markdown follows the llms.txt convention -- structured, parseable, an
 
 ## MCP Server (for AI Coding Agents)
 
-markupr includes an MCP (Model Context Protocol) server that gives AI coding agents direct access to screen capture and voice recording. Claude Code, Cursor, and Windsurf can call markupr tools during a conversation -- capturing screenshots, recording your screen with voice narration, and receiving structured Markdown reports back.
+markupr includes an MCP server that gives AI coding agents direct access to screen capture and voice recording. Your agent can see your screen, hear your narration, and receive structured reports -- all mid-conversation. This is the bridge between "I can see the bug" and "my agent can fix it."
 
-Add to your IDE config and your agent gets 6 tools: `capture_screenshot`, `capture_with_voice`, `analyze_video`, `analyze_screenshot`, `start_recording`, and `stop_recording`.
+### Setup
 
+Add to your IDE config and your agent gets 6 tools:
+
+**Claude Code** (`~/.claude/settings.json`):
 ```json
 {
   "mcpServers": {
@@ -328,7 +337,47 @@ Add to your IDE config and your agent gets 6 tools: `capture_screenshot`, `captu
 }
 ```
 
-See **[README-MCP.md](README-MCP.md)** for full setup instructions, tool documentation, and troubleshooting.
+**Cursor / Windsurf** (MCP settings):
+```json
+{
+  "mcpServers": {
+    "markupr": {
+      "command": "npx",
+      "args": ["-y", "markupr-mcp"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | What it does |
+|------|-------------|
+| `capture_screenshot` | Grab the current screen. Your agent sees what you see. |
+| `capture_with_voice` | Record screen + microphone for a set duration. Returns a full structured report. |
+| `analyze_video` | Process any `.mov` or `.mp4` into Markdown with extracted frames. |
+| `analyze_screenshot` | Feed a screenshot through the AI analysis pipeline. |
+| `start_recording` | Begin an interactive recording session. |
+| `stop_recording` | End the session. Full pipeline runs, report returned. |
+
+### Example: Agent Captures and Fixes a Bug
+
+In Claude Code, after adding the MCP config, your agent can do this:
+
+```
+You: "The sidebar is overlapping the main content on mobile. Can you see it?"
+
+Claude: [calls capture_screenshot]
+        "I can see the issue -- the sidebar has position: fixed but no
+         z-index, and it's 280px wide with no responsive breakpoint.
+         Let me fix the CSS..."
+
+        [fixes the code]
+```
+
+No copy-pasting screenshots. No describing the bug in text. The agent looks at your screen and acts.
+
+See **[README-MCP.md](README-MCP.md)** for full setup instructions, all tool parameters, and troubleshooting.
 
 ## Usage
 
