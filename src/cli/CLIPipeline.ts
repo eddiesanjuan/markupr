@@ -17,6 +17,7 @@ import { TranscriptAnalyzer } from '../main/pipeline/TranscriptAnalyzer';
 import { FrameExtractor } from '../main/pipeline/FrameExtractor';
 import { MarkdownGenerator } from '../main/output/MarkdownGenerator';
 import { WhisperService } from '../main/transcription/WhisperService';
+import { templateRegistry } from '../main/output/templates/index';
 
 import type { PostProcessResult, TranscriptSegment } from '../main/pipeline/PostProcessor';
 
@@ -32,6 +33,8 @@ export interface CLIPipelineOptions {
   openaiKey?: string;
   skipFrames: boolean;
   verbose: boolean;
+  /** Output template name (default: 'markdown') */
+  template?: string;
 }
 
 export interface CLIPipelineResult {
@@ -133,7 +136,7 @@ export class CLIPipeline {
       this.log('  Frame extraction skipped (--no-frames)');
     }
 
-    // Step 7: Generate markdown
+    // Step 7: Generate report (using template system if specified)
     this.progress('Generating report...');
     const result: PostProcessResult = {
       transcriptSegments: segments,
@@ -141,14 +144,32 @@ export class CLIPipeline {
       reportPath: this.options.outputDir,
     };
 
-    const generator = new MarkdownGenerator();
-    const markdown = generator.generateFromPostProcess(result, this.options.outputDir);
+    let reportContent: string;
+    let reportExtension = '.md';
+
+    const templateName = this.options.template;
+    if (templateName && templateName !== 'markdown') {
+      const template = templateRegistry.get(templateName);
+      if (!template) {
+        const available = templateRegistry.list().join(', ');
+        throw new CLIPipelineError(
+          `Unknown template "${templateName}". Available: ${available}`,
+          'user'
+        );
+      }
+      const output = template.render({ result, sessionDir: this.options.outputDir });
+      reportContent = output.content;
+      reportExtension = output.fileExtension;
+    } else {
+      const generator = new MarkdownGenerator();
+      reportContent = generator.generateFromPostProcess(result, this.options.outputDir);
+    }
 
     // Step 8: Write output
-    const outputFilename = this.generateOutputFilename();
+    const outputFilename = this.generateOutputFilename(reportExtension);
     const outputPath = join(this.options.outputDir, outputFilename);
     try {
-      await writeFile(outputPath, markdown, 'utf-8');
+      await writeFile(outputPath, reportContent, 'utf-8');
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       throw new CLIPipelineError(
@@ -491,7 +512,7 @@ export class CLIPipeline {
   /**
    * Generate the output filename based on the video filename and current date (UTC).
    */
-  generateOutputFilename(): string {
+  generateOutputFilename(extension = '.md'): string {
     const videoName = basename(this.options.videoPath)
       .replace(/\.[^.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]/g, '-')
@@ -509,7 +530,8 @@ export class CLIPipeline {
       String(now.getUTCSeconds()).padStart(2, '0'),
     ].join('');
 
-    return `${videoName}-feedback-${dateStr}-${timeStr}.md`;
+    const ext = extension.startsWith('.') ? extension : `.${extension}`;
+    return `${videoName}-feedback-${dateStr}-${timeStr}${ext}`;
   }
 }
 

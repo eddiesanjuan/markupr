@@ -23,6 +23,8 @@ import {
   EXIT_SYSTEM_ERROR,
   EXIT_SIGINT,
 } from './CLIPipeline';
+import { WatchMode } from './WatchMode';
+import { templateRegistry } from '../main/output/templates/index';
 
 // Read version from package.json at build time (injected by esbuild)
 declare const __MARKUPR_VERSION__: string;
@@ -102,6 +104,7 @@ program
   .option('--whisper-model <path>', 'Path to Whisper model file')
   .option('--openai-key <key>', 'OpenAI API key for cloud transcription (prefer OPENAI_API_KEY env var)')
   .option('--no-frames', 'Skip frame extraction')
+  .option('--template <name>', `Output template (${templateRegistry.list().join(', ')})`, 'markdown')
   .option('--verbose', 'Verbose output', false)
   .action(async (videoFile: string, options: {
     audio?: string;
@@ -109,6 +112,7 @@ program
     whisperModel?: string;
     openaiKey?: string;
     frames: boolean;
+    template: string;
     verbose: boolean;
   }) => {
     banner();
@@ -155,6 +159,16 @@ program
     step(`Output: ${outputDir}`);
     console.log();
 
+    // Validate template
+    if (!templateRegistry.has(options.template)) {
+      fail(`Unknown template "${options.template}". Available: ${templateRegistry.list().join(', ')}`);
+      process.exit(EXIT_USER_ERROR);
+    }
+
+    if (options.template !== 'markdown') {
+      step(`Template: ${options.template}`);
+    }
+
     // Run pipeline
     const pipeline = new CLIPipeline(
       {
@@ -164,6 +178,7 @@ program
         whisperModelPath,
         openaiKey,
         skipFrames: !options.frames,
+        template: options.template,
         verbose: options.verbose,
       },
       options.verbose ? step : () => {},
@@ -218,6 +233,96 @@ program
       process.exit(exitCode);
     } finally {
       activePipeline = null;
+    }
+  });
+
+// ============================================================================
+// watch command
+// ============================================================================
+
+program
+  .command('watch')
+  .description('Watch a directory for new recordings and auto-process them')
+  .argument('[directory]', 'Directory to watch for recordings', '.')
+  .option('--output <dir>', 'Output directory (default: <watched-dir>/markupr-output)')
+  .option('--whisper-model <path>', 'Path to Whisper model file')
+  .option('--openai-key <key>', 'OpenAI API key for cloud transcription (prefer OPENAI_API_KEY env var)')
+  .option('--no-frames', 'Skip frame extraction')
+  .option('--verbose', 'Verbose output', false)
+  .action(async (directory: string, options: {
+    output?: string;
+    whisperModel?: string;
+    openaiKey?: string;
+    frames: boolean;
+    verbose: boolean;
+  }) => {
+    banner();
+
+    const watchDir = resolve(directory);
+
+    // Resolve OpenAI key
+    let openaiKey: string | undefined;
+    if (options.openaiKey) {
+      console.warn('  WARNING: Passing API keys via CLI args is insecure (visible in ps, shell history).');
+      console.warn('  Use OPENAI_API_KEY env var instead.');
+      console.warn();
+      openaiKey = options.openaiKey;
+    } else if (process.env.OPENAI_API_KEY) {
+      openaiKey = process.env.OPENAI_API_KEY;
+    }
+
+    if (!existsSync(watchDir)) {
+      fail(`Directory not found: ${watchDir}`);
+      process.exit(EXIT_USER_ERROR);
+    }
+
+    const watchMode = new WatchMode(
+      {
+        watchDir,
+        outputDir: options.output ? resolve(options.output) : undefined,
+        whisperModelPath: options.whisperModel ? resolve(options.whisperModel) : undefined,
+        openaiKey,
+        skipFrames: !options.frames,
+        verbose: options.verbose,
+      },
+      {
+        onLog: step,
+        onFileDetected: (filePath) => {
+          step(`Detected: ${filePath}`);
+        },
+        onProcessingStart: (filePath) => {
+          console.log();
+          step(`Processing: ${filePath}`);
+        },
+        onProcessingComplete: (filePath, outputPath) => {
+          success(`Done: ${filePath}`);
+          step(`Output: ${outputPath}`);
+        },
+        onProcessingError: (filePath, error) => {
+          fail(`Failed: ${filePath} — ${error.message}`);
+        },
+      }
+    );
+
+    // Graceful shutdown
+    const shutdown = () => {
+      console.log('\n  Stopping watcher...');
+      watchMode.stop();
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+
+    step(`Watching for recordings in: ${watchDir}`);
+    step('Press Ctrl+C to stop');
+    console.log();
+
+    try {
+      await watchMode.start();
+      success('Watch mode stopped.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      fail(`Watch mode error: ${message}`);
+      process.exit(EXIT_SYSTEM_ERROR);
     }
   });
 
@@ -323,6 +428,104 @@ pushCmd
           if (!issue.success) {
             fail(`  ${issue.error}`);
           }
+        }
+      }
+
+      console.log();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      fail(message);
+      process.exit(EXIT_USER_ERROR);
+    }
+  });
+
+// ============================================================================
+// push github command
+// ============================================================================
+
+pushCmd
+  .command('github')
+  .description('Create GitHub issues from a markupr feedback report')
+  .argument('<report>', 'Path to the markupr markdown report')
+  .requiredOption('--repo <owner/repo>', 'Target GitHub repository (e.g., myorg/myapp)')
+  .option('--token <token>', 'GitHub token (prefer GITHUB_TOKEN env var or gh auth login)')
+  .option('--items <ids...>', 'Specific FB-XXX item IDs to push (default: all)')
+  .option('--dry-run', 'Show what would be created without creating anything', false)
+  .action(async (report: string, options: {
+    repo: string;
+    token?: string;
+    items?: string[];
+    dryRun: boolean;
+  }) => {
+    banner();
+
+    const reportPath = resolve(report);
+
+    if (!existsSync(reportPath)) {
+      fail(`Report file not found: ${reportPath}`);
+      process.exit(EXIT_USER_ERROR);
+    }
+
+    // Warn about insecure token passing
+    if (options.token) {
+      console.warn('  WARNING: Passing tokens via CLI args is insecure (visible in ps, shell history).');
+      console.warn('  Use GITHUB_TOKEN env var or `gh auth login` instead.');
+      console.warn();
+    }
+
+    // Lazy import to keep startup fast
+    const { resolveAuth, parseRepoString, pushToGitHub } = await import(
+      '../integrations/github/GitHubIssueCreator'
+    );
+
+    try {
+      const parsedRepo = parseRepoString(options.repo);
+      const auth = await resolveAuth(options.token);
+
+      step(`Report: ${reportPath}`);
+      step(`Repo:   ${parsedRepo.owner}/${parsedRepo.repo}`);
+      step(`Auth:   ${auth.source}`);
+      if (options.dryRun) {
+        step('Mode:   DRY RUN');
+      }
+      console.log();
+
+      step('Parsing feedback report and creating issues...');
+      const result = await pushToGitHub({
+        repo: parsedRepo,
+        auth,
+        reportPath,
+        dryRun: options.dryRun,
+        items: options.items,
+      });
+
+      console.log();
+
+      if (options.dryRun) {
+        success(`Dry run complete — ${result.created.length} issue(s) would be created:`);
+        console.log();
+        for (const issue of result.created) {
+          step(`  ${issue.title}`);
+        }
+      } else {
+        success(`Created ${result.created.length} issue(s):`);
+        console.log();
+        for (const issue of result.created) {
+          step(`#${issue.number}: ${issue.title}`);
+          step(`  ${issue.url}`);
+        }
+      }
+
+      if (result.labelsCreated.length > 0) {
+        console.log();
+        step(`Labels created: ${result.labelsCreated.join(', ')}`);
+      }
+
+      if (result.errors.length > 0) {
+        console.log();
+        fail(`${result.errors.length} error(s):`);
+        for (const err of result.errors) {
+          fail(`  ${err.itemId}: ${err.error}`);
         }
       }
 
