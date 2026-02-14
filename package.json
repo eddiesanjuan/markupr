@@ -5,10 +5,12 @@
   "type": "module",
   "main": "dist/main/index.mjs",
   "bin": {
-    "markupr": "./dist/cli/index.mjs"
+    "markupr": "./dist/cli/index.mjs",
+    "markupr-mcp": "./dist/mcp/index.mjs"
   },
   "files": [
-    "dist/cli"
+    "dist/cli",
+    "dist/mcp"
   ],
   "author": "Eddie San Juan",
   "license": "MIT",
@@ -76,6 +78,7 @@
     "generate:installer-images": "node scripts/generate-installer-images.cjs",
     "prebuild:win": "npm run generate:installer-images",
     "build:cli": "node scripts/build-cli.mjs",
+    "build:mcp": "node scripts/build-mcp.mjs",
     "prepublishOnly": "npm run build:cli"
   },
   "devDependencies": {
@@ -96,13 +99,13 @@
     "eslint-plugin-react": "^7.0.0",
     "eslint-plugin-react-hooks": "^4.0.0",
     "png2icons": "^2.0.1",
-    "sharp": "^0.34.5",
     "typescript": "^5.3.0",
     "vite": "^5.0.0",
     "vitest": "^1.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "commander": "^14.0.3",
     "electron-log": "^5.4.3",
     "electron-store": "^11.0.2",
@@ -110,7 +113,9 @@
     "keytar": "^7.9.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "whisper-node": "^1.1.1"
+    "sharp": "^0.34.5",
+    "whisper-node": "^1.1.1",
+    "zod": "^4.3.6"
   },
   "build": {
     "extends": null

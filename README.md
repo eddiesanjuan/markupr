@@ -24,6 +24,7 @@
   <a href="#how-it-works">How It Works</a> |
   <a href="#installation">Installation</a> |
   <a href="#cli-usage">CLI Usage</a> |
+  <a href="#mcp-server-for-ai-coding-agents">MCP Server</a> |
   <a href="#usage">Usage</a> |
   <a href="#keyboard-shortcuts">Shortcuts</a> |
   <a href="#export-formats">Export</a> |
@@ -309,6 +310,25 @@ cat ./feedback/markupr-report.md
 ```
 
 The output Markdown follows the llms.txt convention -- structured, parseable, and optimized for AI consumption.
+
+## MCP Server (for AI Coding Agents)
+
+markupr includes an MCP (Model Context Protocol) server that gives AI coding agents direct access to screen capture and voice recording. Claude Code, Cursor, and Windsurf can call markupr tools during a conversation -- capturing screenshots, recording your screen with voice narration, and receiving structured Markdown reports back.
+
+Add to your IDE config and your agent gets 6 tools: `capture_screenshot`, `capture_with_voice`, `analyze_video`, `analyze_screenshot`, `start_recording`, and `stop_recording`.
+
+```json
+{
+  "mcpServers": {
+    "markupr": {
+      "command": "npx",
+      "args": ["-y", "markupr-mcp"]
+    }
+  }
+}
+```
+
+See **[README-MCP.md](README-MCP.md)** for full setup instructions, tool documentation, and troubleshooting.
 
 ## Usage
 

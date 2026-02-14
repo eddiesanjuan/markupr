@@ -33,6 +33,9 @@ if (!isRailwayEnvironment()) {
   console.log('[build] Building CLI...');
   run('node', ['scripts/build-cli.mjs']);
 
+  console.log('[build] Building MCP server...');
+  run('node', ['scripts/build-mcp.mjs']);
+
   console.log('[build] All builds complete.');
   process.exit(0);
 }
