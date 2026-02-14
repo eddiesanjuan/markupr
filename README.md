@@ -23,6 +23,7 @@
   <a href="#why-markupr">Why markupr?</a> |
   <a href="#features">Features</a> |
   <a href="#how-it-works">How It Works</a> |
+  <a href="#example-output">Examples</a> |
   <a href="#installation">Installation</a> |
   <a href="#cli-usage">CLI Usage</a> |
   <a href="#mcp-server-for-ai-coding-agents">MCP Server</a> |
@@ -169,6 +170,14 @@ idle ─→ starting (5s timeout) ─→ recording (30min max) ─→ stopping (
 ```
 
 Every state has a maximum duration. A watchdog timer monitors state age and forces recovery if anything gets stuck.
+
+## Example Output
+
+See what markupr produces:
+
+- [Desktop app feedback session](examples/feedback-session-example.md) -- a developer reviewing a dashboard, finding mobile and UX issues
+- [MCP server capture session](examples/mcp-session-example.md) -- an AI coding agent recording a CSS bug via `capture_with_voice`
+- [CLI analysis output](examples/cli-output-example.md) -- `npx markupr analyze` processing a security code review
 
 ## Installation
 

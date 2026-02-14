@@ -22,6 +22,7 @@
   "bugs": {
     "url": "https://github.com/eddiesanjuan/markupr/issues"
   },
+  "mcpName": "io.github.eddiesanjuan/markupr",
   "keywords": [
     "markupr",
     "feedback",
@@ -34,7 +35,16 @@
     "menu-bar",
     "macos",
     "windows",
-    "whisper"
+    "whisper",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude-code",
+    "cursor",
+    "windsurf",
+    "ai-agent",
+    "screen-recording",
+    "voice-recording"
   ],
   "engines": {
     "node": ">=18.0.0"

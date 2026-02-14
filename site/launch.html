@@ -1,0 +1,1219 @@
+<!--
+  markupR v2.4.0 Launch Announcement.
+  Same design system as index.html.
+  Neo-brutalist structure, minimalist soul.
+  No frameworks, no tracking, no cookies, no external requests.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>markupR v2.4.0 — Your AI agent can see your screen now</title>
+  <meta name="description" content="markupR v2.4.0 introduces an MCP server that gives AI coding agents like Claude Code, Cursor, and Windsurf direct screen capture and voice recording access. Three lines of config. Six tools. Zero install.">
+  <meta name="keywords" content="markupr, MCP server, model context protocol, AI coding agents, Claude Code, Cursor, Windsurf, screen recording, voice narration, markdown, developer tools, open source">
+  <meta name="author" content="Eddie San Juan">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#0A0A0B">
+
+  <link rel="canonical" href="https://markupr.com/launch">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="markupR v2.4.0 — Your AI agent can see your screen now">
+  <meta property="og:description" content="MCP server integration gives AI coding agents direct screen capture and voice recording. Three lines of config. Six tools. Zero install.">
+  <meta property="og:url" content="https://markupr.com/launch">
+  <meta property="og:image" content="https://markupr.com/og-image.png">
+  <meta property="og:site_name" content="markupR">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="markupR v2.4.0 — Your AI agent can see your screen now">
+  <meta name="twitter:description" content="MCP server integration gives AI coding agents direct screen capture and voice recording. Three lines of config. Six tools. Zero install.">
+  <meta name="twitter:image" content="https://markupr.com/og-image.png">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+  <style>
+    /* ========================================
+       RESET
+       ======================================== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* ========================================
+       CUSTOM PROPERTIES — DARK MODE (default)
+       ======================================== */
+    :root {
+      color-scheme: dark light;
+
+      /* Typography */
+      --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
+
+      /* Colors — Dark (default) */
+      --bg-primary: #0A0A0B;
+      --bg-secondary: #141415;
+      --bg-tertiary: #1E1E20;
+      --text-primary: #F5F5F5;
+      --text-secondary: #A0A0A0;
+      --text-tertiary: #808080;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+
+      /* Accent — Warm Amber */
+      --accent: #F59E0B;
+      --accent-hover: #D97706;
+
+      /* Neo-brutalist shadows */
+      --shadow-sm: 2px 2px 0 rgba(255, 255, 255, 0.12);
+      --shadow-md: 4px 4px 0 rgba(255, 255, 255, 0.12);
+      --shadow-lg: 6px 6px 0 rgba(255, 255, 255, 0.12);
+
+      /* Syntax highlighting */
+      --syn-keyword: #C4B5FD;
+      --syn-string: #86EFAC;
+      --syn-function: #93C5FD;
+      --syn-comment: #525252;
+      --syn-operator: #F9A8D4;
+      --syn-default: #E5E5E5;
+
+      /* Spacing */
+      --section-gap: 160px;
+      --content-max: 720px;
+      --feature-max: 960px;
+      --side-pad: clamp(1.25rem, 5vw, 2.5rem);
+    }
+
+    /* ========================================
+       LIGHT MODE
+       ======================================== */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg-primary: #FFFFFF;
+        --bg-secondary: #F8F8F8;
+        --bg-tertiary: #F0F0F0;
+        --text-primary: #0A0A0A;
+        --text-secondary: #525252;
+        --text-tertiary: #737373;
+        --border: rgba(0, 0, 0, 0.08);
+        --border-strong: rgba(0, 0, 0, 0.12);
+
+        --accent: #B45309;
+        --accent-hover: #92400E;
+
+        --shadow-sm: 2px 2px 0 var(--text-primary);
+        --shadow-md: 4px 4px 0 var(--text-primary);
+        --shadow-lg: 6px 6px 0 var(--text-primary);
+      }
+    }
+
+    /* ========================================
+       BASE
+       ======================================== */
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      background-color: var(--bg-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    ::selection {
+      background-color: var(--accent);
+      color: #FFFFFF;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 150ms ease;
+    }
+
+    a:hover { color: var(--accent-hover); }
+
+    /* ========================================
+       TYPOGRAPHY
+       ======================================== */
+    h1, h2, h3, h4 {
+      color: var(--text-primary);
+      font-weight: 800;
+      text-wrap: balance;
+    }
+
+    .display {
+      font-size: clamp(36px, 7vw, 56px);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+    }
+
+    h2 {
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    h3 {
+      font-size: clamp(20px, 3vw, 24px);
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+    }
+
+    .overline {
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .body-lg {
+      font-size: clamp(17px, 2.5vw, 20px);
+      line-height: 1.6;
+    }
+
+    .body-sm {
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .caption {
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: var(--text-tertiary);
+    }
+
+    /* ========================================
+       LAYOUT
+       ======================================== */
+    .container {
+      max-width: var(--content-max);
+      margin: 0 auto;
+      padding-left: var(--side-pad);
+      padding-right: var(--side-pad);
+    }
+
+    .container--wide {
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      padding-left: var(--side-pad);
+      padding-right: var(--side-pad);
+    }
+
+    section {
+      padding-top: var(--section-gap);
+      padding-bottom: var(--section-gap);
+    }
+
+    @media (max-width: 768px) {
+      :root { --section-gap: 96px; }
+    }
+
+    .divider {
+      border: none;
+      height: 3px;
+      background: var(--text-primary);
+      margin: 0;
+      opacity: 0.12;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .divider { opacity: 0.08; }
+    }
+
+    /* ========================================
+       WORDMARK
+       ======================================== */
+    .wordmark {
+      font-family: var(--font-sans);
+      font-weight: 900;
+      font-size: 28px;
+      letter-spacing: -0.04em;
+      color: var(--text-primary);
+      display: inline-block;
+    }
+
+    .wordmark-r { color: var(--accent); }
+
+    /* ========================================
+       BUTTONS
+       ======================================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      font-family: var(--font-sans);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: transform 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn--primary {
+      background: var(--text-primary);
+      color: var(--bg-primary);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn--primary:hover {
+      transform: translate(2px, 2px);
+      box-shadow: var(--shadow-sm);
+      color: var(--bg-primary);
+    }
+
+    .btn--primary:active {
+      transform: translate(4px, 4px);
+      box-shadow: none;
+    }
+
+    .btn--secondary {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn--secondary:hover {
+      transform: translate(2px, 2px);
+      box-shadow: var(--shadow-sm);
+      color: var(--text-primary);
+    }
+
+    .btn--secondary:active {
+      transform: translate(4px, 4px);
+      box-shadow: none;
+    }
+
+    .btn:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    /* ========================================
+       CARDS
+       ======================================== */
+    .card {
+      background: var(--bg-secondary);
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      padding: 32px;
+      box-shadow: var(--shadow-lg);
+      transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+    }
+
+    .card:hover {
+      transform: translate(2px, 2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    /* ========================================
+       SCROLL REVEAL
+       ======================================== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 500ms cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-delay-1 { transition-delay: 75ms; }
+    .reveal-delay-2 { transition-delay: 150ms; }
+    .reveal-delay-3 { transition-delay: 225ms; }
+    .reveal-delay-4 { transition-delay: 300ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+    }
+
+    /* ========================================
+       CODE BLOCK
+       ======================================== */
+    .code-block {
+      background: #0A0A0B;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .code-block__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .code-block__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .code-block__dot--red { background: #FF5F57; }
+    .code-block__dot--yellow { background: #FEBC2E; }
+    .code-block__dot--green { background: #28C840; }
+
+    .code-block__title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #666;
+      margin-left: 8px;
+    }
+
+    .code-block pre {
+      padding: 24px 20px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--syn-default);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .code-block pre code { font-family: inherit; }
+
+    .syn-kw { color: var(--syn-keyword); }
+    .syn-str { color: var(--syn-string); }
+    .syn-fn { color: var(--syn-function); }
+    .syn-cm { color: var(--syn-comment); }
+    .syn-op { color: var(--syn-operator); }
+
+    /* ========================================
+       TERMINAL
+       ======================================== */
+    .terminal {
+      background: #0A0A0B;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .terminal__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .terminal__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .terminal__dot--red { background: #FF5F57; }
+    .terminal__dot--yellow { background: #FEBC2E; }
+    .terminal__dot--green { background: #28C840; }
+
+    .terminal__title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #666;
+      margin-left: 8px;
+    }
+
+    .terminal__body {
+      padding: 24px 20px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.8;
+      color: #E5E5E5;
+    }
+
+    .terminal__prompt {
+      color: #86EFAC;
+      user-select: none;
+    }
+
+    .terminal__command { color: #93C5FD; }
+
+    .terminal__line { margin-bottom: 12px; }
+    .terminal__line:last-child { margin-bottom: 0; }
+
+    .terminal__comment {
+      color: #666666;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* ========================================
+       SECTION HEADERS
+       ======================================== */
+    .section-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .section-header .overline { margin-bottom: 16px; }
+    .section-header h2 { margin-bottom: 16px; }
+
+    .section-header p {
+      max-width: 540px;
+      margin: 0 auto;
+    }
+
+    .section-header__subtitle {
+      max-width: 620px;
+      margin-top: 14px;
+    }
+
+    /* ========================================
+       TOP NAV
+       ======================================== */
+    .topnav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px var(--side-pad);
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    .topnav__back {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      transition: color 150ms ease;
+    }
+
+    .topnav__back:hover { color: var(--text-primary); }
+
+    .topnav__version {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    /* ========================================
+       HERO — Launch variant
+       ======================================== */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 64px var(--side-pad) 96px;
+    }
+
+    .hero__wordmark {
+      font-size: clamp(32px, 5vw, 40px);
+      margin-bottom: 32px;
+    }
+
+    .hero__headline {
+      max-width: 740px;
+      margin-bottom: 24px;
+    }
+
+    .hero__subtext {
+      max-width: 600px;
+      margin-bottom: 48px;
+      color: var(--text-secondary);
+    }
+
+    .hero__date {
+      margin-bottom: 20px;
+    }
+
+    .hero__ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+    }
+
+    @media (max-width: 480px) {
+      .hero__ctas {
+        flex-direction: column;
+        align-items: center;
+      }
+      .hero__ctas .btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    /* ========================================
+       PROBLEM / SOLUTION
+       ======================================== */
+    .problem-solution {
+      background: var(--bg-secondary);
+    }
+
+    .ps__grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    @media (max-width: 768px) {
+      .ps__grid {
+        grid-template-columns: 1fr;
+        gap: 64px;
+      }
+    }
+
+    .ps__block h3 {
+      margin-bottom: 16px;
+      font-size: clamp(20px, 3vw, 28px);
+    }
+
+    .ps__block p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .ps__block p:last-child { margin-bottom: 0; }
+
+    .ps__label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border: 2px solid;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+
+    .ps__label--problem {
+      color: #ef4444;
+      border-color: rgba(239, 68, 68, 0.4);
+      background: rgba(239, 68, 68, 0.08);
+    }
+
+    .ps__label--solution {
+      color: #22c55e;
+      border-color: rgba(34, 197, 94, 0.4);
+      background: rgba(34, 197, 94, 0.08);
+    }
+
+    /* ========================================
+       MCP TOOLS SECTION
+       ======================================== */
+    .mcp {
+      background: var(--bg-primary);
+    }
+
+    .mcp__content {
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 48px;
+    }
+
+    @media (min-width: 768px) {
+      .mcp__content {
+        grid-template-columns: 1fr 1fr;
+        gap: 48px;
+        align-items: start;
+      }
+    }
+
+    .mcp__tools {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    .mcp__tool {
+      padding: 16px 20px;
+      border: 2px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      transition: border-color 150ms ease;
+    }
+
+    .mcp__tool:hover { border-color: var(--accent); }
+
+    .mcp__tool strong {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .mcp__tool span {
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    .mcp__note {
+      text-align: center;
+      max-width: 640px;
+      margin: 32px auto 0;
+    }
+
+    @media (min-width: 768px) {
+      .mcp__note { grid-column: 1 / -1; }
+    }
+
+    /* ========================================
+       THREE WAYS
+       ======================================== */
+    .ways {
+      background: var(--bg-secondary);
+    }
+
+    .ways__grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    @media (min-width: 768px) {
+      .ways__grid {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+    }
+
+    .ways__card h3 {
+      margin-bottom: 12px;
+      font-size: 18px;
+    }
+
+    .ways__card .ways__mono {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .ways__card p {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+    }
+
+    /* ========================================
+       TECH DETAILS
+       ======================================== */
+    .tech {
+      background: var(--bg-primary);
+    }
+
+    .tech__bullets {
+      list-style: none;
+      max-width: var(--content-max);
+      margin: 0 auto;
+    }
+
+    .tech__bullets li {
+      padding: 16px 0;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .tech__bullets li:first-child { padding-top: 0; }
+
+    .tech__bullets strong {
+      color: var(--text-primary);
+      font-weight: 700;
+      display: block;
+      margin-bottom: 4px;
+      font-size: 15px;
+    }
+
+    .tech__bullets span {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+
+    /* ========================================
+       GET STARTED
+       ======================================== */
+    .getstarted {
+      background: var(--bg-secondary);
+    }
+
+    .getstarted__options {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    @media (min-width: 768px) {
+      .getstarted__options {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+    }
+
+    .getstarted__option h3 {
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+
+    .getstarted__option p {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    /* ========================================
+       FOOTER
+       ======================================== */
+    .footer {
+      padding: 48px var(--side-pad);
+      text-align: center;
+    }
+
+    .footer__divider {
+      height: 3px;
+      background: var(--text-primary);
+      opacity: 0.12;
+      margin-bottom: 48px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .footer__divider { opacity: 0.08; }
+    }
+
+    .footer__links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .footer__link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: color 150ms ease;
+    }
+
+    .footer__link:hover { color: var(--text-primary); }
+
+    .footer__link svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .footer__license {
+      font-size: 14px;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+
+    .footer__built {
+      font-size: 14px;
+      color: var(--text-tertiary);
+    }
+
+    /* ========================================
+       UTILITIES
+       ======================================== */
+    .text-center { text-align: center; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    a:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      z-index: 9999;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      border-radius: 4px;
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .skip-link:focus {
+      top: 16px;
+      color: #fff;
+    }
+  </style>
+
+  <noscript>
+    <style>
+      .reveal { opacity: 1; transform: none; }
+    </style>
+  </noscript>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top nav -->
+  <nav class="topnav" aria-label="Page navigation">
+    <a href="/" class="topnav__back">&larr; markupr.com</a>
+    <span class="topnav__version">v2.4.0</span>
+  </nav>
+
+  <main id="main-content">
+
+  <!-- ==========================================
+       HERO
+       ========================================== -->
+  <section class="hero" aria-label="Launch announcement hero">
+    <div class="wordmark hero__wordmark" aria-label="markupR">
+      markup<span class="wordmark-r">R</span>
+    </div>
+
+    <p class="overline hero__date">February 14, 2026</p>
+
+    <h1 class="display hero__headline">
+      Your AI agent can see your screen now.
+    </h1>
+
+    <p class="body-lg hero__subtext">
+      markupr v2.4.0 ships an MCP server that gives AI coding agents direct access to screen capture and voice recording. Three lines of config. Six tools. Zero install.
+    </p>
+
+    <div class="hero__ctas">
+      <a href="https://github.com/eddiesanjuan/markupr" class="btn btn--primary" target="_blank" rel="noopener noreferrer">
+        View on GitHub<span class="sr-only"> (opens in new tab)</span>
+      </a>
+      <a href="/" class="btn btn--secondary">
+        Download Desktop App
+      </a>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       THE PROBLEM / THE SOLUTION
+       ========================================== -->
+  <section class="problem-solution" aria-label="The problem and the solution">
+    <div class="container--wide">
+      <div class="ps__grid">
+        <div class="ps__block reveal">
+          <span class="ps__label ps__label--problem">The problem</span>
+          <h3>AI agents are blind.</h3>
+          <p>
+            Your AI coding agent can read your codebase, run your tests, and write new features. But it can't see your screen.
+          </p>
+          <p>
+            When you find a visual bug, you have to describe it in text: "the button is too small on mobile," "there's a layout shift after the spinner," "the nav highlight is wrong." You lose nuance. You lose context. You lose time.
+          </p>
+          <p>
+            Copy-pasting screenshots helps, but they're disconnected from your narration. The agent gets a wall of images with no timeline, no structure, no indication of what you were looking at when.
+          </p>
+        </div>
+
+        <div class="ps__block reveal reveal-delay-1">
+          <span class="ps__label ps__label--solution">The solution</span>
+          <h3>Give it eyes and ears.</h3>
+          <p>
+            markupr records your screen while you talk. When you stop, it runs a pipeline: transcribes your voice with Whisper, detects key moments, extracts the exact frames that match what you were describing, and stitches everything into structured Markdown.
+          </p>
+          <p>
+            The output is purpose-built for AI coding agents. Every screenshot placed exactly where it belongs. Every issue clearly documented. Your agent gets the same context you had when you found the bug.
+          </p>
+          <p>
+            With v2.4.0, your agent doesn't even need you to paste anything. It can trigger recordings itself, mid-conversation.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       WHAT'S NEW — MCP SERVER
+       ========================================== -->
+  <section class="mcp" aria-label="What's new in v2.4.0">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">What's new in v2.4.0</p>
+        <h2>MCP server with six tools.</h2>
+        <p class="body-sm section-header__subtitle">
+          Add markupr as an MCP server and your AI coding agent can capture screenshots, record your screen with voice, and receive structured reports -- all mid-conversation. Three lines of config.
+        </p>
+      </div>
+
+      <div class="mcp__content">
+        <!-- Config snippet -->
+        <div class="code-block reveal">
+          <div class="code-block__header">
+            <span class="code-block__dot code-block__dot--red"></span>
+            <span class="code-block__dot code-block__dot--yellow"></span>
+            <span class="code-block__dot code-block__dot--green"></span>
+            <span class="code-block__title">claude_desktop_config.json</span>
+          </div>
+          <pre><code>{
+  <span class="syn-fn">"mcpServers"</span>: {
+    <span class="syn-fn">"markupr"</span>: {
+      <span class="syn-fn">"command"</span>: <span class="syn-str">"npx"</span>,
+      <span class="syn-fn">"args"</span>: [<span class="syn-str">"-y"</span>, <span class="syn-str">"markupr-mcp"</span>]
+    }
+  }
+}</code></pre>
+        </div>
+
+        <!-- Tools grid -->
+        <div class="mcp__tools reveal reveal-delay-1">
+          <div class="mcp__tool">
+            <strong>capture_screenshot</strong>
+            <span>Grab the current screen instantly. Your agent sees exactly what you see, right now.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>capture_with_voice</strong>
+            <span>Record screen + microphone for a set duration. Get a structured report back with transcript and frames.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>start_recording / stop_recording</strong>
+            <span>Begin an interactive session. Narrate while you work, stop when done. The full pipeline runs and returns your report.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>analyze_video</strong>
+            <span>Process any .mov or .mp4 into structured Markdown with extracted frames and timestamps.</span>
+          </div>
+          <div class="mcp__tool">
+            <strong>analyze_screenshot</strong>
+            <span>Feed a screenshot to the analysis pipeline. Get structured observations your agent can act on.</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="caption mcp__note reveal reveal-delay-2">Works with Claude Code, Cursor, Windsurf, and any MCP-compatible client. Zero install -- npx handles everything.</p>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       THREE WAYS TO USE IT
+       ========================================== -->
+  <section class="ways" aria-label="Three ways to use markupr">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">Three interfaces, one pipeline</p>
+        <h2>Use it however you work.</h2>
+      </div>
+
+      <div class="ways__grid">
+        <div class="card ways__card reveal reveal-delay-1">
+          <h3>Desktop App</h3>
+          <span class="ways__mono">Menu bar &rarr; &#8984;&#8679;F</span>
+          <p>Lives in your macOS menu bar. Hit the hotkey, narrate what you see, stop, paste. The full GUI experience with session history, annotation tools, and review screen.</p>
+        </div>
+
+        <div class="card ways__card reveal reveal-delay-2">
+          <h3>CLI</h3>
+          <span class="ways__mono">npx markupr analyze ./recording.mov</span>
+          <p>Same pipeline, no desktop app required. Process screen recordings from CI/CD, scripts, or automation. Point it at a video file and get structured Markdown.</p>
+        </div>
+
+        <div class="card ways__card reveal reveal-delay-3">
+          <h3>MCP Server</h3>
+          <span class="ways__mono">npx markupr-mcp</span>
+          <p>Your AI agent triggers captures mid-conversation. No copy-paste, no context switching. The agent asks to see your screen, markupr delivers the report.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       TECHNICAL DETAILS
+       ========================================== -->
+  <section class="tech" aria-label="Technical details">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">Under the hood</p>
+        <h2>The pipeline.</h2>
+        <p class="body-sm section-header__subtitle">
+          Every interface -- desktop, CLI, MCP -- runs the same pipeline.
+        </p>
+      </div>
+
+      <ul class="tech__bullets reveal">
+        <li>
+          <strong>Whisper transcription</strong>
+          <span>Local Whisper runs on-device by default. OpenAI Whisper-1 API available as BYOK option for faster, higher-quality transcription.</span>
+        </li>
+        <li>
+          <strong>Key-moment detection</strong>
+          <span>Transcript analysis identifies the moments that matter -- when you describe a bug, point at a UI element, or call out a specific behavior.</span>
+        </li>
+        <li>
+          <strong>ffmpeg frame extraction</strong>
+          <span>Pulls the exact video frames that match your key moments. Not periodic screenshots -- precision-timed frames correlated with what you were saying.</span>
+        </li>
+        <li>
+          <strong>Structured Markdown generation</strong>
+          <span>Sections, headings, timestamps, and screenshots assembled into a document your AI agent already understands. Feed to Claude Code, Cursor, or paste into GitHub and Slack.</span>
+        </li>
+        <li>
+          <strong>Open source, MIT licensed</strong>
+          <span>No telemetry. No tracking. No analytics. Read the code, fork it, break it, fix it. All processing happens on your machine.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       GET STARTED
+       ========================================== -->
+  <section class="getstarted" aria-label="Get started">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">Get started</p>
+        <h2>Pick your interface.</h2>
+      </div>
+
+      <div class="getstarted__options">
+        <div class="card getstarted__option reveal reveal-delay-1">
+          <h3>Desktop App</h3>
+          <p>Download the macOS or Windows app. Lives in your menu bar. No setup required.</p>
+          <a href="/" class="btn btn--primary">Download</a>
+        </div>
+
+        <div class="card getstarted__option reveal reveal-delay-2">
+          <h3>CLI</h3>
+          <p>Process recordings from your terminal. No install -- npx handles it.</p>
+          <div class="terminal" style="box-shadow: none; border-width: 2px;">
+            <div class="terminal__body" style="padding: 16px;">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr analyze ./recording.mov</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card getstarted__option reveal reveal-delay-3">
+          <h3>MCP Server</h3>
+          <p>Add to your AI agent's config. Copy the JSON below.</p>
+          <div class="terminal" style="box-shadow: none; border-width: 2px;">
+            <div class="terminal__body" style="padding: 16px; font-size: 12px; line-height: 1.6;">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr-mcp</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  </main>
+
+  <!-- ==========================================
+       FOOTER
+       ========================================== -->
+  <footer class="footer" aria-label="Footer">
+    <div class="footer__divider"></div>
+
+    <nav class="footer__links" aria-label="Footer navigation">
+      <a href="/" class="footer__link">
+        markupr.com
+      </a>
+      <a href="https://github.com/eddiesanjuan/markupr" class="footer__link" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        GitHub<span class="sr-only"> (opens in new tab)</span>
+      </a>
+    </nav>
+
+    <p class="footer__license">MIT License. Free as in freedom, free as in beer.</p>
+    <p class="footer__built">Built by <a href="https://github.com/eddiesanjuan" target="_blank" rel="noopener noreferrer">Eddie San Juan<span class="sr-only"> (opens in new tab)</span></a>.</p>
+  </footer>
+
+  <!-- ==========================================
+       SCROLL REVEAL
+       ========================================== -->
+  <script>
+    (function() {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15 });
+
+      document.querySelectorAll('.reveal').forEach(function(el) {
+        observer.observe(el);
+      });
+    })();
+  </script>
+
+</body>
+</html>

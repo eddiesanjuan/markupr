@@ -1,0 +1,48 @@
+# Hacker News: Show HN Post
+
+## Title Options
+
+1. **Show HN: markupr -- Give your AI coding agent eyes and ears (open source)** (recommended)
+2. Show HN: I built an MCP server that lets Claude Code see my screen and hear my voice
+3. Show HN: markupr -- Screen recording to AI-ready Markdown with intelligent frame extraction
+
+---
+
+## Post Body
+
+I built markupr because describing visual bugs to AI coding agents is lossy. You see a broken layout, but all you can give the agent is "the sidebar overlaps the content on mobile." Half the context is lost in translation.
+
+markupr fixes this. It records your screen and microphone, runs the audio through Whisper for transcription, then does something I haven't seen elsewhere: it correlates transcript timestamps with the video to extract frames at the exact moments you were describing something. The output is a structured Markdown document with screenshots placed where they belong -- not at arbitrary intervals, but at the moments that matter.
+
+**The pipeline:**
+
+1. Audio transcription (local Whisper, no API key needed)
+2. Transcript analysis -- heuristic key-moment detection (topic changes, emphasis, issue descriptions)
+3. Frame extraction via ffmpeg at those precise timestamps
+4. Structured Markdown generation (inspired by llms.txt)
+
+There are three ways to use it:
+
+**Desktop app** -- macOS menu bar app. Press Cmd+Shift+F to start recording, press it again to stop. The file path to your Markdown report is copied to clipboard. Paste it into Claude Code or Cursor and the agent reads the structured feedback with screenshots.
+
+**CLI** -- `npx markupr analyze ./recording.mov` processes any screen recording into a Markdown report with extracted frames. No Electron, no desktop app needed.
+
+**MCP server** -- This is the v2.4.0 addition. Add 3 lines of JSON to your Claude Code or Cursor config and your agent gets 6 tools: screenshot capture, screen+voice recording, video analysis, and interactive recording sessions. The agent can see your screen mid-conversation.
+
+```json
+{
+  "mcpServers": {
+    "markupr": { "command": "npx", "args": ["-y", "markupr-mcp"] }
+  }
+}
+```
+
+After setup, you can say "the sidebar is broken on mobile, can you see it?" and the agent captures a screenshot, sees the issue, and fixes it. No copy-pasting.
+
+Everything runs locally by default. Whisper transcription happens on your machine. No telemetry, no tracking, no accounts. The only external calls happen if you explicitly configure an OpenAI key for cloud transcription or an Anthropic key for AI-enhanced analysis.
+
+Open source, MIT licensed. 644 tests.
+
+Repo: https://github.com/eddiesanjuan/markupr
+Site: https://markupr.com
+npm: `npx markupr-mcp` (MCP server) / `npx markupr analyze` (CLI)
