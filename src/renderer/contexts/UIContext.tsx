@@ -109,6 +109,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [hasRequiredByokKeys, setHasRequiredByokKeys] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (!window.markupr?.settings) return;
     let mounted = true;
     const loadInitialSettings = async () => {
       try {
@@ -140,7 +141,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   // Navigation event listeners (from main process menu/tray)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const nav = window.markupr.navigation;
+    const nav = window.markupr?.navigation;
     if (!nav) return;
 
     const unsubSettings = nav.onShowSettings(() => setCurrentView('settings'));
@@ -172,6 +173,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   // Popover resize on state/view change
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!window.markupr?.popover) return;
     if (currentView !== 'main') {
       const { width, height } = mapOverlaySize(currentView);
       window.markupr.popover.resize(width, height).catch(() => {});
@@ -248,9 +250,9 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
 
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
-    window.markupr.setSettings({ hasCompletedOnboarding: true }).catch(() => {});
-    window.markupr.whisper
-      .hasTranscriptionCapability()
+    window.markupr?.setSettings({ hasCompletedOnboarding: true }).catch(() => {});
+    window.markupr?.whisper
+      ?.hasTranscriptionCapability()
       .then(() => {})
       .catch(() => {});
   }, []);

@@ -173,6 +173,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Transcription capability check
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!window.markupr?.whisper) return;
     window.markupr.whisper
       .hasTranscriptionCapability()
       .then((ready) => setHasTranscriptionCapability(ready))
@@ -289,6 +290,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Session IPC listeners
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!window.markupr?.session) return;
     let mounted = true;
     const recorder = screenRecorderRef.current;
 
@@ -425,6 +427,7 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Audio level + voice activity listeners
   // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!window.markupr?.audio) return;
     const unsubLevel = window.markupr.audio.onLevel((level) => {
       setAudioLevel(level);
     });
@@ -490,8 +493,8 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (!result.success) {
         setState('error');
         setErrorMessage(result.error || 'Unable to start session.');
-        window.markupr.whisper
-          .hasTranscriptionCapability()
+        window.markupr?.whisper
+          ?.hasTranscriptionCapability()
           .then((ready) => setHasTranscriptionCapability(ready))
           .catch(() => {});
       } else {

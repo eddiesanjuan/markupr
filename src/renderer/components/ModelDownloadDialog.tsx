@@ -78,6 +78,7 @@ function useModelDownload(): UseModelDownloadResult {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!window.markupr?.whisper) return;
     // Subscribe to download events
     const unsubProgress = window.markupr.whisper.onDownloadProgress((p) => {
       setProgress(p);
@@ -105,15 +106,15 @@ function useModelDownload(): UseModelDownloadResult {
     setError(null);
     setProgress(null);
 
-    const result = await window.markupr.whisper.downloadModel(model);
-    if (!result.success && result.error) {
+    const result = await window.markupr?.whisper?.downloadModel(model);
+    if (!result?.success && result?.error) {
       setError(result.error);
       setIsDownloading(false);
     }
   }, []);
 
   const cancelDownload = useCallback((model: string) => {
-    window.markupr.whisper.cancelDownload(model);
+    window.markupr?.whisper?.cancelDownload(model);
     setIsDownloading(false);
     setProgress(null);
   }, []);
@@ -145,6 +146,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
 
   // Load available models on mount
   useEffect(() => {
+    if (!window.markupr?.whisper) return;
     const loadModels = async () => {
       const availableModels = await window.markupr.whisper.getAvailableModels();
       setModels(availableModels);
@@ -163,6 +165,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
 
   // Listen for download complete to transition state
   useEffect(() => {
+    if (!window.markupr?.whisper) return;
     const unsubComplete = window.markupr.whisper.onDownloadComplete(() => {
       setState('complete');
     });
@@ -494,6 +497,10 @@ export function useModelCheck(): ModelCheckResult {
 
     const checkModel = async () => {
       try {
+        if (!window.markupr?.whisper) {
+          setNeedsDownload(true);
+          return;
+        }
         // Check if we have any transcription capability (OpenAI or Whisper)
         const hasCapability = await withTimeout(
           window.markupr.whisper.hasTranscriptionCapability(),
