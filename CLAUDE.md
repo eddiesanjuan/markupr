@@ -9,7 +9,7 @@ As of v2.5.0, markupr also ships as:
 - **MCP server** (`npx markupr-mcp`) -- Model Context Protocol server for AI coding agents (capture screenshots, analyze video, start/stop recordings)
 - **GitHub Action** (`eddiesanjuan/markupr-action@v1`) -- CI/CD visual feedback on PRs
 
-**Version:** 2.5.0
+**Version:** 2.6.0
 **License:** MIT (Open Source)
 
 ## Tech Stack
@@ -67,7 +67,10 @@ src/
 │   └── windows/            # Window management (popover, taskbar)
 ├── cli/                    # Headless CLI tool
 │   ├── index.ts            # CLI entry point (commander-based)
-│   └── CLIPipeline.ts      # Video analysis pipeline (ffmpeg + Whisper + markdown)
+│   ├── CLIPipeline.ts      # Video analysis pipeline (ffmpeg + Whisper + markdown)
+│   ├── WatchMode.ts        # Watch directory for new recordings
+│   ├── doctor.ts           # System dependency checker (ffmpeg, Whisper, etc.)
+│   └── init.ts             # Project config scaffolding (.markupr.json)
 ├── mcp/                    # MCP server for AI coding agents
 │   ├── index.ts            # MCP entry point
 │   ├── server.ts           # MCP server setup
@@ -76,6 +79,9 @@ src/
 │   │   ├── analyzeVideo.ts       # Analyze a video recording
 │   │   ├── captureScreenshot.ts  # Capture a screenshot
 │   │   ├── captureWithVoice.ts   # Capture with voice narration
+│   │   ├── describeScreen.ts     # AI agents can see the user's screen
+│   │   ├── pushToGitHub.ts       # Push feedback to GitHub Issues
+│   │   ├── pushToLinear.ts       # Push feedback to Linear
 │   │   ├── startRecording.ts     # Start a recording session
 │   │   └── stopRecording.ts      # Stop a recording session
 │   ├── session/            # MCP session management
