@@ -15,6 +15,58 @@ export interface Screenshot {
 }
 
 /**
+ * Hint describing the currently focused element at capture time.
+ * Captured best-effort from DOM (renderer) and/or OS accessibility APIs.
+ */
+export interface FocusedElementHint {
+  source: 'renderer-dom' | 'os-accessibility' | 'window-title' | 'unknown';
+  role?: string;
+  tagName?: string;
+  id?: string;
+  name?: string;
+  label?: string;
+  placeholder?: string;
+  textPreview?: string;
+  appName?: string;
+  windowTitle?: string;
+}
+
+/**
+ * Cursor snapshot captured when a screenshot cue is marked.
+ */
+export interface CaptureCursorContext {
+  x: number;
+  y: number;
+  displayId?: string;
+  displayLabel?: string;
+  relativeX?: number;
+  relativeY?: number;
+}
+
+/**
+ * Active window/application snapshot captured when a screenshot cue is marked.
+ */
+export interface CaptureWindowContext {
+  sourceId?: string;
+  sourceName?: string;
+  sourceType?: 'screen' | 'window';
+  appName?: string;
+  title?: string;
+  pid?: number;
+}
+
+/**
+ * Full context snapshot for a marked screenshot cue.
+ */
+export interface CaptureContextSnapshot {
+  recordedAt: number;
+  trigger: 'pause' | 'manual' | 'voice-command';
+  cursor?: CaptureCursorContext;
+  activeWindow?: CaptureWindowContext;
+  focusedElement?: FocusedElementHint;
+}
+
+/**
  * Represents a transcription segment from voice narration
  */
 export interface TranscriptionSegment {
@@ -505,6 +557,7 @@ export interface ScreenshotCapturedPayload {
   width?: number;
   height?: number;
   trigger?: 'pause' | 'manual' | 'voice-command';
+  context?: CaptureContextSnapshot;
 }
 
 /**
@@ -794,6 +847,8 @@ export interface SessionMetadata {
   audioDurationMs?: number;
   /** Epoch ms when video recording started, for computing video offsets from transcript timestamps */
   videoStartTime?: number;
+  /** Best-effort cue-time metadata snapshots for marked captures */
+  captureContexts?: CaptureContextSnapshot[];
 }
 
 /**

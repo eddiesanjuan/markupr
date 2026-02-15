@@ -1,1 +1,2 @@
-// Capture module - real-time capture removed in post-process refactor
+// Capture module - utilities for cue-time context snapshots.
+export { probeCaptureContext } from './CaptureContextProbe';

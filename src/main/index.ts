@@ -50,6 +50,7 @@ import {
   type SessionState,
   type SessionPayload,
   type TrayState,
+  type CaptureContextSnapshot,
 } from '../shared/types';
 import { hotkeyManager, type HotkeyAction } from './HotkeyManager';
 import { formatHotkeyForDisplay } from '../shared/hotkeys';
@@ -82,6 +83,7 @@ import {
   getActiveScreenRecordings,
   getFinalizedScreenRecordings,
 } from './ipc';
+import { probeCaptureContext } from './capture/CaptureContextProbe';
 import {
   extractAiFrameHintsFromMarkdown,
   appendExtractedFramesToReport,
@@ -677,7 +679,14 @@ async function handlePauseResume(): Promise<void> {
 }
 
 async function handleManualScreenshot(): Promise<void> {
-  const cue = sessionController.registerCaptureCue('manual');
+  const session = sessionController.getSession();
+  const captureContext = await probeCaptureContext({
+    trigger: 'manual',
+    sourceId: session?.sourceId,
+    sourceName: session?.metadata?.sourceName,
+  });
+
+  const cue = sessionController.registerCaptureCue('manual', captureContext);
   if (!cue) {
     return;
   }
@@ -772,6 +781,52 @@ function buildPostProcessTranscriptSegments(session: Session): TranscriptSegment
       startTime,
       endTime,
       confidence: Number.isFinite(event.confidence) ? event.confidence : 0.8,
+    };
+  });
+}
+
+function getSessionCaptureContexts(session: Session): CaptureContextSnapshot[] {
+  const contexts = session.metadata?.captureContexts || [];
+  return contexts
+    .filter((context) => Number.isFinite(context.recordedAt))
+    .slice()
+    .sort((a, b) => a.recordedAt - b.recordedAt);
+}
+
+function attachCaptureContextsToExtractedFrames(
+  session: Session,
+  extractedFrames: PostProcessResult['extractedFrames'],
+  captureContexts: CaptureContextSnapshot[]
+): PostProcessResult['extractedFrames'] {
+  if (!captureContexts.length || !extractedFrames.length) {
+    return extractedFrames;
+  }
+
+  const maxDistanceMs = 5_000;
+
+  return extractedFrames.map((frame) => {
+    const frameAtMs = session.startTime + Math.round(frame.timestamp * 1000);
+    let bestMatch: CaptureContextSnapshot | undefined;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const context of captureContexts) {
+      const distance = Math.abs(frameAtMs - context.recordedAt);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestMatch = context;
+      }
+      if (context.recordedAt > frameAtMs && distance > bestDistance) {
+        break;
+      }
+    }
+
+    if (!bestMatch || bestDistance > maxDistanceMs) {
+      return frame;
+    }
+
+    return {
+      ...frame,
+      captureContext: bestMatch,
     };
   });
 }
@@ -1158,6 +1213,7 @@ async function stopSession(): Promise<{
     // Progress and completion events are sent to the renderer via IPC.
     let postProcessResult: PostProcessResult | null = null;
     const providedTranscriptSegments = buildPostProcessTranscriptSegments(session);
+    const captureContexts = getSessionCaptureContexts(session);
     const aiMomentHints = extractAiFrameHintsFromMarkdown(
       document.content,
       providedTranscriptSegments
@@ -1191,6 +1247,15 @@ async function stopSession(): Promise<{
             emitProcessingProgress(mappedPercent, progress.step);
           },
         });
+
+        if (postProcessResult) {
+          postProcessResult.captureContexts = captureContexts;
+          postProcessResult.extractedFrames = attachCaptureContextsToExtractedFrames(
+            session,
+            postProcessResult.extractedFrames,
+            captureContexts
+          );
+        }
 
         console.log(
           `[Main:stopSession] Step 5/6 complete: post-processing took ${Date.now() - postProcessStartedAt}ms, ` +

@@ -66,11 +66,11 @@ export class SessionStore {
   /**
    * Read a session's metadata by ID.
    */
-  async get(id: string): Promise<McpSession | null> {
+  async get(id: string): Promise<McpSessionMetadata | null> {
     const metadataPath = path.join(this.baseDir, id, 'metadata.json');
     try {
       const raw = await fs.readFile(metadataPath, 'utf-8');
-      return JSON.parse(raw) as McpSession;
+      return JSON.parse(raw) as McpSessionMetadata;
     } catch {
       return null;
     }
@@ -79,7 +79,7 @@ export class SessionStore {
   /**
    * Return the most recent session (by startTime).
    */
-  async getLatest(): Promise<McpSession | null> {
+  async getLatest(): Promise<McpSessionMetadata | null> {
     const sessions = await this.list();
     return sessions[0] ?? null;
   }
@@ -87,8 +87,8 @@ export class SessionStore {
   /**
    * List all sessions sorted by startTime descending.
    */
-  async list(): Promise<McpSession[]> {
-    const sessions: McpSession[] = [];
+  async list(): Promise<McpSessionMetadata[]> {
+    const sessions: McpSessionMetadata[] = [];
 
     try {
       await fs.access(this.baseDir);
@@ -109,7 +109,7 @@ export class SessionStore {
       const metadataPath = path.join(this.baseDir, entry.name, 'metadata.json');
       try {
         const raw = await fs.readFile(metadataPath, 'utf-8');
-        const session = JSON.parse(raw) as McpSession;
+        const session = JSON.parse(raw) as McpSessionMetadata;
         sessions.push(session);
       } catch {
         // Skip directories without valid metadata
@@ -123,7 +123,7 @@ export class SessionStore {
   /**
    * Update a session's metadata (partial merge).
    */
-  async update(id: string, data: Partial<McpSession>): Promise<void> {
+  async update(id: string, data: Partial<McpSessionMetadata>): Promise<void> {
     const sessionDir = path.join(this.baseDir, id);
     const metadataPath = path.join(sessionDir, 'metadata.json');
 

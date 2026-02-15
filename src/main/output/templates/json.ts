@@ -39,6 +39,7 @@ export const jsonTemplate: OutputTemplate = {
             path: computeRelativeFramePath(f.path, sessionDir),
             timestamp: f.timestamp,
             reason: f.reason,
+            captureContext: f.captureContext,
           })),
         };
       }),

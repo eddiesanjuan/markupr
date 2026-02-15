@@ -56,6 +56,19 @@ export const markdownTemplate: OutputTemplate = {
           const frameTimestamp = formatTimestamp(frame.timestamp);
           const relativePath = computeRelativeFramePath(frame.path, sessionDir);
           md += `![Frame at ${frameTimestamp}](${relativePath})\n\n`;
+          const cursor = frame.captureContext?.cursor
+            ? `Cursor: ${Math.round(frame.captureContext.cursor.x)}, ${Math.round(frame.captureContext.cursor.y)}`
+            : undefined;
+          const app = frame.captureContext?.activeWindow?.appName || frame.captureContext?.activeWindow?.sourceName;
+          const focus = frame.captureContext?.focusedElement?.textPreview
+            || frame.captureContext?.focusedElement?.label
+            || frame.captureContext?.focusedElement?.role;
+          const contextLine = [cursor, app ? `App: ${app}` : undefined, focus ? `Focus: ${focus}` : undefined]
+            .filter(Boolean)
+            .join(' | ');
+          if (contextLine) {
+            md += `> ${contextLine}\n\n`;
+          }
         }
       }
     }

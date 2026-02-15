@@ -17,6 +17,7 @@ import { whisperService } from '../transcription/WhisperService';
 import { TranscriptAnalyzer, transcriptAnalyzer } from './TranscriptAnalyzer';
 import { FrameExtractor, frameExtractor } from './FrameExtractor';
 import type { KeyMoment } from './TranscriptAnalyzer';
+import type { CaptureContextSnapshot } from '../../shared/types';
 
 // ============================================================================
 // Types
@@ -34,12 +35,14 @@ export interface ExtractedFrame {
   timestamp: number; // seconds from start of recording
   reason: string; // why this frame was selected
   transcriptSegment?: TranscriptSegment; // associated transcript segment
+  captureContext?: CaptureContextSnapshot; // nearest cue-time metadata snapshot
 }
 
 export interface PostProcessResult {
   transcriptSegments: TranscriptSegment[];
   extractedFrames: ExtractedFrame[];
   reportPath: string;
+  captureContexts?: CaptureContextSnapshot[];
 }
 
 export interface PostProcessProgress {

@@ -5,6 +5,25 @@ All notable changes to markupR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.5] - 2026-02-15
+
+### Added
+- Added cue-time capture context snapshots for marked screenshots:
+  - cursor position
+  - active window/app hints
+  - focused element hints (renderer DOM + macOS accessibility best-effort)
+- Added context-aware frame/report enrichment:
+  - extracted frames can carry nearest capture context metadata
+  - markdown and template outputs now include context hints when available
+  - JSON template now includes `captureContext` per frame
+- Added MCP context metadata capture and persistence:
+  - `capture_screenshot` now stores cursor/app/focus hints in session metadata
+  - recording tools persist start/stop context snapshots
+
+### Changed
+- Expanded session metadata schemas (desktop + MCP) to include capture context history.
+- Manual screenshot IPC now accepts optional focused-element context from renderer.
+
 ## [2.6.4] - 2026-02-15
 
 ### Fixed

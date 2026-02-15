@@ -12,6 +12,7 @@ import { start } from '../capture/ScreenRecorder.js';
 import { activeRecording } from '../session/ActiveRecording.js';
 import { sessionStore } from '../session/SessionStore.js';
 import { log } from '../utils/Logger.js';
+import { captureContextSnapshot } from '../utils/CaptureContext.js';
 
 export function register(server: McpServer): void {
   server.tool(
@@ -38,6 +39,11 @@ export function register(server: McpServer): void {
 
         // Create session
         const session = await sessionStore.create(label);
+        const startContext = await captureContextSnapshot();
+        await sessionStore.update(session.id, {
+          recordingContextStart: startContext,
+          lastCaptureContext: startContext,
+        });
         const sessionDir = sessionStore.getSessionDir(session.id);
         const videoPath = join(sessionDir, 'recording.mp4');
 

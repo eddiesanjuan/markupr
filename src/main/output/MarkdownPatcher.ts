@@ -9,6 +9,7 @@
 import * as fs from 'fs/promises';
 import { join, basename } from 'path';
 import type { TranscriptSegment, KeyMoment } from '../pipeline';
+import type { CaptureContextSnapshot } from '../../shared/types';
 
 // =============================================================================
 // Text Normalization Helpers
@@ -179,13 +180,23 @@ export function extractAiFrameHintsFromMarkdown(
  */
 export async function appendExtractedFramesToReport(
   markdownPath: string,
-  extractedFrames: Array<{ path: string; timestamp: number; reason: string }>
+  extractedFrames: Array<{
+    path: string;
+    timestamp: number;
+    reason: string;
+    captureContext?: CaptureContextSnapshot;
+  }>
 ): Promise<void> {
   if (!extractedFrames.length) {
     return;
   }
 
-  const verifiedFrames: Array<{ path: string; timestamp: number; reason: string }> = [];
+  const verifiedFrames: Array<{
+    path: string;
+    timestamp: number;
+    reason: string;
+    captureContext?: CaptureContextSnapshot;
+  }> = [];
   for (const frame of extractedFrames) {
     try {
       await fs.access(frame.path);
@@ -210,7 +221,21 @@ export async function appendExtractedFramesToReport(
       const filename = basename(frame.path) || `frame-${String(index + 1).padStart(3, '0')}.png`;
       const timestamp = formatSecondsAsTimestamp(frame.timestamp);
       const reason = frame.reason?.trim() || 'Auto-extracted frame';
-      return `### [${timestamp}] ${reason}\n\n![${reason}](./screenshots/${filename})`;
+      const cursor =
+        frame.captureContext?.cursor
+          ? `Cursor: ${Math.round(frame.captureContext.cursor.x)}, ${Math.round(frame.captureContext.cursor.y)}`
+          : undefined;
+      const app = frame.captureContext?.activeWindow?.appName || frame.captureContext?.activeWindow?.sourceName;
+      const focused = frame.captureContext?.focusedElement?.textPreview
+        || frame.captureContext?.focusedElement?.label
+        || frame.captureContext?.focusedElement?.role;
+      const contextLine = [cursor, app ? `App: ${app}` : undefined, focused ? `Focus: ${focused}` : undefined]
+        .filter(Boolean)
+        .join(' | ');
+
+      return `### [${timestamp}] ${reason}\n\n![${reason}](./screenshots/${filename})${
+        contextLine ? `\n\n> ${contextLine}` : ''
+      }`;
     })
     .join('\n\n');
 

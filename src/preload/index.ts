@@ -36,6 +36,7 @@ import {
   type TranscriptionTierStatus,
   type ApiKeyValidationResult,
   type ProcessingProgressPayload,
+  type FocusedElementHint,
 } from '../shared/types';
 
 // =============================================================================
@@ -166,8 +167,10 @@ const markuprApi = {
     /**
      * Trigger a manual screenshot during recording
      */
-    manualScreenshot: (): Promise<{ success: boolean; error?: string }> => {
-      return ipcRenderer.invoke(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT);
+    manualScreenshot: (
+      context?: { focusedElementHint?: FocusedElementHint }
+    ): Promise<{ success: boolean; error?: string }> => {
+      return ipcRenderer.invoke(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT, context);
     },
 
     /**

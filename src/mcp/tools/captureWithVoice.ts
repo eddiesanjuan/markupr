@@ -13,6 +13,37 @@ import { sessionStore } from '../session/SessionStore.js';
 import { log } from '../utils/Logger.js';
 import { CLIPipeline } from '../../cli/CLIPipeline.js';
 import { templateRegistry } from '../../main/output/templates/index.js';
+import { captureContextSnapshot } from '../utils/CaptureContext.js';
+import type { CaptureContextSnapshot } from '../../shared/types.js';
+
+function toSharedCaptureContext(
+  context: Awaited<ReturnType<typeof captureContextSnapshot>> | undefined
+): CaptureContextSnapshot | undefined {
+  if (!context) {
+    return undefined;
+  }
+
+  return {
+    recordedAt: context.recordedAt,
+    trigger: 'manual',
+    cursor: context.cursor,
+    activeWindow: {
+      appName: context.activeWindow?.appName,
+      title: context.activeWindow?.title,
+      pid: context.activeWindow?.pid,
+      sourceType: 'screen',
+    },
+    focusedElement: context.focusedElement
+      ? {
+          source: context.focusedElement.source,
+          role: context.focusedElement.role,
+          textPreview: context.focusedElement.textPreview,
+          appName: context.focusedElement.appName,
+          windowTitle: context.focusedElement.windowTitle,
+        }
+      : undefined,
+  };
+}
 
 export function register(server: McpServer): void {
   server.tool(
@@ -30,6 +61,11 @@ export function register(server: McpServer): void {
       try {
         // Create session
         const session = await sessionStore.create();
+        const startContext = await captureContextSnapshot();
+        await sessionStore.update(session.id, {
+          recordingContextStart: startContext,
+          lastCaptureContext: startContext,
+        });
         const sessionDir = sessionStore.getSessionDir(session.id);
         const videoPath = join(sessionDir, 'recording.mp4');
 
@@ -37,6 +73,18 @@ export function register(server: McpServer): void {
 
         // Record screen + audio
         await record({ duration, outputPath: videoPath });
+        const stopContext = await captureContextSnapshot();
+        await sessionStore.update(session.id, {
+          recordingContextStop: stopContext,
+          lastCaptureContext: stopContext,
+        });
+
+        const metadataBeforePipeline = await sessionStore.get(session.id);
+        const captureContexts: CaptureContextSnapshot[] = [
+          toSharedCaptureContext(metadataBeforePipeline?.recordingContextStart),
+          ...(metadataBeforePipeline?.captures || []).map((capture) => toSharedCaptureContext(capture.context)),
+          toSharedCaptureContext(stopContext),
+        ].filter((context): context is CaptureContextSnapshot => Boolean(context));
 
         // Run pipeline
         const pipelineOutputDir = outputDir ?? sessionDir;
@@ -47,6 +95,7 @@ export function register(server: McpServer): void {
             skipFrames,
             template,
             verbose: false,
+            captureContexts,
           },
           (msg) => log(msg),
         );
@@ -59,6 +108,8 @@ export function register(server: McpServer): void {
           endTime: Date.now(),
           videoPath,
           reportPath: result.outputPath,
+          recordingContextStop: stopContext,
+          lastCaptureContext: stopContext,
         });
 
         return {

@@ -20,6 +20,7 @@ import { WhisperService } from '../main/transcription/WhisperService';
 import { templateRegistry } from '../main/output/templates/index';
 
 import type { PostProcessResult, TranscriptSegment } from '../main/pipeline/PostProcessor';
+import type { CaptureContextSnapshot } from '../shared/types';
 
 // ============================================================================
 // Types
@@ -35,6 +36,8 @@ export interface CLIPipelineOptions {
   verbose: boolean;
   /** Output template name (default: 'markdown') */
   template?: string;
+  /** Optional cue-time context snapshots to enrich extracted frames */
+  captureContexts?: CaptureContextSnapshot[];
 }
 
 export interface CLIPipelineResult {
@@ -142,7 +145,15 @@ export class CLIPipeline {
       transcriptSegments: segments,
       extractedFrames,
       reportPath: this.options.outputDir,
+      captureContexts: this.normalizeCaptureContexts(this.options.captureContexts || []),
     };
+
+    if (result.captureContexts && result.captureContexts.length > 0 && result.extractedFrames.length > 0) {
+      result.extractedFrames = this.attachCaptureContextsToFrames(
+        result.extractedFrames,
+        result.captureContexts,
+      );
+    }
 
     let reportContent: string;
     let reportExtension = '.md';
@@ -241,6 +252,52 @@ export class CLIPipeline {
         else resolve({ stdout: stdout?.toString() ?? '', stderr: stderr?.toString() ?? '' });
       });
       this.activeProcesses.add(child);
+    });
+  }
+
+  private normalizeCaptureContexts(
+    contexts: CaptureContextSnapshot[]
+  ): CaptureContextSnapshot[] {
+    return contexts
+      .filter((context) => Number.isFinite(context.recordedAt))
+      .slice()
+      .sort((a, b) => a.recordedAt - b.recordedAt);
+  }
+
+  private attachCaptureContextsToFrames(
+    frames: PostProcessResult['extractedFrames'],
+    contexts: CaptureContextSnapshot[]
+  ): PostProcessResult['extractedFrames'] {
+    const earliestContext = contexts[0]?.recordedAt;
+    if (!Number.isFinite(earliestContext)) {
+      return frames;
+    }
+
+    const maxDistanceMs = 5_000;
+    return frames.map((frame) => {
+      const frameAtMs = Number(earliestContext) + Math.round(frame.timestamp * 1000);
+      let bestMatch: CaptureContextSnapshot | undefined;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (const context of contexts) {
+        const distance = Math.abs(frameAtMs - context.recordedAt);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestMatch = context;
+        }
+        if (context.recordedAt > frameAtMs && distance > bestDistance) {
+          break;
+        }
+      }
+
+      if (!bestMatch || bestDistance > maxDistanceMs) {
+        return frame;
+      }
+
+      return {
+        ...frame,
+        captureContext: bestMatch,
+      };
     });
   }
 

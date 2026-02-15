@@ -165,6 +165,7 @@ export function adaptSessionForMarkdown(session: ControllerSession): MarkdownSes
       os: process.platform,
       sourceName: session.metadata?.sourceName || 'Screen',
       sourceType: session.sourceId.startsWith('screen') ? 'screen' : 'window',
+      captureContexts: session.metadata?.captureContexts,
     },
   };
 }

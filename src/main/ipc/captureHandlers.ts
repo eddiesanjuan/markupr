@@ -14,8 +14,10 @@ import {
   DEFAULT_SETTINGS,
   type CaptureSource,
   type AudioDevice,
+  type FocusedElementHint,
 } from '../../shared/types';
 import type { IpcContext } from './types';
+import { probeCaptureContext } from '../capture/CaptureContextProbe';
 
 // =============================================================================
 // Screen Recording State
@@ -147,8 +149,18 @@ export function registerCaptureHandlers(ctx: IpcContext): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT, async () => {
-    const cue = sessionController.registerCaptureCue('manual');
+  ipcMain.handle(IPC_CHANNELS.CAPTURE_MANUAL_SCREENSHOT, async (_, payload?: {
+    focusedElementHint?: FocusedElementHint;
+  }) => {
+    const session = sessionController.getSession();
+    const captureContext = await probeCaptureContext({
+      trigger: 'manual',
+      sourceId: session?.sourceId,
+      sourceName: session?.metadata?.sourceName,
+      focusedElementHint: payload?.focusedElementHint,
+    });
+
+    const cue = sessionController.registerCaptureCue('manual', captureContext);
     if (!cue) {
       return { success: false, error: 'Manual capture is only available while recording and not paused.' };
     }

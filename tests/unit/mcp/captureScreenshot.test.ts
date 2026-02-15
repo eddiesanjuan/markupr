@@ -43,12 +43,25 @@ vi.mock('../../../src/mcp/utils/Logger.js', () => ({
 // Mock SessionStore
 const mockCreate = vi.fn();
 const mockGetSessionDir = vi.fn();
+const mockGet = vi.fn();
+const mockUpdate = vi.fn();
 
 vi.mock('../../../src/mcp/session/SessionStore.js', () => ({
   sessionStore: {
     create: (...args: unknown[]) => mockCreate(...args),
     getSessionDir: (...args: unknown[]) => mockGetSessionDir(...args),
+    get: (...args: unknown[]) => mockGet(...args),
+    update: (...args: unknown[]) => mockUpdate(...args),
   },
+}));
+
+vi.mock('../../../src/mcp/utils/CaptureContext.js', () => ({
+  captureContextSnapshot: vi.fn(async () => ({
+    recordedAt: 1739534400000,
+    cursor: { x: 100, y: 200 },
+    activeWindow: { appName: 'TestApp', title: 'Test Window', pid: 123 },
+    focusedElement: { source: 'window-title', textPreview: 'Test Window' },
+  })),
 }));
 
 // Mock McpServer
@@ -81,6 +94,8 @@ describe('captureScreenshot tool', () => {
 
     mockCreate.mockResolvedValue({ id: 'mcp-20260214-120000' });
     mockGetSessionDir.mockReturnValue('/tmp/sessions/mcp-20260214-120000');
+    mockGet.mockResolvedValue({ id: 'mcp-20260214-120000', captures: [] });
+    mockUpdate.mockResolvedValue(undefined);
     mockCapture.mockResolvedValue('/tmp/sessions/mcp-20260214-120000/screenshots/screenshot-001.png');
     mockOptimize.mockResolvedValue('/tmp/sessions/mcp-20260214-120000/screenshots/screenshot-001.png');
     mockReaddir.mockResolvedValue([]);

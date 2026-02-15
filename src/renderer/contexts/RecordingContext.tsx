@@ -7,7 +7,12 @@
  */
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionPayload, SessionState, ReviewSession } from '../../shared/types';
+import type {
+  SessionPayload,
+  SessionState,
+  ReviewSession,
+  FocusedElementHint,
+} from '../../shared/types';
 import { getScreenRecordingRenderer } from '../capture/ScreenRecordingRenderer';
 import { useCrashRecovery } from '../components';
 
@@ -95,6 +100,30 @@ export interface RecordingContextValue {
 }
 
 const RecordingContext = createContext<RecordingContextValue | null>(null);
+
+function collectFocusedElementHintFromDom(): FocusedElementHint | undefined {
+  const active = document.activeElement;
+  if (!active || !(active instanceof HTMLElement)) {
+    return undefined;
+  }
+
+  const textPreview = (active.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const label =
+    active.getAttribute('aria-label')
+    || active.getAttribute('aria-labelledby')
+    || undefined;
+
+  return {
+    source: 'renderer-dom',
+    role: active.getAttribute('role') || undefined,
+    tagName: active.tagName?.toLowerCase() || undefined,
+    id: active.id || undefined,
+    name: active.getAttribute('name') || undefined,
+    label,
+    placeholder: active.getAttribute('placeholder') || undefined,
+    textPreview: textPreview || undefined,
+  };
+}
 
 export function useRecording(): RecordingContextValue {
   const context = useContext(RecordingContext);
@@ -580,7 +609,9 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const manualCapture = useCallback(async () => {
     if (state !== 'recording' || isPaused || isMutating) return;
-    const result = await window.markupr.capture.manualScreenshot();
+    const result = await window.markupr.capture.manualScreenshot({
+      focusedElementHint: collectFocusedElementHintFromDom(),
+    });
     if (!result.success) {
       setErrorMessage(result.error || 'Manual capture failed.');
     }

@@ -18,7 +18,12 @@ import { randomUUID } from 'crypto';
 import { audioCapture, type AudioChunk } from './audio/AudioCapture';
 import type { TranscriptEvent } from './transcription/types';
 import { recoverTranscript, normalizeTranscriptTimestamp } from './transcription/TranscriptionRecoveryService';
-import { IPC_CHANNELS, type SessionState, type SessionMetadata } from '../shared/types';
+import {
+  IPC_CHANNELS,
+  type SessionState,
+  type SessionMetadata,
+  type CaptureContextSnapshot,
+} from '../shared/types';
 import { errorHandler } from './ErrorHandler';
 import { type PostProcessResult, type PostProcessProgress } from './pipeline';
 
@@ -689,21 +694,56 @@ export class SessionController {
   }
 
   registerCaptureCue(
-    trigger: 'pause' | 'manual' | 'voice-command' = 'manual'
-  ): { id: string; timestamp: number; count: number; trigger: 'pause' | 'manual' | 'voice-command' } | null {
+    trigger: 'pause' | 'manual' | 'voice-command' = 'manual',
+    context?: CaptureContextSnapshot,
+  ): {
+    id: string;
+    timestamp: number;
+    count: number;
+    trigger: 'pause' | 'manual' | 'voice-command';
+    context?: CaptureContextSnapshot;
+  } | null {
     if (this.state !== 'recording' || this.isPaused || !this.session) {
       return null;
     }
 
     this.captureCount += 1;
+    const timestamp = Date.now();
+    const sourceType = this.session.sourceId.startsWith('window') ? 'window' : 'screen';
+    const mergedContext: CaptureContextSnapshot = {
+      recordedAt: timestamp,
+      trigger,
+      activeWindow: {
+        sourceId: this.session.sourceId,
+        sourceName: this.session.metadata?.sourceName,
+        sourceType,
+      },
+    };
+    if (context) {
+      Object.assign(mergedContext, context);
+      mergedContext.trigger = context.trigger || trigger;
+      mergedContext.recordedAt = context.recordedAt ?? timestamp;
+      mergedContext.activeWindow = {
+        sourceId: this.session.sourceId,
+        sourceName: this.session.metadata?.sourceName,
+        sourceType,
+        ...(context.activeWindow || {}),
+      };
+    }
+
+    const existingContexts = this.session.metadata.captureContexts || [];
+    this.session.metadata.captureContexts = [...existingContexts, mergedContext].slice(-400);
+
     const payload = {
       id: randomUUID(),
-      timestamp: Date.now(),
+      timestamp,
       count: this.captureCount,
       trigger,
+      context: mergedContext,
     };
 
     this.emitToRenderer(IPC_CHANNELS.SCREENSHOT_CAPTURED, payload);
+    this.persistSession();
     this.emitStatus();
     return payload;
   }

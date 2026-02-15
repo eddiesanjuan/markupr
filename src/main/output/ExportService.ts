@@ -22,6 +22,7 @@ import type { Session, FeedbackItem, FeedbackCategory, FeedbackSeverity } from '
 import { markdownGenerator } from './MarkdownGenerator';
 import type { PostProcessResult } from '../pipeline/PostProcessor';
 import { generateHtmlDocument } from './templates/html-template';
+import type { CaptureContextSnapshot } from '../../shared/types';
 
 /**
  * JSON export schema version. Bump when the schema changes:
@@ -95,6 +96,7 @@ export interface JsonExportSchema {
       name?: string;
       type?: string;
       os?: string;
+      captureContexts?: CaptureContextSnapshot[];
     };
     items: Array<{
       id: string;
@@ -406,6 +408,7 @@ class ExportServiceImpl {
           name: session.metadata?.sourceName,
           type: session.metadata?.sourceType,
           os: session.metadata?.os,
+          captureContexts: session.metadata?.captureContexts,
         },
         items: session.feedbackItems.map((item, index) => ({
           id: item.id,

@@ -26,6 +26,7 @@ const {
   mockGetCurrent,
   mockActiveStop,
   mockUpdate,
+  mockGet,
   mockGetSessionDir,
 } = vi.hoisted(() => {
   const pipelineRun = vi.fn();
@@ -37,6 +38,7 @@ const {
     mockGetCurrent: vi.fn(),
     mockActiveStop: vi.fn(),
     mockUpdate: vi.fn(),
+    mockGet: vi.fn(),
     mockGetSessionDir: vi.fn(),
   };
 });
@@ -60,8 +62,17 @@ vi.mock('../../../src/mcp/session/ActiveRecording.js', () => ({
 vi.mock('../../../src/mcp/session/SessionStore.js', () => ({
   sessionStore: {
     update: (...args: unknown[]) => mockUpdate(...args),
+    get: (...args: unknown[]) => mockGet(...args),
     getSessionDir: (...args: unknown[]) => mockGetSessionDir(...args),
   },
+}));
+
+vi.mock('../../../src/mcp/utils/CaptureContext.js', () => ({
+  captureContextSnapshot: vi.fn(async () => ({
+    recordedAt: 1739534400000,
+    cursor: { x: 500, y: 600 },
+    activeWindow: { appName: 'TestApp', title: 'Test Window', pid: 123 },
+  })),
 }));
 
 vi.mock('../../../src/mcp/utils/Logger.js', () => ({
@@ -108,6 +119,11 @@ describe('stopRecording tool', () => {
     });
     mockStop.mockResolvedValue(undefined);
     mockUpdate.mockResolvedValue(undefined);
+    mockGet.mockResolvedValue({
+      id: 'mcp-20260214-120000',
+      recordingContextStart: { recordedAt: 1739534395000 },
+      captures: [],
+    });
     mockGetSessionDir.mockReturnValue('/tmp/sessions/mcp-20260214-120000');
     mockPipelineRun.mockResolvedValue({
       outputPath: '/tmp/sessions/mcp-20260214-120000/feedback-report.md',

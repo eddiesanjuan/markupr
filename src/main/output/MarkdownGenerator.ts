@@ -12,7 +12,12 @@
  */
 
 import * as path from 'path';
-import type { FeedbackSession, Screenshot, TranscriptionSegment } from '../../shared/types';
+import type {
+  FeedbackSession,
+  Screenshot,
+  TranscriptionSegment,
+  CaptureContextSnapshot,
+} from '../../shared/types';
 import type { PostProcessResult, TranscriptSegment, ExtractedFrame } from '../pipeline/PostProcessor';
 
 const REPORT_SUPPORT_LINE = '*If this report saved you time, support development: [Ko-fi](https://ko-fi.com/eddiesanjuan)*';
@@ -52,6 +57,7 @@ export interface SessionMetadata {
   os?: string;
   sourceName?: string;
   sourceType?: 'screen' | 'window';
+  captureContexts?: CaptureContextSnapshot[];
 }
 
 /**
@@ -455,6 +461,10 @@ ${REPORT_SUPPORT_LINE}
           const frameTimestamp = this.formatPostProcessTimestamp(frame.timestamp);
           const relativePath = this.computeRelativeFramePath(frame.path, sessionDir);
           md += `![Frame at ${frameTimestamp}](${relativePath})\n\n`;
+          const contextLine = this.formatCaptureContextLine(frame.captureContext);
+          if (contextLine) {
+            md += `> ${contextLine}\n\n`;
+          }
         }
       }
     }
@@ -519,6 +529,27 @@ ${REPORT_SUPPORT_LINE}
       return framePath;
     }
     return path.relative(sessionDir, framePath);
+  }
+
+  private formatCaptureContextLine(
+    context: ExtractedFrame['captureContext']
+  ): string | undefined {
+    if (!context) {
+      return undefined;
+    }
+
+    const cursor = context.cursor
+      ? `Cursor: ${Math.round(context.cursor.x)}, ${Math.round(context.cursor.y)}`
+      : undefined;
+    const app = context.activeWindow?.appName || context.activeWindow?.sourceName;
+    const focus = context.focusedElement?.textPreview
+      || context.focusedElement?.label
+      || context.focusedElement?.role;
+
+    const parts = [cursor, app ? `App: ${app}` : undefined, focus ? `Focus: ${focus}` : undefined]
+      .filter((part): part is string => Boolean(part));
+
+    return parts.length ? parts.join(' | ') : undefined;
   }
 
   /**

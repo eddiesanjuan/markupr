@@ -39,12 +39,22 @@ vi.mock('../../../src/mcp/session/ActiveRecording.js', () => ({
 
 const mockCreate = vi.fn();
 const mockGetSessionDir = vi.fn();
+const mockUpdate = vi.fn();
 
 vi.mock('../../../src/mcp/session/SessionStore.js', () => ({
   sessionStore: {
     create: (...args: unknown[]) => mockCreate(...args),
     getSessionDir: (...args: unknown[]) => mockGetSessionDir(...args),
+    update: (...args: unknown[]) => mockUpdate(...args),
   },
+}));
+
+vi.mock('../../../src/mcp/utils/CaptureContext.js', () => ({
+  captureContextSnapshot: vi.fn(async () => ({
+    recordedAt: 1739534400000,
+    cursor: { x: 320, y: 240 },
+    activeWindow: { appName: 'TestApp', title: 'Test Window', pid: 123 },
+  })),
 }));
 
 vi.mock('../../../src/mcp/utils/Logger.js', () => ({
@@ -82,6 +92,7 @@ describe('startRecording tool', () => {
     mockGetCurrent.mockReturnValue(null);
     mockCreate.mockResolvedValue({ id: 'mcp-20260214-120000' });
     mockGetSessionDir.mockReturnValue('/tmp/sessions/mcp-20260214-120000');
+    mockUpdate.mockResolvedValue(undefined);
     mockStart.mockReturnValue(mockProcess);
 
     register(mockServer);

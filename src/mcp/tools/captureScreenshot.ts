@@ -13,6 +13,7 @@ import { capture } from '../capture/ScreenCapture.js';
 import { optimize } from '../utils/ImageOptimizer.js';
 import { sessionStore } from '../session/SessionStore.js';
 import { log } from '../utils/Logger.js';
+import { captureContextSnapshot } from '../utils/CaptureContext.js';
 
 export function register(server: McpServer): void {
   server.tool(
@@ -35,6 +36,7 @@ export function register(server: McpServer): void {
         const index = existing.filter((f) => f.startsWith('screenshot-')).length + 1;
         const filename = `screenshot-${String(index).padStart(3, '0')}.png`;
         const outputPath = join(screenshotsDir, filename);
+        const context = await captureContextSnapshot();
 
         log(`Capturing screenshot: display=${display}, label=${label ?? 'none'}`);
 
@@ -46,13 +48,38 @@ export function register(server: McpServer): void {
           await optimize(outputPath);
         }
 
+        const latestMetadata = await sessionStore.get(session.id);
+        const existingCaptures = latestMetadata?.captures ?? [];
+        await sessionStore.update(session.id, {
+          lastCaptureContext: context,
+          captures: [
+            ...existingCaptures,
+            {
+              file: filename,
+              label,
+              display,
+              capturedAt: context.recordedAt,
+              context,
+            },
+          ].slice(-250),
+        });
+
         const markdownRef = `![${label ?? filename}](screenshots/${filename})`;
+        const contextSummary = [
+          context.cursor ? `Cursor: ${Math.round(context.cursor.x)}, ${Math.round(context.cursor.y)}` : '',
+          context.activeWindow?.appName ? `App: ${context.activeWindow.appName}` : '',
+          context.focusedElement?.textPreview ? `Focus: ${context.focusedElement.textPreview}` : '',
+        ]
+          .filter(Boolean)
+          .join(' | ');
 
         return {
           content: [
             {
               type: 'text',
-              text: `Screenshot saved: ${outputPath}\n${markdownRef}`,
+              text: `Screenshot saved: ${outputPath}\n${markdownRef}${
+                contextSummary ? `\nContext: ${contextSummary}` : ''
+              }`,
             },
           ],
         };
