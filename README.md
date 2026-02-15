@@ -27,7 +27,9 @@
 
 ---
 
-<!-- hero-screenshot: Replace with an actual screenshot or GIF of markupR in action -->
+<p align="center">
+  <img src="assets/demo-cli.gif" alt="markupR CLI demo" width="800">
+</p>
 
 ## The Problem
 
