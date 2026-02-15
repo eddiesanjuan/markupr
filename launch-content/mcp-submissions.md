@@ -2,7 +2,7 @@
 
 > **Package:** `markupr` on npm (includes `markupr-mcp` binary)
 > **Repo:** https://github.com/eddiesanjuan/markupr
-> **Version:** 2.4.0
+> **Version:** 2.5.0
 > **Transport:** stdio
 > **Tools:** capture_screenshot, capture_with_voice, analyze_video, analyze_screenshot, start_recording, stop_recording
 
@@ -44,17 +44,17 @@ curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/downlo
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.eddiesanjuan/markupr",
-  "description": "Screen capture and voice recording MCP server for AI coding agents. Capture screenshots, record voice narration, analyze video, and generate structured feedback documents.",
+  "description": "Screen capture and voice recording MCP server for AI coding agents. Capture screenshots, record voice narration, analyze video, generate structured feedback, and push to GitHub Issues or Linear.",
   "repository": {
     "url": "https://github.com/eddiesanjuan/markupr",
     "source": "github"
   },
-  "version": "2.4.0",
+  "version": "2.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "markupr",
-      "version": "2.4.0",
+      "version": "2.5.0",
       "transport": {
         "type": "stdio"
       },
@@ -88,7 +88,7 @@ curl "https://registry.modelcontextprotocol.io/v0.1/servers?search=io.github.edd
 Add under the **Developer Tools** section, maintaining alphabetical order:
 
 ```markdown
-- [markupr](https://github.com/eddiesanjuan/markupr) 📇 🏠 🍎 🪟 - Screen capture and voice recording MCP server for AI coding agents. Capture screenshots with voice narration, analyze video, and generate structured Markdown feedback documents.
+- [markupr](https://github.com/eddiesanjuan/markupr) 📇 🏠 🍎 🪟 - Screen capture and voice recording MCP server for AI coding agents. Capture screenshots with voice narration, analyze video, generate structured Markdown feedback, and push to GitHub Issues or Linear. Includes output templates, watch mode, and GitHub Action.
 ```
 
 ### PR Instructions
@@ -106,7 +106,7 @@ Add under the **Developer Tools** section, maintaining alphabetical order:
 - **Language:** TypeScript
 - **Scope:** Local (runs on device)
 - **OS:** macOS, Windows
-- **Description:** Screen capture and voice recording MCP server for AI coding agents. 6 tools: capture_screenshot, capture_with_voice, analyze_video, analyze_screenshot, start_recording, stop_recording.
+- **Description:** Screen capture and voice recording MCP server for AI coding agents. 6 tools: capture_screenshot, capture_with_voice, analyze_video, analyze_screenshot, start_recording, stop_recording. v2.5.0 adds push to GitHub Issues/Linear, output templates, watch mode, and a GitHub Action.
 - **Category:** Developer Tools
 ```
 
@@ -122,7 +122,7 @@ Add under the **Developer Tools** section, maintaining alphabetical order:
 Add under the **Development Tools** section:
 
 ```markdown
-- **[markupr](https://github.com/eddiesanjuan/markupr)** - Screen capture and voice recording MCP server for AI coding agents. Capture screenshots, record voice, analyze video, and generate structured feedback.
+- **[markupr](https://github.com/eddiesanjuan/markupr)** - Screen capture and voice recording MCP server for AI coding agents. Capture screenshots, record voice, analyze video, generate structured feedback, and push to GitHub Issues or Linear.
 ```
 
 ---
@@ -174,7 +174,7 @@ If not indexed within a week, join their Discord to request manual addition.
 
 ### Form Fields
 - **Server Name:** markupr
-- **Short Description:** Screen capture and voice recording MCP server for AI coding agents. Capture screenshots, record voice narration, analyze video, and generate structured Markdown feedback documents.
+- **Short Description:** Screen capture and voice recording MCP server for AI coding agents. Capture screenshots, record voice narration, analyze video, generate structured Markdown feedback, and push to GitHub Issues or Linear.
 - **Link:** https://github.com/eddiesanjuan/markupr
 - **Category:** development
 - **Contact Email:** eddie@markupr.com
@@ -206,7 +206,7 @@ If not indexed within a week, join their Discord to request manual addition.
 **Server Name:** markupr
 **GitHub:** https://github.com/eddiesanjuan/markupr
 **npm:** markupr (run via `npx markupr-mcp`)
-**Description:** Screen capture and voice recording MCP server for AI coding agents. Capture screenshots with voice narration, analyze video, and generate structured Markdown feedback documents for code review.
+**Description:** Screen capture and voice recording MCP server for AI coding agents. Capture screenshots with voice narration, analyze video, generate structured Markdown feedback, and push to GitHub Issues or Linear. v2.5.0 includes output templates, watch mode, and GitHub Action.
 **Tools:** capture_screenshot, capture_with_voice, analyze_video, analyze_screenshot, start_recording, stop_recording
 **Category:** Developer Tools
 ```

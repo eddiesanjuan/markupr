@@ -22,9 +22,9 @@ Everything needed to launch markupr on Product Hunt. Copy-paste ready.
 
 **Description** (260 chars max):
 
-> markupr records your screen while you talk through bugs. An intelligent pipeline transcribes your voice, extracts frames at the exact moments you described, and produces structured Markdown your AI coding agent can act on. Open source. Free. Works with Claude Code, Cursor, and any MCP client.
+> markupr records your screen, structures feedback with screenshots at the moments that matter, and pushes it to GitHub Issues or Linear. CLI, MCP server, GitHub Action. Open source. Free. Works with Claude Code, Cursor, and any MCP client.
 
-(258 chars)
+(240 chars)
 
 **Topics:**
 - Developer Tools
@@ -51,14 +51,25 @@ Everything needed to launch markupr on Product Hunt. Copy-paste ready.
 >
 > The output is purpose-built for AI coding agents. Paste the file path into Claude Code, Cursor, or Windsurf and the agent has everything it needs to start fixing.
 >
-> What I'm most excited about in v2.4.0 is the **MCP server**. Your AI agent can now see your screen and hear your voice mid-conversation. Three lines of JSON config, zero install (`npx markupr-mcp`), and suddenly your agent has `capture_screenshot`, `capture_with_voice`, `start_recording`, and `stop_recording` tools. The agent looks at your screen and acts. No copy-pasting screenshots. No describing layouts in text.
+> The **MCP server** gives your AI agent eyes and ears. Three lines of JSON config, zero install (`npx markupr-mcp`), and your agent has `capture_screenshot`, `capture_with_voice`, `start_recording`, and `stop_recording` tools. The agent looks at your screen and acts.
+>
+> What I'm most excited about in **v2.5.0** is the delivery pipeline. markupr now pushes feedback directly to your issue tracker:
+> - `markupr push github --repo owner/repo` -- creates a GitHub issue with embedded screenshots
+> - `markupr push linear --team KEY` -- creates a Linear issue with full context
+> - `markupr watch ./dir` -- auto-process recordings from a directory
+> - `--template github-issue/linear/jira/json` -- output in the format your tools consume
+> - **GitHub Action** (`eddiesanjuan/markupr-action@v1`) -- automated visual QA in CI/CD
+>
+> The pipeline went from "record and structure" to "record, structure, and deliver." You see a bug, record it, and it lands in your backlog. The feedback loop is closed.
 >
 > markupr is fully open source and MIT licensed. No telemetry, no tracking, no analytics. Local Whisper transcription runs entirely on your machine -- no API key needed to start. If you want cloud transcription or AI-enhanced analysis, bring your own OpenAI or Anthropic keys.
 >
-> Three ways to use it:
+> Five ways to use it:
 > 1. **Desktop app** -- menu bar on macOS, system tray on Windows
 > 2. **CLI** -- `npx markupr analyze ./recording.mov`
 > 3. **MCP server** -- `npx markupr-mcp` in your IDE config
+> 4. **Watch Mode** -- `markupr watch ./dir` auto-processes recordings
+> 5. **GitHub Action** -- `eddiesanjuan/markupr-action@v1` in CI/CD
 >
 > I'd love your honest feedback. What would make this more useful in your workflow? What's missing? I'm shipping fast and building in public.
 >
@@ -82,7 +93,9 @@ Everything needed to launch markupr on Product Hunt. Copy-paste ready.
 >
 > The MCP server is the one I think will surprise people. Zero install -- npx handles everything. Add 3 lines to your Claude Code or Cursor config and your agent can look at your screen mid-conversation. It's the bridge between "I can see the bug" and "my agent can fix it."
 >
-> **644 tests** across 39 files. MIT licensed. No vendor lock-in. The whole codebase is on GitHub.
+> v2.5.0 adds a delivery layer: push structured feedback directly to GitHub Issues (`markupr push github --repo owner/repo`) or Linear (`markupr push linear --team KEY`). There's a template system (`--template github-issue`, `--template linear`, `--template jira`, `--template json`), a watch mode for auto-processing recordings, and a GitHub Action (`eddiesanjuan/markupr-action@v1`) for visual QA in CI/CD.
+>
+> **860 tests** across 44 files. MIT licensed. No vendor lock-in. The whole codebase is on GitHub.
 
 ---
 
@@ -175,9 +188,9 @@ Send this via DM, email, or group chat. Keep it personal -- never mass-blast.
 
 > I just launched markupr on Product Hunt. It's an open-source dev tool I've been building to solve a specific problem: describing visual bugs to AI coding agents.
 >
-> The workflow: press a hotkey, narrate what you see on screen, press the hotkey again. markupr transcribes your voice, extracts video frames at the exact timestamps from your narration, and produces structured Markdown your AI agent can consume directly. New in v2.4.0: an MCP server that gives your agent capture_screenshot and capture_with_voice tools -- zero install, just `npx markupr-mcp`.
+> The workflow: press a hotkey, narrate what you see on screen, press the hotkey again. markupr transcribes your voice, extracts video frames at the exact timestamps from your narration, and produces structured Markdown your AI agent can consume directly. New in v2.5.0: push feedback straight to GitHub Issues or Linear, output templates for different trackers, watch mode for auto-processing, and a GitHub Action for CI/CD visual QA.
 >
-> Free, MIT licensed, no telemetry. Desktop app + CLI + MCP server.
+> Free, MIT licensed, no telemetry. Desktop app + CLI + MCP server + GitHub Action.
 >
 > Check it out: [PH link]
 > GitHub: https://github.com/eddiesanjuan/markupr

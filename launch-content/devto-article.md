@@ -1,7 +1,7 @@
 ---
 title: I Built an MCP Server That Gives AI Agents Eyes and Ears
 published: false
-description: markupr records your screen and voice, then produces structured Markdown with screenshots placed at the exact moments that matter. Now your AI coding agent can see what you see.
+description: markupr records your screen and voice, structures feedback with screenshots, and pushes it directly to GitHub Issues or Linear. Your AI coding agent sees what you see -- and files the ticket.
 tags: ai, opensource, webdev, productivity
 cover_image:
 ---
@@ -123,9 +123,9 @@ npx markupr analyze ./recording.mov --output ./reports --verbose
 
 No Electron, no desktop app. Works in CI/CD pipelines. An AI agent can run this command to process a recording programmatically.
 
-### 3. MCP Server (New in v2.4.0)
+### 3. MCP Server
 
-This is the one I'm most excited about. MCP (Model Context Protocol) lets AI coding agents call tools. The markupr MCP server gives your agent 6 tools for screen capture and recording.
+MCP (Model Context Protocol) lets AI coding agents call tools. The markupr MCP server gives your agent 6 tools for screen capture and recording.
 
 #### Setup
 
@@ -175,6 +175,56 @@ Agent: [calls capture_screenshot]
 No screenshotting. No uploading. No describing pixel positions. The agent looks at your screen and acts.
 
 For longer reviews, the agent can call `capture_with_voice({ duration: 60 })` while you narrate issues for a minute. It gets back a full structured report with every issue you described, each with the corresponding screenshot.
+
+## New in v2.5.0: Feedback Delivery Pipeline
+
+v2.5.0 closes the loop. markupr doesn't just capture and structure feedback -- it delivers it to your issue tracker.
+
+### Push to GitHub Issues
+
+```bash
+markupr push github --repo owner/repo
+```
+
+Creates a GitHub issue directly from your session. Screenshots are uploaded and embedded inline. The issue body is structured Markdown that humans and AI agents can both parse.
+
+### Push to Linear
+
+```bash
+markupr push linear --team KEY
+```
+
+Creates a Linear issue with full context -- transcript, screenshots, severity labels. Record the bug, push to the backlog, done.
+
+### Output Templates
+
+```bash
+# Format output for your issue tracker
+npx markupr analyze ./recording.mov --template github-issue
+npx markupr analyze ./recording.mov --template linear
+npx markupr analyze ./recording.mov --template jira
+npx markupr analyze ./recording.mov --template json
+```
+
+Five template formats: standard Markdown (default), GitHub Issue, Linear, Jira, and JSON. Pick the format your tools consume.
+
+### Watch Mode
+
+```bash
+markupr watch ./recordings
+```
+
+Monitors a directory and auto-processes any new recording that appears. Drop a `.mov` in the folder, get a structured report back. Pairs well with automated screen recording tools.
+
+### GitHub Action
+
+```yaml
+- uses: eddiesanjuan/markupr-action@v1
+```
+
+Runs markupr in CI/CD. Push a commit, the action analyzes visual changes and posts structured feedback as a PR comment with screenshots. Teams get automated visual QA without manual recording.
+
+The pipeline went from "record and structure" to "record, structure, and deliver." The feedback loop is closed.
 
 ## Sample Output
 
@@ -245,7 +295,8 @@ You control when and whether data leaves your machine.
 - Linux support for the desktop app
 - Browser extension for capturing web app sessions
 - Collaborative sessions (multiple narrators, one recording)
-- Plugin system for custom output formats
+- Jira Cloud push integration (currently template-only)
+- Slack/Discord notification hooks
 
 ## Links
 
@@ -253,8 +304,9 @@ You control when and whether data leaves your machine.
 - **Site**: [markupr.com](https://markupr.com)
 - **MCP server**: `npx markupr-mcp` (zero install)
 - **CLI**: `npx markupr analyze ./video.mov`
+- **GitHub Action**: `eddiesanjuan/markupr-action@v1`
 - **npm**: [npmjs.com/package/markupr](https://www.npmjs.com/package/markupr)
 
-Open source, MIT licensed. 644 tests across 39 files. Contributions welcome.
+Open source, MIT licensed. 860 tests across 44 files. Contributions welcome.
 
 If markupr saves you time, consider [supporting development on Ko-fi](https://ko-fi.com/eddiesanjuan).

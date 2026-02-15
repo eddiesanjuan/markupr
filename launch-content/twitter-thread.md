@@ -3,15 +3,15 @@
 ---
 
 ## Tweet 1 (Hook)
-> Your AI coding agent can't see your screen. That changes today.
+> Your AI coding agent can't see your screen. And even when it can, it can't file the bug for you. Both change today.
 >
-> markupr gives agents eyes and ears -- record your screen, narrate what you see, get structured Markdown with screenshots placed at the exact moments that matter.
+> markupr v2.5: record your screen, narrate bugs, get structured reports pushed directly to GitHub Issues or Linear.
 >
-> Open source. Runs locally. Three lines of config.
+> Open source. Free. Zero config.
 >
 > https://github.com/eddiesanjuan/markupr
 
-**Characters:** 289
+**Characters:** ~280
 
 ---
 
@@ -84,26 +84,54 @@
 
 ---
 
-## Tweet 6 (Three Ways)
-> Three ways to use it:
+## Tweet 6 (Integrations -- NEW)
+> v2.5 closes the loop. markupr now pushes feedback directly to your issue tracker:
 >
-> Desktop app -- menu bar, one hotkey, file path to clipboard
-> CLI -- `npx markupr analyze ./video.mov`
-> MCP server -- `npx markupr-mcp` gives your agent direct access
+> `markupr push github --repo owner/repo`
+> `markupr push linear --team KEY`
 >
-> Same pipeline. Pick whatever fits your workflow.
+> Record the bug. Structure it. Push it to your backlog. One pipeline, zero copy-paste.
+>
+> Also: `--template github-issue` / `--template jira` for custom output formats.
 
-**Characters:** 219
+**Characters:** ~280
 
 ---
 
-## Tweet 7 (CTA)
+## Tweet 7 (GitHub Action)
+> markupr now has a GitHub Action: `eddiesanjuan/markupr-action@v1`
+>
+> Push a commit. The action captures and analyzes visual changes. Posts structured feedback as a PR comment with screenshots.
+>
+> Automated visual QA in your CI/CD. Free. Open source.
+
+**Characters:** ~240
+
+---
+
+## Tweet 8 (Five Ways + Watch Mode)
+> Five ways to use it now:
+>
+> Desktop app -- menu bar, one hotkey
+> CLI -- `npx markupr analyze ./video.mov`
+> MCP server -- `npx markupr-mcp`
+> Watch mode -- `markupr watch ./dir` (auto-process recordings)
+> GitHub Action -- CI/CD visual feedback
+>
+> Same pipeline. Pick whatever fits your workflow.
+
+**Characters:** ~270
+
+---
+
+## Tweet 9 (CTA)
 > If you're tired of describing visual bugs in text, give it a try.
 >
 > GitHub: https://github.com/eddiesanjuan/markupr
 > Site: https://markupr.com
 > npm: `npx markupr-mcp`
+> Action: `eddiesanjuan/markupr-action@v1`
 >
-> Contributions welcome. MIT licensed.
+> 860 tests. MIT licensed. Contributions welcome.
 
-**Characters:** 196
+**Characters:** ~230

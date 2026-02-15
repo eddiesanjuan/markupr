@@ -27,7 +27,7 @@ There are three ways to use it:
 
 **CLI** -- `npx markupr analyze ./recording.mov` processes any screen recording into a Markdown report with extracted frames. No Electron, no desktop app needed.
 
-**MCP server** -- This is the v2.4.0 addition. Add 3 lines of JSON to your Claude Code or Cursor config and your agent gets 6 tools: screenshot capture, screen+voice recording, video analysis, and interactive recording sessions. The agent can see your screen mid-conversation.
+**MCP server** -- Add 3 lines of JSON to your Claude Code or Cursor config and your agent gets 6 tools: screenshot capture, screen+voice recording, video analysis, and interactive recording sessions. The agent can see your screen mid-conversation.
 
 ```json
 {
@@ -39,10 +39,21 @@ There are three ways to use it:
 
 After setup, you can say "the sidebar is broken on mobile, can you see it?" and the agent captures a screenshot, sees the issue, and fixes it. No copy-pasting.
 
+**New in v2.5.0: markupr now delivers feedback to your issue tracker.**
+
+- **Output Templates** -- `--template github-issue` or `--template linear` formats your feedback as structured issues, not just markdown. Also supports JSON and Jira formats.
+- **Push to GitHub Issues** -- `markupr push github --repo owner/repo` creates a GitHub issue directly from a session. Screenshots are uploaded and embedded.
+- **Push to Linear** -- `markupr push linear --team KEY` creates a Linear issue with full context. Record the bug, push to the backlog, done.
+- **Watch Mode** -- `markupr watch ./dir` monitors a directory and auto-processes any new recording that appears. Drop a screen recording in a folder, get a structured report back.
+- **GitHub Action** -- `eddiesanjuan/markupr-action@v1` runs markupr in CI. Push a commit, the action analyzes visual changes, and posts structured feedback as a PR comment. Teams get automated visual QA without manual recording.
+
+The pipeline went from "record and structure" to "record, structure, and deliver." You record the bug, markupr writes it up, and pushes it to your issue tracker. The feedback loop is closed.
+
 Everything runs locally by default. Whisper transcription happens on your machine. No telemetry, no tracking, no accounts. The only external calls happen if you explicitly configure an OpenAI key for cloud transcription or an Anthropic key for AI-enhanced analysis.
 
-Open source, MIT licensed. 644 tests.
+Open source, MIT licensed. 860 tests.
 
 Repo: https://github.com/eddiesanjuan/markupr
 Site: https://markupr.com
 npm: `npx markupr-mcp` (MCP server) / `npx markupr analyze` (CLI)
+GitHub Action: `eddiesanjuan/markupr-action@v1`

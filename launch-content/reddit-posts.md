@@ -166,7 +166,7 @@ For more complex feedback, `capture_with_voice({ duration: 30 })` records your s
 - ffmpeg (`brew install ffmpeg`) for recording tools
 - Screenshot tools work without ffmpeg
 
-Open source, MIT licensed: https://github.com/eddiesanjuan/markupr
+Open source, MIT licensed, 860 tests: https://github.com/eddiesanjuan/markupr
 
 Full MCP docs: https://github.com/eddiesanjuan/markupr/blob/main/README-MCP.md
 
@@ -185,7 +185,7 @@ Full MCP docs: https://github.com/eddiesanjuan/markupr/blob/main/README-MCP.md
 
 The hardest part of using AI coding agents for frontend work isn't the code generation -- it's the context. You see a broken layout, a misaligned button, a color that's off. You try to describe it in text and half the information is lost.
 
-I built markupr to fix this. It's a tool that records your screen and microphone, then produces a structured Markdown document where every screenshot is placed at the exact moment you were describing something.
+I built markupr to fix this. It records your screen and microphone, produces a structured Markdown document with screenshots at the exact moments that matter, and now in v2.5.0 -- pushes the feedback directly to your issue tracker.
 
 ### How it works
 
@@ -197,16 +197,23 @@ I built markupr to fix this. It's a tool that records your screen and microphone
    - Analyzes the transcript for key moments (topic changes, issue descriptions)
    - Extracts video frames via ffmpeg at those exact timestamps
    - Generates structured Markdown with screenshots placed where they belong
+5. **New:** Push to your issue tracker:
+   - `markupr push github --repo owner/repo` -- creates a GitHub issue with embedded screenshots
+   - `markupr push linear --team KEY` -- creates a Linear issue with full context
 
-The result isn't "screenshots taken every 5 seconds." It's contextually-aware frame extraction -- each image shows what you were talking about at that moment.
+The result isn't "screenshots taken every 5 seconds." It's contextually-aware frame extraction -- each image shows what you were talking about at that moment. And now it goes straight to your backlog.
 
-### Three ways to use it
+### Five ways to use it
 
 **Desktop app** -- macOS menu bar. One hotkey to start, one to stop. File path copied to clipboard. Paste into whatever AI tool you use.
 
-**CLI** -- `npx markupr analyze ./recording.mov` -- process any screen recording. Works in CI/CD pipelines or scripts.
+**CLI** -- `npx markupr analyze ./recording.mov` -- process any screen recording. Supports output templates: `--template github-issue`, `--template linear`, `--template jira`, `--template json`.
 
 **MCP server** -- `npx markupr-mcp` -- your AI coding agent (Claude Code, Cursor, Windsurf) gets direct access to screen capture and recording. The agent can see what you see mid-conversation.
+
+**Watch Mode** -- `markupr watch ./dir` -- monitors a directory and auto-processes any new recording that appears. Drop a screen recording in a folder, get a structured report back.
+
+**GitHub Action** -- `eddiesanjuan/markupr-action@v1` -- automated visual QA in CI/CD. Push a commit, the action analyzes visual changes, posts structured feedback as a PR comment.
 
 ### Example output
 
@@ -230,10 +237,11 @@ The result isn't "screenshots taken every 5 seconds." It's contextually-aware fr
 ![Screenshot at 00:32](./screenshots/fb-002.png)
 ```
 
-Everything runs locally. Open source, MIT licensed.
+Everything runs locally. Open source, MIT licensed. 860 tests.
 
 GitHub: https://github.com/eddiesanjuan/markupr
 Site: https://markupr.com
+GitHub Action: https://github.com/marketplace/actions/markupr-action
 
 ---
 
@@ -311,6 +319,19 @@ Every state has a maximum duration. The watchdog forces recovery if anything get
 
 ### MCP server
 
-v2.4.0 adds an MCP server -- a protocol that lets AI coding agents call tools. The server exposes 6 tools (screenshot, screen+voice recording, video analysis, etc.) so an agent can trigger the pipeline mid-conversation. It's a stdio-based JSON-RPC server.
+The MCP server is a stdio-based JSON-RPC server that exposes 6 tools (screenshot, screen+voice recording, video analysis, etc.) so an AI agent can trigger the pipeline mid-conversation.
 
-Open source, MIT, 644 tests: https://github.com/eddiesanjuan/markupr
+### Issue tracker integration (v2.5.0)
+
+The latest version adds a delivery step to the pipeline. After structuring the feedback, markupr can push it directly to GitHub Issues or Linear:
+
+```
+markupr push github --repo owner/repo    # Creates GitHub issue with screenshots
+markupr push linear --team KEY           # Creates Linear issue with full context
+```
+
+There's also a template system (`--template github-issue`, `--template linear`, `--template jira`, `--template json`) that formats the structured output for different consumers.
+
+Other additions: a watch mode (`markupr watch ./dir`) that auto-processes recordings from a directory, and a GitHub Action (`eddiesanjuan/markupr-action@v1`) that runs the pipeline in CI and posts visual feedback as PR comments.
+
+Open source, MIT, 860 tests: https://github.com/eddiesanjuan/markupr
