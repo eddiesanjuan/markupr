@@ -62,7 +62,7 @@ export const linearTemplate: OutputTemplate = {
       }
     }
 
-    md += `---\n_Captured by [markupr](https://markupr.com)_\n`;
+    md += `---\n_Captured by [markupR](https://markupr.com)_\n`;
 
     return { content: md, fileExtension: '.md' };
   },

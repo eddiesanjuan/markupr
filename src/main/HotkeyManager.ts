@@ -1,5 +1,5 @@
 /**
- * HotkeyManager - Global Hotkey Registration for markupr
+ * HotkeyManager - Global Hotkey Registration for markupR
  *
  * Handles:
  * - Global hotkey registration that works when any app is focused

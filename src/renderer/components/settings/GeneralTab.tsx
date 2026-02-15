@@ -121,7 +121,7 @@ const SoftwareUpdateSection: React.FC<{
   return (
     <SettingsSection
       title="Software Update"
-      description="Keep markupr up to date"
+      description="Keep markupR up to date"
     >
       {/* Version Info */}
       <div style={styles.settingRow}>
@@ -166,7 +166,7 @@ const SoftwareUpdateSection: React.FC<{
               color: 'var(--text-secondary)',
               marginTop: 2,
             }}>
-              A new version of markupr is ready to download.
+              A new version of markupR is ready to download.
             </span>
           </div>
           <button
@@ -263,7 +263,7 @@ const SoftwareUpdateSection: React.FC<{
               color: 'var(--text-secondary)',
               marginTop: 2,
             }}>
-              Restart markupr to apply the update. Your work will be saved.
+              Restart markupR to apply the update. Your work will be saved.
             </span>
           </div>
           <button
@@ -415,7 +415,7 @@ export const GeneralTab: React.FC<{
     <SettingsSection title="Startup">
       <ToggleSetting
         label="Launch at Login"
-        description="Start markupr automatically when you log in"
+        description="Start markupR automatically when you log in"
         value={settings.launchAtLogin}
         onChange={(value) => onSettingChange('launchAtLogin', value)}
       />

@@ -1,5 +1,5 @@
 /**
- * Shared types for markupr
+ * Shared types for markupR
  */
 
 /**
@@ -197,7 +197,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /**
  * IPC channel names for main/renderer communication
- * Namespaced with 'markupr:' prefix for clarity
+ * Namespaced with 'markupr:' prefix for compatibility and clarity
  */
 export const IPC_CHANNELS = {
   // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ import type { Session } from '../SessionController';
  * AI analysis tier determining which pipeline is used.
  * - 'free': Rule-based analysis (existing pipeline, no API call)
  * - 'byok': User's own Anthropic API key stored in OS keychain
- * - 'premium': Proxied through markupr's Cloudflare Worker
+ * - 'premium': Proxied through markupR's Cloudflare Worker
  */
 export type AITier = 'free' | 'byok' | 'premium';
 

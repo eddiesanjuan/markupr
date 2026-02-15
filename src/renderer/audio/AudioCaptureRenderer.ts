@@ -1,5 +1,5 @@
 /**
- * AudioCaptureRenderer.ts - Browser-side Audio Capture for markupr
+ * AudioCaptureRenderer.ts - Browser-side Audio Capture for markupR
  *
  * Uses getUserMedia + MediaRecorder to avoid fragile WebAudio graphs in
  * packaged macOS builds. Chunks are streamed to main process for persistence
@@ -48,7 +48,7 @@ class AudioCaptureRenderer {
   private setupIPCListeners(): void {
     const api = window.markupr;
     if (!api?.audio) {
-      console.error('[AudioCaptureRenderer] markupr.audio API not available');
+      console.error('[AudioCaptureRenderer] markupR audio API not available');
       return;
     }
 
@@ -239,7 +239,7 @@ class AudioCaptureRenderer {
 
     const api = window.markupr;
     if (!api?.audio) {
-      console.error('[AudioCaptureRenderer] markupr.audio API not available');
+      console.error('[AudioCaptureRenderer] markupR audio API not available');
       return;
     }
 

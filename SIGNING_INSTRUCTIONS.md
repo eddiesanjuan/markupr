@@ -1,6 +1,6 @@
-# Code Signing & Notarization Guide for markupr
+# Code Signing & Notarization Guide for markupR
 
-This guide explains how to set up Apple code signing and notarization for distributing markupr.
+This guide explains how to set up Apple code signing and notarization for distributing markupR.
 
 ## Why Code Signing Matters
 
@@ -64,7 +64,7 @@ Apple requires an app-specific password for notarization (not your regular Apple
 2. Sign in with your Apple ID
 3. Navigate to "App-Specific Passwords"
 4. Click "Generate Password"
-5. Name it "markupr Notarization"
+5. Name it "markupR Notarization"
 6. **Save this password securely** - you'll need it for builds
 
 ---
@@ -95,7 +95,7 @@ security find-identity -v -p codesigning | grep "Developer ID"
 Add to your shell profile (`~/.zshrc` or `~/.bashrc`):
 
 ```bash
-# markupr Code Signing
+# markupR Code Signing
 export APPLE_ID="your.email@example.com"
 export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
 export APPLE_TEAM_ID="ABCD1234XY"

@@ -1,10 +1,10 @@
-# CLAUDE.md - markupr
+# CLAUDE.md - markupR
 
 ## Project Overview
 
-markupr is a macOS/Windows menu bar app and CLI/MCP tool that intelligently captures developer feedback. It records your screen and voice simultaneously, then uses an intelligent post-processing pipeline to correlate transcript timestamps with the screen recording -- extracting the right frames at the right moments and stitching everything into a structured, AI-ready Markdown document. The output is purpose-built for AI coding agents: every screenshot placed exactly where it belongs, every issue clearly documented.
+markupR is a macOS/Windows menu bar app and CLI/MCP tool that intelligently captures developer feedback. It records your screen and voice simultaneously, then uses an intelligent post-processing pipeline to correlate transcript timestamps with the screen recording -- extracting the right frames at the right moments and stitching everything into a structured, AI-ready Markdown document. The output is purpose-built for AI coding agents: every screenshot placed exactly where it belongs, every issue clearly documented.
 
-As of v2.5.0, markupr also ships as:
+As of v2.5.0, markupR also ships as:
 - **CLI tool** (`npx markupr analyze ./recording.mov`) -- headless video analysis pipeline
 - **MCP server** (`npx markupr-mcp`) -- Model Context Protocol server for AI coding agents (capture screenshots, analyze video, start/stop recordings)
 - **GitHub Action** (`eddiesanjuan/markupr-action@v1`) -- CI/CD visual feedback on PRs
@@ -195,7 +195,7 @@ Session state auto-saves to disk every 5 seconds. On restart after a crash, the 
 When a session completes, the **file path** to the markdown document is copied to clipboard -- not the content. This is deliberate: the file persists on disk, and AI tools can read the full document including screenshots.
 
 ### MCP Server
-The MCP server (`src/mcp/`) exposes markupr capabilities as tools for AI coding agents. Tools include screenshot capture, video analysis, and recording session control. Built on `@modelcontextprotocol/sdk`.
+The MCP server (`src/mcp/`) exposes markupR capabilities as tools for AI coding agents. Tools include screenshot capture, video analysis, and recording session control. Built on `@modelcontextprotocol/sdk`.
 
 ## IPC Communication
 
@@ -228,4 +228,4 @@ Optional API keys (stored securely in OS keychain):
 - Secure API key storage via keytar (macOS Keychain, Windows Credential Manager) with encrypted fallback
 - Native module rebuilds handled by `electron-rebuild` (keytar, sharp)
 - CLI and MCP builds use esbuild (see `scripts/build-cli.mjs` and `scripts/build-mcp.mjs`)
-- Published to npm as `markupr` (CLI) and `markupr-mcp` (MCP server)
+- Published to npm as `markupr` (markupR CLI) and `markupr-mcp` (MCP server)

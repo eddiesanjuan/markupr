@@ -1,9 +1,21 @@
 # Changelog
 
-All notable changes to markupr will be documented in this file.
+All notable changes to markupR will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.6.4] - 2026-02-15
+
+### Fixed
+- Added Anthropic API key setup directly into onboarding (OpenAI step followed by Anthropic step).
+- Fixed stale BYOK/transcription readiness state after saving keys by broadcasting and listening for `markupr:settings-updated` events.
+- Fixed renderer crash risk when `window.markupr.processing` is unavailable by guarding progress subscriptions.
+- Improved Settings panel contrast in dark mode by replacing hardcoded dark colors with theme tokens.
+- Cleaned landing page premium section copy to remove internal launch-plan phrasing.
+
+### Changed
+- Standardized user-facing branding text to `markupR` across updated onboarding/settings/landing surfaces.
 
 ## [2.3.0] - 2026-02-14
 
@@ -76,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 - Rewrote CONTRIBUTING.md with pipeline explanation, architecture reference, testing guide
-- Added "Why markupr?" positioning section to README
+- Added "Why markupR?" positioning section to README
 - Fixed AI_AGENT_QUICKSTART.md critical broken commands
 - Fixed stale version references across docs and templates
 - Removed documented-but-unimplemented --openai-key flag from README
@@ -92,10 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.0] - 2026-02-13
 
 ### Highlights
-**Standalone CLI mode and npm distribution.** markupr can now be installed via `npm install -g markupr` or run with `npx markupr analyze` -- no Electron or desktop app required.
+**Standalone CLI mode and npm distribution.** markupR can now be installed via `npm install -g markupr` or run with `npx markupr analyze` -- no Electron or desktop app required.
 
 ### Added
-- **Standalone CLI mode** (`markupr analyze <video>`) for npm/bun install -- no Electron required (#21)
+- **Standalone CLI mode** (`markupR analyze <video>`) for npm/bun install -- no Electron required (#21)
 - **Platform-aware download buttons** on website for Mac ARM, Mac Intel, and Windows
 - **Visual walkthrough animation** on homepage
 
@@ -135,7 +147,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - 2026-02-05
 
 ### Highlights
-**Public launch release.** markupr goes open source under MIT license.
+**Public launch release.** markupR goes open source under MIT license.
 
 ### Added
 - **Post-processing pipeline**: transcribe -> analyze -> extract frames -> generate structured Markdown
@@ -146,7 +158,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Clipboard bridge** copies file path (not content) to clipboard after session
 
 ### Changed
-- Complete rebrand from FeedbackFlow to markupr
+- Complete rebrand from FeedbackFlow to markupR
 - Replaced real-time capture with post-processing pipeline architecture
 - Removed Deepgram tier; transcription is now OpenAI API or local Whisper
 - Mic capture replaced with MediaRecorder pipeline
@@ -158,7 +170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2026-02-04
 
 ### Highlights
-**markupr Initial Public Release** - Voice-to-AI feedback for developers. Free and open source.
+**markupR Initial Public Release** - Voice-to-AI feedback for developers. Free and open source.
 
 ### Added
 - **Bulletproof State Machine**: 7-state finite state machine with watchdog timer - can never get stuck
@@ -264,7 +276,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 2.3.0 | 2026-02-14 | **Hardening** - security, robustness, a11y, 126 new tests |
 | 2.2.0 | 2026-02-13 | **CLI mode**, npm distribution, package size reduction |
 | 2.1.0 | 2026-02-08 | Architecture refactor, theme system, a11y |
-| 2.0.0 | 2026-02-05 | **Public launch** - post-processing pipeline, markupr rebrand |
+| 2.0.0 | 2026-02-05 | **Public launch** - post-processing pipeline, markupR rebrand |
 | 1.0.0 | 2026-02-04 | **Initial Public Release** - Bulletproof state machine, offline Whisper |
 | 0.4.0 | 2026-02-02 | Export formats, crash recovery, auto-updater |
 | 0.3.0 | 2026-01-15 | Transcription preview, intelligent capture, settings |

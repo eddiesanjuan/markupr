@@ -1,7 +1,7 @@
 /**
  * MCP Server Factory
  *
- * Creates and configures the markupr MCP server with all tool and resource
+ * Creates and configures the markupR MCP server with all tool and resource
  * registrations wired in.
  */
 
@@ -28,7 +28,7 @@ const VERSION =
 
 export function createServer(): McpServer {
   const server = new McpServer({
-    name: 'markupr',
+    name: 'markupR',
     version: VERSION,
   });
 

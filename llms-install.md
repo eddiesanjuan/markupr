@@ -1,10 +1,10 @@
-# markupr-mcp Installation Guide
+# markupR MCP Installation Guide
 
-This file provides step-by-step instructions for AI agents (like Cline) to install and configure the markupr MCP server.
+This file provides step-by-step instructions for AI agents (like Cline) to install and configure the markupR MCP server.
 
-## What is markupr-mcp?
+## What is markupR MCP?
 
-markupr-mcp is an MCP server that gives AI coding agents the ability to see the user's screen. It provides 9 tools: screenshot capture, screen description via Claude vision, screen+voice recording with Whisper transcription, video analysis, and direct issue creation in GitHub and Linear.
+The markupR MCP server (run as `markupr-mcp`) gives AI coding agents the ability to see the user's screen. It provides 9 tools: screenshot capture, screen description via Claude vision, screen+voice recording with Whisper transcription, video analysis, and direct issue creation in GitHub and Linear.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ Before installing, verify the following:
 
 ## Installation
 
-markupr-mcp requires zero global installation. It runs via `npx`:
+The markupR MCP server requires zero global installation. It runs via `npx`:
 
 ```bash
 npx markupr-mcp
@@ -50,7 +50,7 @@ File: `~/.claude/settings.json`
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -65,7 +65,7 @@ Add to your Cline MCP settings (Settings > Cline > MCP Servers, or in `cline_mcp
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -80,7 +80,7 @@ File: `.cursor/mcp.json` (project-level) or `~/.cursor/mcp.json` (global)
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -95,7 +95,7 @@ File: `~/.codeium/windsurf/mcp_config.json`
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -118,7 +118,7 @@ To set environment variables in the MCP config, add an `env` field:
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"],
       "env": {
@@ -149,7 +149,7 @@ After installation, the following 9 tools are available:
 
 After adding the MCP config and restarting your IDE:
 
-1. The markupr MCP server should appear in your IDE's MCP server list
+1. The markupR MCP server should appear in your IDE's MCP server list
 2. Test by asking your AI agent to run `capture_screenshot` -- it should take a screenshot and return a file path
 3. If you see permission errors on macOS, grant Screen Recording permission to your terminal/IDE app and restart
 

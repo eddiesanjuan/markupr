@@ -1,5 +1,5 @@
 /**
- * TrayManager - System tray icon management for markupr
+ * TrayManager - System tray icon management for markupR
  *
  * Handles:
  * - 5 visual states: idle, recording, processing, complete, error
@@ -36,11 +36,11 @@ export interface ITrayManager {
 function buildStateTooltips(): Record<TrayState, string> {
   const toggleKey = formatHotkeyForDisplay('toggleRecording');
   return {
-    idle: `markupr - Ready (${toggleKey})`,
-    recording: `markupr - Recording... (${toggleKey} to stop)`,
-    processing: 'markupr - Processing...',
-    complete: 'markupr - Feedback captured!',
-    error: 'markupr - Error (click for details)',
+    idle: `markupR - Ready (${toggleKey})`,
+    recording: `markupR - Recording... (${toggleKey} to stop)`,
+    processing: 'markupR - Processing...',
+    complete: 'markupR - Feedback captured!',
+    error: 'markupR - Error (click for details)',
   };
 }
 
@@ -274,12 +274,12 @@ class TrayManagerImpl implements ITrayManager {
       },
       { type: 'separator' },
       {
-        label: 'About markupr',
+        label: 'About markupR',
         role: 'about',
       },
       { type: 'separator' },
       {
-        label: 'Quit markupr',
+        label: 'Quit markupR',
         accelerator: 'CmdOrCtrl+Q',
         click: () => {
           app.quit();

@@ -1,5 +1,5 @@
 /**
- * ClaudeAnalyzer - Core AI analysis engine for markupr
+ * ClaudeAnalyzer - Core AI analysis engine for markupR
  *
  * Takes a session's transcript + screenshots, sends to Claude Sonnet 4.5 with vision,
  * and returns structured feedback analysis as AIAnalysisResult.
@@ -25,7 +25,7 @@ import type { ImageOptimizeOptions } from './types';
 // System Prompt (from AI_PIPELINE_DESIGN.md)
 // =============================================================================
 
-const SYSTEM_PROMPT = `You are markupr's AI analysis engine. You receive a developer's voice-narrated feedback session: a transcript of everything they said while reviewing software, paired with screenshots captured at natural pause points.
+const SYSTEM_PROMPT = `You are markupR's AI analysis engine. You receive a developer's voice-narrated feedback session: a transcript of everything they said while reviewing software, paired with screenshots captured at natural pause points.
 
 Your job is to transform this raw narration into a structured, actionable feedback document.
 

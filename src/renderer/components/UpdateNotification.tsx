@@ -1,5 +1,5 @@
 /**
- * markupr - Update Notification Component
+ * markupR - Update Notification Component
  *
  * Shows update status notifications to the user with:
  * - Update available banner with release notes
@@ -259,7 +259,7 @@ export function UpdateNotification(): React.ReactElement | null {
           </div>
 
           <p className="text-sm text-white/90 mb-4">
-            Restart markupr to apply the update. Your work will be saved.
+            Restart markupR to apply the update. Your work will be saved.
           </p>
 
           <button

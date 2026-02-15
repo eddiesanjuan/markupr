@@ -108,6 +108,22 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [hasRequiredByokKeys, setHasRequiredByokKeys] = useState<boolean | null>(null);
 
+  const refreshByokStatus = useCallback(async () => {
+    if (!window.markupr?.settings) {
+      setHasRequiredByokKeys(false);
+      return;
+    }
+    try {
+      const [hasOpenAiKey, hasAnthropicKey] = await Promise.all([
+        window.markupr.settings.hasApiKey('openai'),
+        window.markupr.settings.hasApiKey('anthropic'),
+      ]);
+      setHasRequiredByokKeys(hasOpenAiKey && hasAnthropicKey);
+    } catch {
+      setHasRequiredByokKeys(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!window.markupr?.settings) return;
     let mounted = true;
@@ -119,14 +135,8 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
         // Settings load failure is non-fatal
       }
 
-      try {
-        const [hasOpenAiKey, hasAnthropicKey] = await Promise.all([
-          window.markupr.settings.hasApiKey('openai'),
-          window.markupr.settings.hasApiKey('anthropic'),
-        ]);
-        if (mounted) setHasRequiredByokKeys(hasOpenAiKey && hasAnthropicKey);
-      } catch {
-        if (mounted) setHasRequiredByokKeys(false);
+      if (mounted) {
+        await refreshByokStatus();
       }
     };
 
@@ -135,7 +145,23 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshByokStatus]);
+
+  // Re-check BYOK readiness when returning to main view from settings.
+  useEffect(() => {
+    if (!window.markupr?.settings || currentView !== 'main') return;
+    void refreshByokStatus();
+  }, [currentView, refreshByokStatus]);
+
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      void refreshByokStatus();
+    };
+    window.addEventListener('markupr:settings-updated', handleSettingsUpdated);
+    return () => {
+      window.removeEventListener('markupr:settings-updated', handleSettingsUpdated);
+    };
+  }, [refreshByokStatus]);
 
   // ---------------------------------------------------------------------------
   // Navigation event listeners (from main process menu/tray)
@@ -251,11 +277,12 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
   const handleOnboardingComplete = useCallback(() => {
     setShowOnboarding(false);
     window.markupr?.setSettings({ hasCompletedOnboarding: true }).catch(() => {});
+    void refreshByokStatus();
     window.markupr?.whisper
       ?.hasTranscriptionCapability()
       .then(() => {})
       .catch(() => {});
-  }, []);
+  }, [refreshByokStatus]);
 
   const handleOnboardingSkip = useCallback(() => {
     setShowOnboarding(false);

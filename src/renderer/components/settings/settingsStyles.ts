@@ -25,7 +25,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   backdrop: {
     position: 'absolute',
     inset: 0,
-    backgroundColor: 'rgba(5, 8, 15, 0.44)',
+    backgroundColor: 'var(--bg-overlay)',
     backdropFilter: 'blur(8px)',
     WebkitBackdropFilter: 'blur(8px)',
   },
@@ -35,9 +35,9 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     width: '100%',
     maxWidth: 940,
     maxHeight: '92vh',
-    backgroundColor: 'rgba(14, 19, 29, 0.92)',
+    backgroundColor: 'var(--bg-elevated)',
     borderRadius: 16,
-    boxShadow: '0 24px 56px rgba(2, 6, 14, 0.62), 0 0 0 1px rgba(145, 160, 186, 0.24)',
+    boxShadow: '0 24px 56px rgba(0, 0, 0, 0.42), 0 0 0 1px var(--border-default)',
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
@@ -51,7 +51,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '20px 24px',
-    borderBottom: '1px solid rgba(145, 160, 186, 0.24)',
+    borderBottom: '1px solid var(--border-default)',
     WebkitAppRegion: 'drag',
   },
 
@@ -107,7 +107,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   sidebar: {
     width: 200,
     padding: '16px 12px',
-    borderRight: '1px solid rgba(145, 160, 186, 0.2)',
+    borderRight: '1px solid var(--border-subtle)',
     display: 'flex',
     flexDirection: 'column',
     gap: 4,
@@ -117,7 +117,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   sidebarCompact: {
     width: '100%',
     borderRight: 'none',
-    borderBottom: '1px solid rgba(145, 160, 186, 0.24)',
+    borderBottom: '1px solid var(--border-default)',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
@@ -202,10 +202,10 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
-    backgroundColor: 'rgba(18, 25, 37, 0.82)',
+    backgroundColor: 'var(--bg-secondary)',
     borderRadius: 12,
     padding: 16,
-    border: '1px solid rgba(145, 160, 186, 0.2)',
+    border: '1px solid var(--border-default)',
   },
 
   resetSectionButton: {
@@ -215,7 +215,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    border: '1px solid var(--border-default)',
     borderRadius: 6,
     color: 'var(--text-tertiary)',
     cursor: 'pointer',
@@ -286,8 +286,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   select: {
     minWidth: 180,
     padding: '8px 12px',
-    backgroundColor: 'rgba(12, 18, 29, 0.84)',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    backgroundColor: 'var(--bg-tertiary)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-primary)',
     fontSize: 13,
@@ -319,7 +319,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     width: 120,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(124, 137, 160, 0.42)',
+    backgroundColor: 'var(--border-strong)',
     cursor: 'pointer',
   },
 
@@ -334,8 +334,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   directoryInput: {
     flex: 1,
     padding: '8px 12px',
-    backgroundColor: 'rgba(12, 18, 29, 0.84)',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    backgroundColor: 'var(--bg-tertiary)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-primary)',
     fontSize: 13,
@@ -347,8 +347,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
 
   browseButton: {
     padding: '8px 12px',
-    backgroundColor: 'rgba(124, 137, 160, 0.14)',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    backgroundColor: 'var(--bg-subtle)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-primary)',
     fontSize: 13,
@@ -362,8 +362,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   keyRecorder: {
     minWidth: 140,
     padding: '8px 12px',
-    backgroundColor: 'rgba(12, 18, 29, 0.84)',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    backgroundColor: 'var(--bg-tertiary)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-primary)',
     fontSize: 13,
@@ -422,7 +422,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     width: 32,
     height: 32,
     borderRadius: '50%',
-    border: '2px solid rgba(145, 160, 186, 0.34)',
+    border: '2px solid var(--border-default)',
     backgroundColor: 'transparent',
     cursor: 'pointer',
   },
@@ -449,8 +449,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   apiKeyInput: {
     width: '100%',
     padding: '10px 40px 10px 12px',
-    backgroundColor: 'rgba(12, 18, 29, 0.84)',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    backgroundColor: 'var(--bg-tertiary)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-primary)',
     fontSize: 13,
@@ -481,7 +481,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     backgroundColor: 'var(--accent-default)',
     border: 'none',
     borderRadius: 8,
-    color: 'var(--text-inverse)',
+    color: '#ffffff',
     fontSize: 13,
     fontWeight: 500,
     cursor: 'pointer',
@@ -509,9 +509,9 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'flex-start',
     gap: 12,
     padding: 12,
-    backgroundColor: 'rgba(10, 132, 255, 0.08)',
+    backgroundColor: 'var(--accent-subtle)',
     borderRadius: 8,
-    border: '1px solid rgba(59, 130, 246, 0.2)',
+    border: '1px solid var(--accent-muted)',
     marginBottom: 12,
   },
 
@@ -533,8 +533,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   // Buttons
   secondaryButton: {
     padding: '8px 16px',
-    backgroundColor: 'rgba(124, 137, 160, 0.14)',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    backgroundColor: 'var(--bg-subtle)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-primary)',
     fontSize: 13,
@@ -558,7 +558,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   // Theme Preview
   themePreview: {
     padding: 16,
-    backgroundColor: 'rgba(118, 118, 128, 0.09)',
+    backgroundColor: 'var(--bg-subtle)',
     borderRadius: 8,
   },
 
@@ -626,8 +626,8 @@ export const styles: Record<string, ExtendedCSSProperties> = {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '16px 24px',
-    borderTop: '1px solid rgba(145, 160, 186, 0.24)',
-    backgroundColor: 'rgba(14, 19, 29, 0.88)',
+    borderTop: '1px solid var(--border-default)',
+    backgroundColor: 'var(--bg-secondary)',
     flexWrap: 'wrap',
     gap: 10,
   },
@@ -652,7 +652,7 @@ export const styles: Record<string, ExtendedCSSProperties> = {
   resetAllButton: {
     padding: '8px 16px',
     backgroundColor: 'transparent',
-    border: '1px solid rgba(145, 160, 186, 0.34)',
+    border: '1px solid var(--border-default)',
     borderRadius: 8,
     color: 'var(--text-secondary)',
     fontSize: 12,

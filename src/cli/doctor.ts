@@ -1,5 +1,5 @@
 /**
- * doctor.ts - Environment health check for markupr CLI
+ * doctor.ts - Environment health check for markupR CLI
  *
  * Checks that all required and optional dependencies are available:
  * - ffmpeg / ffprobe (required for video analysis)
@@ -114,7 +114,7 @@ async function checkNodeVersion(): Promise<DoctorCheck> {
       name: 'Node.js',
       status: 'warn',
       message: `Unknown version: ${version}`,
-      hint: 'markupr requires Node.js >= 18.0.0',
+      hint: 'markupR requires Node.js >= 18.0.0',
     };
   }
 
@@ -132,7 +132,7 @@ async function checkNodeVersion(): Promise<DoctorCheck> {
     name: 'Node.js',
     status: 'fail',
     message: `${version} is too old`,
-    hint: 'markupr requires Node.js >= 18.0.0. Upgrade at https://nodejs.org',
+    hint: 'markupR requires Node.js >= 18.0.0. Upgrade at https://nodejs.org',
   };
 }
 
@@ -197,7 +197,7 @@ async function checkWhisperModel(): Promise<DoctorCheck> {
       name: 'Whisper model',
       status: 'warn',
       message: 'No models directory found',
-      hint: `Models directory: ${modelsDir}\nDownload a model via the markupr desktop app, or manually place a ggml-*.bin file there`,
+      hint: `Models directory: ${modelsDir}\nDownload a model via the markupR desktop app, or manually place a ggml-*.bin file there`,
     };
   }
 
@@ -208,7 +208,7 @@ async function checkWhisperModel(): Promise<DoctorCheck> {
       name: 'Whisper model',
       status: 'warn',
       message: 'No model files found',
-      hint: `Models directory: ${modelsDir}\nDownload a model via the markupr desktop app, or manually place a ggml-*.bin file there`,
+      hint: `Models directory: ${modelsDir}\nDownload a model via the markupR desktop app, or manually place a ggml-*.bin file there`,
     };
   }
 
@@ -290,7 +290,7 @@ async function checkDiskSpace(): Promise<DoctorCheck> {
                   name: 'Disk space',
                   status: 'warn',
                   message: `${availableGB.toFixed(1)} GB available (low)`,
-                  hint: 'markupr recordings and output need disk space. Free up some space if you plan to record long sessions',
+                  hint: 'markupR recordings and output need disk space. Free up some space if you plan to record long sessions',
                 };
               }
               return {

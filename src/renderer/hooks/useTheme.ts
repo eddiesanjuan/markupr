@@ -1,5 +1,5 @@
 /**
- * markupr Theme Hook
+ * markupR Theme Hook
  *
  * Provides theme state management and utilities for components.
  * Must be used within a ThemeProvider.

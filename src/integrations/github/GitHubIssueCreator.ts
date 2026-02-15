@@ -1,7 +1,7 @@
 /**
- * GitHubIssueCreator - Creates GitHub issues from markupr feedback reports
+ * GitHubIssueCreator - Creates GitHub issues from markupR feedback reports
  *
- * Parses a markupr markdown report, extracts feedback items, and creates
+ * Parses a markupR markdown report, extracts feedback items, and creates
  * individual GitHub issues with appropriate labels and formatting.
  *
  * Uses native fetch (Node 18+) — no external dependencies.
@@ -71,7 +71,7 @@ export async function resolveAuth(explicitToken?: string): Promise<GitHubAuth> {
 // ============================================================================
 
 /**
- * Parse a markupr markdown report into structured feedback items.
+ * Parse a markupR markdown report into structured feedback items.
  * Extracts FB-XXX items with their metadata from the standard report format.
  */
 export function parseMarkuprReport(markdown: string): ParsedFeedbackItem[] {
@@ -201,7 +201,7 @@ export function formatIssueBody(item: ParsedFeedbackItem, reportPath?: string): 
 
   if (item.screenshotPaths.length > 0) {
     body += `### Screenshots\n\n`;
-    body += `_${item.screenshotPaths.length} screenshot(s) captured — see the markupr report for images._\n\n`;
+    body += `_${item.screenshotPaths.length} screenshot(s) captured — see the markupR report for images._\n\n`;
   }
 
   if (item.suggestedAction) {
@@ -213,7 +213,7 @@ export function formatIssueBody(item: ParsedFeedbackItem, reportPath?: string): 
   if (reportPath) {
     body += `_Source: \`${reportPath}\`_\n`;
   }
-  body += `_Created by [markupr](https://markupr.com)_\n`;
+  body += `_Created by [markupR](https://markupr.com)_\n`;
 
   return body;
 }
@@ -244,7 +244,7 @@ export function collectRequiredLabels(items: ParsedFeedbackItem[]): GitHubLabelI
   const seen = new Set<string>();
   const labels: GitHubLabelInput[] = [];
 
-  // Always include markupr label
+  // Always include markupR label
   seen.add(MARKUPR_LABEL.name);
   labels.push(MARKUPR_LABEL);
 
@@ -370,7 +370,7 @@ export class GitHubAPIClient {
 // ============================================================================
 
 /**
- * Parse a markupr report and create GitHub issues for each feedback item.
+ * Parse a markupR report and create GitHub issues for each feedback item.
  */
 export async function pushToGitHub(options: PushToGitHubOptions): Promise<PushToGitHubResult> {
   const { repo, auth, reportPath, dryRun = false, items: filterIds } = options;
@@ -380,7 +380,7 @@ export async function pushToGitHub(options: PushToGitHubOptions): Promise<PushTo
   let items = parseMarkuprReport(markdown);
 
   if (items.length === 0) {
-    throw new Error('No feedback items found in the report. Is this a valid markupr report?');
+    throw new Error('No feedback items found in the report. Is this a valid markupR report?');
   }
 
   // Filter to specific items if requested

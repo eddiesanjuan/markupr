@@ -1,7 +1,7 @@
 /**
  * MenuManager - Native macOS Menu Bar Integration
  *
- * Creates a polished, native-feeling menu bar experience for markupr:
+ * Creates a polished, native-feeling menu bar experience for markupR:
  * - Standard macOS menus (File, Edit, View, Window, Help)
  * - Proper keyboard shortcuts matching Apple HIG
  * - Recent Sessions submenu with quick access
@@ -9,7 +9,7 @@
  * - Theme switching via View menu
  * - Auto-updater integration via Help menu
  *
- * This module follows the singleton pattern used throughout markupr.
+ * This module follows the singleton pattern used throughout markupR.
  */
 
 import { Menu, app, shell, BrowserWindow, MenuItemConstructorOptions } from 'electron';
@@ -315,7 +315,7 @@ export class MenuManager {
           },
           { type: 'separator' },
           {
-            label: 'markupr Documentation',
+            label: 'markupR Documentation',
             click: () =>
               shell.openExternal('https://github.com/eddiesanjuan/markupr#readme'),
           },

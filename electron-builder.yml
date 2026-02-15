@@ -1,10 +1,10 @@
 # electron-builder.yml
-# macOS Distribution Configuration for markupr
+# macOS Distribution Configuration for markupR
 # Version: 0.4.0
 
 appId: com.eddiesanjuan.markupr
-productName: markupr
-executableName: markupr
+productName: markupR
+executableName: markupR
 copyright: Copyright 2026 Eddie San Juan
 
 directories:
@@ -71,7 +71,7 @@ dmg:
       y: 170
       type: link
       path: /Applications
-  title: "Install markupr"
+  title: "Install markupR"
   artifactName: "markupr-${version}-${arch}.dmg"
 
 # =============================================================================
@@ -84,13 +84,13 @@ win:
       arch: [x64]
     - target: portable
       arch: [x64]
-  publisherName: "markupr"
+  publisherName: "markupR"
   verifyUpdateCodeSignature: false
   # File associations
   fileAssociations:
     - ext: markupr
-      name: markupr Session
-      description: markupr feedback session file
+      name: markupR Session
+      description: markupR feedback session file
       icon: build/icon.ico
       role: Editor
 
@@ -106,7 +106,7 @@ nsis:
   license: LICENSE
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: "markupr"
+  shortcutName: "markupR"
   artifactName: "markupr-Setup-${version}.exe"
   include: build/installer.nsh
   deleteAppDataOnUninstall: false

@@ -46,7 +46,7 @@ export const AdvancedTab: React.FC<{
       onReset={onResetSection}
     >
       <div style={styles.settingDescription}>
-        markupr records screen + microphone first, then runs transcription after you stop.
+        markupR records screen + microphone first, then runs transcription after you stop.
         OpenAI is the primary cloud path. Local Whisper is optional fallback when available.
       </div>
     </SettingsSection>

@@ -396,7 +396,7 @@ class ExportServiceImpl {
 
     return {
       version: JSON_EXPORT_SCHEMA_VERSION,
-      generator: `markupr v${app.getVersion()}`,
+      generator: `markupR v${app.getVersion()}`,
       exportedAt: new Date().toISOString(),
       session: {
         id: session.id,

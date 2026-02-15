@@ -1,6 +1,6 @@
-# Contributing to markupr
+# Contributing to markupR
 
-Thank you for your interest in contributing to markupr! This document covers everything you need to get started.
+Thank you for your interest in contributing to markupR! This document covers everything you need to get started.
 
 ## Table of Contents
 
@@ -277,11 +277,11 @@ export function SessionStatus({ state }: SessionStatusProps) {
 
 1. **Search existing issues** for duplicates
 2. **Try the latest version** -- the issue may already be fixed
-3. **Collect information**: OS, markupr version (visible in Settings footer), steps to reproduce, error messages or logs
+3. **Collect information**: OS, markupR version (visible in Settings footer), steps to reproduce, error messages or logs
 
 ### Filing a Bug
 
-Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md) when opening a new issue. Include your OS, markupr version, and steps to reproduce.
+Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md) when opening a new issue. Include your OS, markupR version, and steps to reproduce.
 
 ### Requesting a Feature
 
@@ -299,4 +299,4 @@ Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md). D
 - Check the [documentation](docs/)
 - Review existing [issues](https://github.com/eddiesanjuan/markupr/issues)
 
-Thank you for contributing to markupr!
+Thank you for contributing to markupR!

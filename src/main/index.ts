@@ -1,7 +1,7 @@
 /**
- * markupr - Main Process Entry Point
+ * markupR - Main Process Entry Point
  *
- * This is the orchestration heart of markupr. It:
+ * This is the orchestration heart of markupR. It:
  * - Initializes all services in the correct order
  * - Wires up the complete session lifecycle
  * - Manages IPC communication with renderer
@@ -39,7 +39,7 @@ if (process.platform === 'darwin') {
 }
 
 // Ensure runtime app identity uses the shipped product name.
-app.setName('markupr');
+app.setName('markupR');
 
 // ESM compatibility - __dirname doesn't exist in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -268,7 +268,7 @@ async function loadRendererIntoWindow(window: BrowserWindow, label: string): Pro
     `data:text/html;charset=utf-8,${encodeURIComponent(`
       <html>
         <body style="margin:0;padding:20px;background:#121212;color:#f5f5f5;font-family:-apple-system,system-ui,sans-serif;">
-          <h2 style="margin:0 0 12px 0;">markupr failed to load</h2>
+          <h2 style="margin:0 0 12px 0;">markupR failed to load</h2>
           <p style="margin:0 0 8px 0;">Dev renderer did not become reachable at ${DEV_RENDERER_URL}.</p>
           <p style="margin:0;color:#b3b3b3;">${finalMessage}</p>
         </body>
@@ -408,7 +408,7 @@ function handleSessionStateChange(state: SessionState, session: Session | null):
   // Update tray icon
   trayManager.setState(mapToTrayState(state));
   if (state === 'recording' && sessionController.isSessionPaused()) {
-    trayManager.setTooltip(`markupr - Paused (${formatHotkeyForDisplay('pauseResume')} to resume)`);
+    trayManager.setTooltip(`markupR - Paused (${formatHotkeyForDisplay('pauseResume')} to resume)`);
   }
 
   const keepVisibleOnBlur =
@@ -483,7 +483,7 @@ function handleSessionError(error: Error): void {
 
   // Update tray to error state
   trayManager.setState('error');
-  trayManager.setTooltip(`markupr - Error: ${error.message}`);
+  trayManager.setTooltip(`markupR - Error: ${error.message}`);
 
   // Notify renderer
   safeSendToRenderer(IPC_CHANNELS.SESSION_ERROR, {
@@ -697,7 +697,7 @@ function pauseSession(): { success: boolean; error?: string } {
     return { success: false, error: 'Session is already paused.' };
   }
 
-  trayManager.setTooltip(`markupr - Paused (${formatHotkeyForDisplay('pauseResume')} to resume)`);
+  trayManager.setTooltip(`markupR - Paused (${formatHotkeyForDisplay('pauseResume')} to resume)`);
   return { success: true };
 }
 
@@ -711,7 +711,7 @@ function resumeSession(): { success: boolean; error?: string } {
     return { success: false, error: 'Session is not paused.' };
   }
 
-  trayManager.setTooltip(`markupr - Recording... (${formatHotkeyForDisplay('toggleRecording')} to stop)`);
+  trayManager.setTooltip(`markupR - Recording... (${formatHotkeyForDisplay('toggleRecording')} to stop)`);
   return { success: true };
 }
 
@@ -735,7 +735,7 @@ async function resolveDefaultCaptureSource(): Promise<{ sourceId: string; source
       : process.platform === 'win32'
         ? 'Windows Settings > Privacy > Screen capture'
         : 'your system settings';
-    throw new Error(`No screen capture source is available. Check that markupr has screen recording permission in ${settingsHint}.`);
+    throw new Error(`No screen capture source is available. Check that markupR has screen recording permission in ${settingsHint}.`);
   }
 
   const primaryDisplayId = String(screen.getPrimaryDisplay().id);
@@ -1639,7 +1639,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  console.log('[Main] markupr initialization complete');
+  console.log('[Main] markupR initialization complete');
 });
 
 // Handle all windows closed
@@ -1711,7 +1711,7 @@ process.on('uncaughtException', (error) => {
 
   console.error('[Main] Uncaught exception:', error);
   try {
-    showErrorNotification('markupr Error', error.message);
+    showErrorNotification('markupR Error', error.message);
   } catch {
     // Ignore notification errors
   }

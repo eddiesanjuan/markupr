@@ -172,13 +172,27 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // ---------------------------------------------------------------------------
   // Transcription capability check
   // ---------------------------------------------------------------------------
-  useEffect(() => {
+  const refreshTranscriptionCapability = useCallback(() => {
     if (!window.markupr?.whisper) return;
-    window.markupr.whisper
+    void window.markupr.whisper
       .hasTranscriptionCapability()
       .then((ready) => setHasTranscriptionCapability(ready))
       .catch(() => setHasTranscriptionCapability(false));
   }, []);
+
+  useEffect(() => {
+    refreshTranscriptionCapability();
+  }, [refreshTranscriptionCapability]);
+
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      refreshTranscriptionCapability();
+    };
+    window.addEventListener('markupr:settings-updated', handleSettingsUpdated);
+    return () => {
+      window.removeEventListener('markupr:settings-updated', handleSettingsUpdated);
+    };
+  }, [refreshTranscriptionCapability]);
 
   // ---------------------------------------------------------------------------
   // Screen recording sync
@@ -449,29 +463,24 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Post-processing progress listeners
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    const markuprApi = window.markupr as Record<string, unknown>;
-    let unsubProgress: (() => void) | null = null;
-    let unsubComplete: (() => void) | null = null;
-
-    if (markuprApi.processing && typeof (markuprApi.processing as Record<string, unknown>).onProgress === 'function') {
-      const processingApi = markuprApi.processing as {
-        onProgress: (cb: (data: ProcessingProgress) => void) => () => void;
-        onComplete: (cb: (data: unknown) => void) => () => void;
-      };
-      unsubProgress = processingApi.onProgress((data) => {
-        setRawProcessingProgress({
-          percent: Math.max(0, Math.min(100, Math.round(data.percent))),
-          step: data.step,
-        });
-      });
-      unsubComplete = processingApi.onComplete(() => {
-        setRawProcessingProgress({ percent: 100, step: 'complete' });
-      });
+    const processingApi = window.markupr?.processing;
+    if (!processingApi || typeof processingApi.onProgress !== 'function' || typeof processingApi.onComplete !== 'function') {
+      return;
     }
 
+    const unsubProgress = processingApi.onProgress((data) => {
+      setRawProcessingProgress({
+        percent: Math.max(0, Math.min(100, Math.round(data.percent))),
+        step: data.step,
+      });
+    });
+    const unsubComplete = processingApi.onComplete(() => {
+      setRawProcessingProgress({ percent: 100, step: 'complete' });
+    });
+
     return () => {
-      unsubProgress?.();
-      unsubComplete?.();
+      unsubProgress();
+      unsubComplete();
     };
   }, []);
 

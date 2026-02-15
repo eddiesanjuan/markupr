@@ -1,5 +1,5 @@
 /**
- * Windows Taskbar Integration for markupr
+ * Windows Taskbar Integration for markupR
  *
  * Provides:
  * - Jump list with recent sessions
@@ -105,7 +105,7 @@ export class TaskbarIntegration {
             {
               type: 'task',
               title: 'Open Settings',
-              description: 'Configure markupr settings',
+              description: 'Configure markupR settings',
               program: process.execPath,
               args: '--settings',
               iconPath: process.execPath,
@@ -378,7 +378,7 @@ export class TaskbarIntegration {
   public notifyRecordingStarted(): void {
     this.showNotification({
       title: 'Recording Started',
-      body: 'markupr is now capturing your feedback',
+      body: 'markupR is now capturing your feedback',
       silent: true,
       urgency: 'low'
     });

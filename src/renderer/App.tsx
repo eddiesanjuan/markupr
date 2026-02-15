@@ -209,7 +209,7 @@ const App: React.FC = () => {
               error={recording.errorMessage}
             />
             <div>
-              <p className="ff-shell__eyebrow">markupr</p>
+              <p className="ff-shell__eyebrow">markupR</p>
               <h1 className="ff-shell__title">{ui.statusCopy.title}</h1>
             </div>
           </div>

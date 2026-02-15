@@ -1,5 +1,5 @@
 /**
- * markupr Settings Panel
+ * markupR Settings Panel
  *
  * Thin composition shell. State lives in useSettingsPanel hook,
  * primitives in ./primitives/, tabs in ./settings/.
@@ -113,9 +113,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
                 style={{
                   ...styles.tabButton,
                   ...(s.isCompact ? styles.tabButtonCompact : {}),
-                  backgroundColor: s.activeTab === tab.id ? 'rgba(10, 132, 255, 0.16)' : 'transparent',
+                  backgroundColor: s.activeTab === tab.id ? 'var(--accent-subtle)' : 'transparent',
                   color: s.activeTab === tab.id ? colors.text.link : colors.text.tertiary,
-                  borderColor: s.activeTab === tab.id ? 'rgba(10, 132, 255, 0.32)' : 'transparent',
+                  borderColor: s.activeTab === tab.id ? 'var(--accent-muted)' : 'transparent',
                 }}
                 onClick={() => s.setActiveTab(tab.id)}
                 aria-selected={s.activeTab === tab.id}
@@ -135,7 +135,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({
         <div style={styles.footer}>
           <div style={styles.footerLeft}>
             <span style={styles.footerText}>
-              markupr {s.appVersion ? `v${s.appVersion}` : ''} {s.hasChanges && <span style={styles.savedIndicator}>Changes saved</span>}
+              markupR {s.appVersion ? `v${s.appVersion}` : ''} {s.hasChanges && <span style={styles.savedIndicator}>Changes saved</span>}
             </span>
             <DonateButton />
           </div>

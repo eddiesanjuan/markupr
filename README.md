@@ -2,7 +2,7 @@
   <img src="src/renderer/assets/logo.svg" alt="markupR" width="80" height="80">
 </p>
 
-<h1 align="center">markupr</h1>
+<h1 align="center">markupR</h1>
 
 <p align="center">
   <strong>Record your screen. Say what's wrong. Your AI agent fixes it.</strong>
@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
-  <a href="#why-markupr">Why markupr</a> &middot;
+  <a href="#why-markupR">Why markupR</a> &middot;
   <a href="#mcp-server">MCP Server</a> &middot;
   <a href="#cli">CLI</a> &middot;
   <a href="#integrations">Integrations</a> &middot;
@@ -27,7 +27,7 @@
 
 ---
 
-<!-- hero-screenshot: Replace with an actual screenshot or GIF of markupr in action -->
+<!-- hero-screenshot: Replace with an actual screenshot or GIF of markupR in action -->
 
 ## The Problem
 
@@ -35,7 +35,7 @@ AI coding agents can't see your screen. When you find a bug, you context-switch 
 
 ## The Solution
 
-markupr records your screen while you narrate what's wrong. When you stop, it runs an intelligent pipeline that correlates your transcript timestamps with the video to extract the right frames at the right moments -- then stitches everything into structured Markdown your AI agent can act on immediately.
+markupR records your screen while you narrate what's wrong. When you stop, it runs an intelligent pipeline that correlates your transcript timestamps with the video to extract the right frames at the right moments -- then stitches everything into structured Markdown your AI agent can act on immediately.
 
 - **Record** -- press a hotkey, talk through what you see
 - **Process** -- Whisper transcribes, ffmpeg extracts frames at the exact moments you described
@@ -65,7 +65,7 @@ Download from [markupr.com](https://markupr.com) or [GitHub Releases](https://gi
 
 No API keys required. Local Whisper transcription works out of the box.
 
-## Why markupr?
+## Why markupR?
 
 **Local-first.** Whisper runs on your device. Your recordings, transcripts, and screenshots never leave your machine. No cloud dependency, no account required.
 
@@ -99,7 +99,7 @@ Each screenshot is extracted from the exact video frame matching your narration 
 
 ## MCP Server
 
-Give your AI coding agent eyes and ears. Add markupr as an MCP server and it can capture screenshots, record your screen with voice, and receive structured reports -- all mid-conversation.
+Give your AI coding agent eyes and ears. Add markupR as an MCP server and it can capture screenshots, record your screen with voice, and receive structured reports -- all mid-conversation.
 
 ### Setup
 
@@ -108,7 +108,7 @@ Give your AI coding agent eyes and ears. Add markupr as an MCP server and it can
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -159,32 +159,32 @@ npm install -g markupr
 
 ### Commands
 
-**`markupr analyze <video>`** -- Process a screen recording into structured Markdown.
+**`markupR analyze <video>`** -- Process a screen recording into structured Markdown.
 
 ```bash
-markupr analyze ./bug-demo.mov
-markupr analyze ./recording.mov --output ./reports
-markupr analyze ./recording.mov --template github-issue
-markupr analyze ./recording.mov --no-frames  # transcript only
+markupR analyze ./bug-demo.mov
+markupR analyze ./recording.mov --output ./reports
+markupR analyze ./recording.mov --template github-issue
+markupR analyze ./recording.mov --no-frames  # transcript only
 ```
 
-**`markupr watch [directory]`** -- Watch for new recordings and auto-process them.
+**`markupR watch [directory]`** -- Watch for new recordings and auto-process them.
 
 ```bash
-markupr watch ~/Desktop --output ./reports
+markupR watch ~/Desktop --output ./reports
 ```
 
-**`markupr push github <report>`** -- Create GitHub issues from a feedback report.
+**`markupR push github <report>`** -- Create GitHub issues from a feedback report.
 
 ```bash
-markupr push github ./report.md --repo myorg/myapp
-markupr push github ./report.md --repo myorg/myapp --dry-run
+markupR push github ./report.md --repo myorg/myapp
+markupR push github ./report.md --repo myorg/myapp --dry-run
 ```
 
-**`markupr push linear <report>`** -- Create Linear issues from a feedback report.
+**`markupR push linear <report>`** -- Create Linear issues from a feedback report.
 
 ```bash
-markupr push linear ./report.md --team ENG
+markupR push linear ./report.md --team ENG
 ```
 
 ### Output Templates
@@ -200,7 +200,7 @@ markupr push linear ./report.md --team ENG
 
 ### GitHub Action
 
-Run markupr in CI to get visual feedback on pull requests:
+Run markupR in CI to get visual feedback on pull requests:
 
 ```yaml
 - uses: eddiesanjuan/markupr-action@v1
@@ -244,7 +244,7 @@ For architecture details, see [CLAUDE.md](CLAUDE.md).
 
 ```bash
 git clone https://github.com/eddiesanjuan/markupr.git
-cd markupr
+cd markupR
 npm install
 npm run dev
 ```

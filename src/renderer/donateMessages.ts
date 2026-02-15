@@ -1,5 +1,5 @@
 /**
- * markupr Donate Button Messages
+ * markupR Donate Button Messages
  *
  * Rotating messages for the donate/support button.
  * Messages rotate on each app launch, not during a session.
@@ -10,8 +10,8 @@
  */
 export const DONATE_MESSAGES = [
   'Buy Eddie a Coffee',
-  'Support markupr',
-  'Keep markupr Evolving',
+  'Support markupR',
+  'Keep markupR Evolving',
   'Help Fund New Features',
   'Sponsor Ongoing Development',
 ] as const;

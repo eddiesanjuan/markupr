@@ -1,6 +1,6 @@
-# markupr MCP Server
+# markupR MCP Server
 
-Give your AI coding agent eyes and ears. The markupr MCP server lets Claude Code, Cursor, and Windsurf capture screenshots and screen recordings with voice narration -- then processes everything into structured, AI-ready Markdown reports.
+Give your AI coding agent eyes and ears. The markupR MCP server lets Claude Code, Cursor, and Windsurf capture screenshots and screen recordings with voice narration -- then processes everything into structured, AI-ready Markdown reports.
 
 **Version:** 2.3.0 | **Platform:** macOS | **Protocol:** MCP (Model Context Protocol) over stdio
 
@@ -37,7 +37,7 @@ npx markupr-mcp
 npm install -g markupr
 ```
 
-This installs both the `markupr` CLI and the `markupr-mcp` server binary.
+This installs both the `markupR` CLI and the `markupr-mcp` server binary.
 
 ---
 
@@ -50,7 +50,7 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -65,7 +65,7 @@ Add to `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` globally
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -80,7 +80,7 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "npx",
       "args": ["-y", "markupr-mcp"]
     }
@@ -122,7 +122,7 @@ Screenshot saved: /Users/you/Documents/markupr/mcp/session-20260214-143022/scree
 
 ### `capture_with_voice`
 
-Record screen and voice for a fixed duration, then run the full markupr pipeline. Produces a structured Markdown report with transcript, key moments, and extracted frames.
+Record screen and voice for a fixed duration, then run the full markupR pipeline. Produces a structured Markdown report with transcript, key moments, and extracted frames.
 
 **Input:**
 | Parameter | Type | Default | Description |
@@ -151,7 +151,7 @@ Report: /Users/you/Documents/markupr/mcp/session-20260214-143022/feedback-report
 
 ### `analyze_video`
 
-Process an existing video file through the markupr pipeline. Useful for recordings made outside markupr.
+Process an existing video file through the markupR pipeline. Useful for recordings made outside markupR.
 
 **Input:**
 | Parameter | Type | Default | Description |
@@ -215,7 +215,7 @@ Use stop_recording to end and process the recording.
 
 ### `stop_recording`
 
-Stop an active recording and run the full markupr pipeline on the captured video.
+Stop an active recording and run the full markupR pipeline on the captured video.
 
 **Input:**
 | Parameter | Type | Default | Description |
@@ -246,7 +246,7 @@ The server also exposes MCP resources for querying session data:
 ## How It Works
 
 1. **Your AI agent calls a tool** -- e.g., `capture_with_voice({ duration: 30 })`
-2. **markupr captures** -- records screen and microphone via ffmpeg
+2. **markupR captures** -- records screen and microphone via ffmpeg
 3. **The pipeline runs** -- transcribes audio (Whisper), detects key moments, extracts frames at those timestamps
 4. **Structured output** -- produces a Markdown report with screenshots placed at the exact moments you described them
 5. **Agent reads the report** -- the tool returns the file path; the agent reads and acts on the structured feedback
@@ -329,7 +329,7 @@ If your IDE can't connect to the MCP server:
 
 The MCP protocol uses stdout for JSON-RPC communication. If you see garbled output:
 - Ensure no other tools are writing to stdout in the same process
-- All markupr logging goes to stderr by design
+- All markupR logging goes to stderr by design
 
 ---
 
@@ -340,7 +340,7 @@ To develop the MCP server locally:
 ```bash
 # Clone and install
 git clone https://github.com/eddiesanjuan/markupr.git
-cd markupr
+cd markupR
 npm install
 
 # Build the MCP server
@@ -355,7 +355,7 @@ For Claude Code, point to your local build:
 ```json
 {
   "mcpServers": {
-    "markupr": {
+    "markupR": {
       "command": "node",
       "args": ["/path/to/markupr/dist/mcp/index.mjs"]
     }

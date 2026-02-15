@@ -2,7 +2,7 @@
  * Tool: capture_with_voice
  *
  * Records screen and voice for a specified duration, then runs the full
- * markupr pipeline to produce a structured feedback report.
+ * markupR pipeline to produce a structured feedback report.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -17,7 +17,7 @@ import { templateRegistry } from '../../main/output/templates/index.js';
 export function register(server: McpServer): void {
   server.tool(
     'capture_with_voice',
-    'Record screen and voice for a specified duration, then run the full markupr pipeline to produce a structured feedback report.',
+    'Record screen and voice for a specified duration, then run the full markupR pipeline to produce a structured feedback report.',
     {
       duration: z.number().min(3).max(300).describe('Recording duration in seconds (3-300)'),
       outputDir: z.string().optional().describe('Output directory (default: session directory)'),

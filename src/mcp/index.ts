@@ -1,5 +1,5 @@
 /**
- * markupr MCP Server — Entry Point
+ * markupR MCP Server — Entry Point
  *
  * Headless Node.js process communicating over stdio using JSON-RPC 2.0.
  * stdout is reserved for MCP protocol — all logging goes to stderr.
@@ -14,7 +14,7 @@ declare const __MARKUPR_VERSION__: string;
 const VERSION =
   typeof __MARKUPR_VERSION__ !== 'undefined' ? __MARKUPR_VERSION__ : '0.0.0-dev';
 
-log(`markupr MCP server v${VERSION} starting...`);
+log(`markupR MCP server v${VERSION} starting...`);
 
 process.on('uncaughtException', (error) => {
   log(`Uncaught exception: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,5 +1,5 @@
 /**
- * markupr Keyboard Shortcuts Panel
+ * markupR Keyboard Shortcuts Panel
  *
  * A comprehensive cheatsheet and customization interface featuring:
  * - Organized shortcuts by category (Recording, Navigation, Editing, Annotation)
@@ -257,7 +257,7 @@ const DEFAULT_SHORTCUTS: Shortcut[] = [
   {
     id: 'quit-app',
     label: 'Quit',
-    description: 'Exit markupr',
+    description: 'Exit markupR',
     keys: 'CmdOrCtrl+Q',
     category: 'Window',
     customizable: false,

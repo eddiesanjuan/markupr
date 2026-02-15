@@ -1,5 +1,5 @@
 /**
- * Window management for markupr
+ * Window management for markupR
  *
  * Exports:
  * - PopoverManager: NSPopover-like menu bar window

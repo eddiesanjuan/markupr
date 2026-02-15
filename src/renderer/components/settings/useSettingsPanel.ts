@@ -196,6 +196,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
         const hasAnthropic = await window.markupr.settings.hasApiKey('anthropic').catch(() => false);
         setHasRequiredByokKeys(Boolean(hasAnthropic));
         setOpenAiApiKey((prev) => ({ ...prev, valid: true }));
+        window.dispatchEvent(new CustomEvent('markupr:settings-updated', { detail: { type: 'api-key', provider: 'openai' } }));
       } else {
         setOpenAiApiKey((prev) => ({
           ...prev, valid: false,
@@ -256,6 +257,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
         const hasOpenAi = await window.markupr.settings.hasApiKey('openai').catch(() => false);
         setHasRequiredByokKeys(Boolean(hasOpenAi));
         setAnthropicApiKey((prev) => ({ ...prev, valid: true }));
+        window.dispatchEvent(new CustomEvent('markupr:settings-updated', { detail: { type: 'api-key', provider: 'anthropic' } }));
       } else {
         setAnthropicApiKey((prev) => ({
           ...prev, valid: false,
@@ -344,6 +346,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
       setOpenAiApiKey({ value: '', visible: false, testing: false, valid: null, error: null });
       setAnthropicApiKey({ value: '', visible: false, testing: false, valid: null, error: null });
       setHasRequiredByokKeys(false);
+      window.dispatchEvent(new CustomEvent('markupr:settings-updated', { detail: { type: 'reset' } }));
     } catch (error) {
       console.error('Failed to clear data:', error);
     }

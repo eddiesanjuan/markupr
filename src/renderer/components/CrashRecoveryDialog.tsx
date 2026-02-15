@@ -1,7 +1,7 @@
 /**
  * CrashRecoveryDialog - Recovery UI for incomplete sessions
  *
- * Shows when markupr detects an incomplete session from a previous
+ * Shows when markupR detects an incomplete session from a previous
  * crash or abnormal exit. Offers the user the choice to recover or discard.
  */
 
@@ -246,7 +246,7 @@ export function CrashRecoveryDialog({
             fontSize: 14,
           }}
         >
-          markupr found an incomplete session from{' '}
+          markupR found an incomplete session from{' '}
           <span style={{ color: colors.text.primary, fontWeight: 500 }}>{formattedTime} ago</span>.
         </p>
 

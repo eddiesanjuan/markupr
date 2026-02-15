@@ -228,7 +228,7 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
 
             {/* Description */}
             <p style={styles.description}>
-              markupr needs to download a speech recognition model ({selectedModelInfo?.sizeMB || 75}MB)
+              markupR needs to download a speech recognition model ({selectedModelInfo?.sizeMB || 75}MB)
               to transcribe your voice offline. This is a one-time download.
             </p>
 
@@ -381,12 +381,12 @@ export const ModelDownloadDialog: React.FC<ModelDownloadDialogProps> = ({
             {/* Description */}
             <p style={styles.description}>
               The speech recognition model has been downloaded successfully.
-              markupr can now transcribe your voice offline.
+              markupR can now transcribe your voice offline.
             </p>
 
             {/* Continue Button */}
             <button style={styles.successButton} onClick={onComplete}>
-              Start Using markupr
+              Start Using markupR
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" style={{ marginLeft: 8 }}>
                 <path
                   d="M7.5 15l5-5-5-5"

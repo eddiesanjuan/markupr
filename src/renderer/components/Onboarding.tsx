@@ -1,5 +1,5 @@
 /**
- * markupr Onboarding Wizard
+ * markupR Onboarding Wizard
  *
  * The first impression that makes users say "wow".
  *
@@ -8,7 +8,8 @@
  * 2. Microphone - Permission request with audio level preview
  * 3. Screen Recording - Permission request with system settings link
  * 4. OpenAI API Key - Input, test, success/error feedback
- * 5. Success - Confetti celebration, Start Recording button
+ * 5. Anthropic API Key - Input, test, success/error feedback
+ * 6. Success - Confetti celebration, Start Recording button
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -23,7 +24,7 @@ interface OnboardingProps {
   onSkip: () => void;
 }
 
-type OnboardingStep = 'welcome' | 'microphone' | 'screen' | 'apikey' | 'success';
+type OnboardingStep = 'welcome' | 'microphone' | 'screen' | 'openai' | 'anthropic' | 'success';
 
 interface PermissionStatus {
   microphone: 'unknown' | 'pending' | 'granted' | 'denied';
@@ -345,7 +346,7 @@ const WelcomeStep: React.FC<{ onNext: () => void; onSkip: () => void }> = ({
       </div>
 
       {/* Title */}
-      <h1 style={styles.title}>Welcome to markupr</h1>
+      <h1 style={styles.title}>Welcome to markupR</h1>
 
       {/* Tagline */}
       <p style={styles.tagline}>
@@ -467,7 +468,7 @@ const MicrophoneStep: React.FC<{
 
       {/* Explanation */}
       <p style={styles.stepDescription}>
-        markupr needs microphone access to transcribe your voice narration as you
+        markupR needs microphone access to transcribe your voice narration as you
         walk through your feedback. Your audio is processed locally and securely.
       </p>
 
@@ -495,7 +496,7 @@ const MicrophoneStep: React.FC<{
           </div>
           <ol style={styles.instructionList}>
             <li>Click &quot;Open System Settings&quot; below</li>
-            <li>Find &quot;markupr&quot; in the list</li>
+            <li>Find &quot;markupR&quot; in the list</li>
             <li>Toggle the switch ON</li>
             <li>Click &quot;Check Again&quot; to verify</li>
           </ol>
@@ -643,7 +644,7 @@ const ScreenRecordingStep: React.FC<{
 
       {/* Explanation */}
       <p style={styles.stepDescription}>
-        markupr captures screenshots when you pause while speaking, automatically
+        markupR captures screenshots when you pause while speaking, automatically
         documenting what you&apos;re looking at. Grant screen recording permission to enable
         this feature.
       </p>
@@ -664,12 +665,12 @@ const ScreenRecordingStep: React.FC<{
           </div>
           <ol style={styles.instructionList}>
             <li>Click &quot;Open System Settings&quot; below</li>
-            <li>Find &quot;markupr&quot; in the list</li>
+            <li>Find &quot;markupR&quot; in the list</li>
             <li>Toggle the switch ON</li>
             <li>Click &quot;Check Again&quot; to verify</li>
           </ol>
           <p style={styles.instructionNote}>
-            Note: You may need to restart markupr after enabling.
+            Note: You may need to restart markupR after enabling.
           </p>
         </div>
       )}
@@ -729,7 +730,7 @@ const ScreenRecordingStep: React.FC<{
               strokeLinecap="round"
             />
           </svg>
-          <span>Screen recording enabled! markupr can now capture screenshots.</span>
+          <span>Screen recording enabled! markupR can now capture screenshots.</span>
         </div>
       )}
 
@@ -764,13 +765,28 @@ const ScreenRecordingStep: React.FC<{
 };
 
 const ApiKeyStep: React.FC<{
+  title: string;
+  helpText: React.ReactNode;
+  placeholder: string;
   apiKey: ApiKeyStatus;
   onApiKeyChange: (value: string) => void;
   onTestApiKey: () => void;
   onNext: () => void;
   onSkip: () => void;
   onBack: () => void;
-}> = ({ apiKey, onApiKeyChange, onTestApiKey, onNext, onSkip, onBack }) => {
+  skipLabel: string;
+}> = ({
+  title,
+  helpText,
+  placeholder,
+  apiKey,
+  onApiKeyChange,
+  onTestApiKey,
+  onNext,
+  onSkip,
+  onBack,
+  skipLabel,
+}) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const { colors } = useTheme();
 
@@ -823,29 +839,17 @@ const ApiKeyStep: React.FC<{
       </div>
 
       {/* Title */}
-      <h2 style={styles.stepTitle}>OpenAI API Key</h2>
+      <h2 style={styles.stepTitle}>{title}</h2>
 
       {/* Explanation */}
-      <p style={styles.stepDescription}>
-        markupr uses OpenAI for post-session narration transcription. Create an API key
-        at{' '}
-        <a
-          href="https://platform.openai.com/api-keys"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={styles.link}
-        >
-          platform.openai.com
-        </a>{' '}
-        (or skip and use a local Whisper model later).
-      </p>
+      <p style={styles.stepDescription}>{helpText}</p>
 
       {/* API Key Input */}
       <div style={styles.inputGroup}>
         <input
           ref={inputRef}
           type="password"
-          placeholder="Enter your OpenAI API key"
+          placeholder={placeholder}
           value={apiKey.value}
           onChange={(e) => onApiKeyChange(e.target.value)}
           style={{
@@ -936,9 +940,9 @@ const ApiKeyStep: React.FC<{
         </svg>
       </button>
 
-      {/* Skip - use local transcription */}
+      {/* Skip */}
       <button style={styles.skipButton} onClick={onSkip}>
-        Skip — use local Whisper transcription
+        {skipLabel}
       </button>
 
       {/* Back Button */}
@@ -1010,7 +1014,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 
         {/* Summary */}
         <p style={styles.stepDescription}>
-          markupr is ready to capture your feedback. Press{' '}
+          markupR is ready to capture your feedback. Press{' '}
           <kbd style={styles.kbd}>Cmd+Shift+F</kbd> to start recording, and speak
           naturally as you walk through your feedback. Mark shots as needed, then stop
           to let AI assemble transcript + frames into a clean report.
@@ -1084,7 +1088,7 @@ const SuccessStep: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
 // Progress Dots
 // ============================================================================
 
-const STEPS: OnboardingStep[] = ['welcome', 'microphone', 'screen', 'apikey', 'success'];
+const STEPS: OnboardingStep[] = ['welcome', 'microphone', 'screen', 'openai', 'anthropic', 'success'];
 
 const ProgressDots: React.FC<{ currentStep: OnboardingStep }> = ({ currentStep }) => {
   const currentIndex = STEPS.indexOf(currentStep);
@@ -1134,7 +1138,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
     microphone: 'unknown',
     screen: 'unknown',
   });
-  const [apiKey, setApiKey] = useState<ApiKeyStatus>({
+  const [openAiApiKey, setOpenAiApiKey] = useState<ApiKeyStatus>({
+    value: '',
+    testing: false,
+    valid: null,
+    error: null,
+  });
+  const [anthropicApiKey, setAnthropicApiKey] = useState<ApiKeyStatus>({
     value: '',
     testing: false,
     valid: null,
@@ -1160,8 +1170,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
         e.preventDefault();
         if (currentStep === 'welcome') goToStep('microphone');
         else if (currentStep === 'microphone' && permissions.microphone === 'granted') goToStep('screen');
-        else if (currentStep === 'screen' && permissions.screen === 'granted') goToStep('apikey');
-        else if (currentStep === 'apikey' && apiKey.valid) goToStep('success');
+        else if (currentStep === 'screen' && permissions.screen === 'granted') goToStep('openai');
+        else if (currentStep === 'openai' && openAiApiKey.valid) goToStep('anthropic');
+        else if (currentStep === 'anthropic' && anthropicApiKey.valid) goToStep('success');
         else if (currentStep === 'success') onComplete();
       } else if (e.key === 'ArrowLeft' || e.key === 'Escape') {
         e.preventDefault();
@@ -1173,7 +1184,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentStep, permissions, apiKey.valid, goToStep, onComplete]);
+  }, [currentStep, permissions, openAiApiKey.valid, anthropicApiKey.valid, goToStep, onComplete]);
 
   // Check initial permission status on mount
   useEffect(() => {
@@ -1247,11 +1258,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
   }, []);
 
   // Test OpenAI API key
-  const testApiKey = useCallback(async () => {
-    setApiKey((prev) => ({ ...prev, testing: true, error: null }));
+  const testOpenAiApiKey = useCallback(async () => {
+    setOpenAiApiKey((prev) => ({ ...prev, testing: true, error: null }));
 
     try {
-      const candidateKey = apiKey.value.trim();
+      const candidateKey = openAiApiKey.value.trim();
       const validation = await withTimeout(
         window.markupr.settings.testApiKey('openai', candidateKey),
         API_TEST_TIMEOUT_MS,
@@ -1265,7 +1276,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
           'Saving OpenAI key timed out. Please try again.'
         );
         if (!saved) {
-          setApiKey((prev) => ({
+          setOpenAiApiKey((prev) => ({
             ...prev,
             valid: false,
             error: 'OpenAI key validated, but local save verification failed. Relaunch app and try again.',
@@ -1273,9 +1284,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
           return;
         }
 
-        setApiKey((prev) => ({ ...prev, valid: true }));
+        setOpenAiApiKey((prev) => ({ ...prev, valid: true }));
+        window.dispatchEvent(
+          new CustomEvent('markupr:settings-updated', {
+            detail: { type: 'api-key', provider: 'openai', source: 'onboarding' },
+          }),
+        );
       } else {
-        setApiKey((prev) => ({
+        setOpenAiApiKey((prev) => ({
           ...prev,
           valid: false,
           error: validation.error || 'OpenAI API key test failed. Please try again.',
@@ -1283,15 +1299,67 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Unknown error';
-      setApiKey((prev) => ({
+      setOpenAiApiKey((prev) => ({
         ...prev,
         valid: false,
-        error: `Failed to test API key: ${detail}`,
+        error: `Failed to test OpenAI key: ${detail}`,
       }));
     } finally {
-      setApiKey((prev) => ({ ...prev, testing: false }));
+      setOpenAiApiKey((prev) => ({ ...prev, testing: false }));
     }
-  }, [apiKey.value]);
+  }, [openAiApiKey.value]);
+
+  // Test Anthropic API key
+  const testAnthropicApiKey = useCallback(async () => {
+    setAnthropicApiKey((prev) => ({ ...prev, testing: true, error: null }));
+
+    try {
+      const candidateKey = anthropicApiKey.value.trim();
+      const validation = await withTimeout(
+        window.markupr.settings.testApiKey('anthropic', candidateKey),
+        API_TEST_TIMEOUT_MS,
+        'Anthropic API test timed out. Please try again.'
+      );
+
+      if (validation.valid) {
+        const saved = await withTimeout(
+          window.markupr.settings.setApiKey('anthropic', candidateKey),
+          API_SAVE_TIMEOUT_MS,
+          'Saving Anthropic key timed out. Please try again.'
+        );
+        if (!saved) {
+          setAnthropicApiKey((prev) => ({
+            ...prev,
+            valid: false,
+            error: 'Anthropic key validated, but local save verification failed. Relaunch app and try again.',
+          }));
+          return;
+        }
+
+        setAnthropicApiKey((prev) => ({ ...prev, valid: true }));
+        window.dispatchEvent(
+          new CustomEvent('markupr:settings-updated', {
+            detail: { type: 'api-key', provider: 'anthropic', source: 'onboarding' },
+          }),
+        );
+      } else {
+        setAnthropicApiKey((prev) => ({
+          ...prev,
+          valid: false,
+          error: validation.error || 'Anthropic API key test failed. Please try again.',
+        }));
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Unknown error';
+      setAnthropicApiKey((prev) => ({
+        ...prev,
+        valid: false,
+        error: `Failed to test Anthropic key: ${detail}`,
+      }));
+    } finally {
+      setAnthropicApiKey((prev) => ({ ...prev, testing: false }));
+    }
+  }, [anthropicApiKey.value]);
 
   // Render current step
   const renderStep = () => {
@@ -1314,22 +1382,70 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
           <ScreenRecordingStep
             status={permissions.screen}
             onRequestPermission={requestScreenPermission}
-            onNext={() => goToStep('apikey')}
+            onNext={() => goToStep('openai')}
             onBack={() => goToStep('microphone', 'right')}
           />
         );
 
-      case 'apikey':
+      case 'openai':
         return (
           <ApiKeyStep
-            apiKey={apiKey}
-            onApiKeyChange={(value) =>
-              setApiKey((prev) => ({ ...prev, value, valid: null, error: null }))
+            title="OpenAI API Key"
+            helpText={
+              <>
+                markupR uses OpenAI for post-session narration transcription. Create an API key at{' '}
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.link}
+                >
+                  platform.openai.com
+                </a>{' '}
+                (or skip and use a local Whisper model later).
+              </>
             }
-            onTestApiKey={testApiKey}
+            placeholder="Enter your OpenAI API key"
+            apiKey={openAiApiKey}
+            onApiKeyChange={(value) =>
+              setOpenAiApiKey((prev) => ({ ...prev, value, valid: null, error: null }))
+            }
+            onTestApiKey={testOpenAiApiKey}
+            onNext={() => goToStep('anthropic')}
+            onSkip={() => goToStep('anthropic')}
+            onBack={() => goToStep('screen', 'right')}
+            skipLabel="Skip for now — use local Whisper transcription"
+          />
+        );
+
+      case 'anthropic':
+        return (
+          <ApiKeyStep
+            title="Anthropic API Key"
+            helpText={
+              <>
+                markupR uses Anthropic to generate structured, agent-ready analysis. Create an API key at{' '}
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.link}
+                >
+                  console.anthropic.com
+                </a>{' '}
+                (or skip and configure in Settings &gt; Advanced later).
+              </>
+            }
+            placeholder="Enter your Anthropic API key"
+            apiKey={anthropicApiKey}
+            onApiKeyChange={(value) =>
+              setAnthropicApiKey((prev) => ({ ...prev, value, valid: null, error: null }))
+            }
+            onTestApiKey={testAnthropicApiKey}
             onNext={() => goToStep('success')}
             onSkip={() => goToStep('success')}
-            onBack={() => goToStep('screen', 'right')}
+            onBack={() => goToStep('openai', 'right')}
+            skipLabel="Skip for now — configure Anthropic in Settings later"
           />
         );
 
@@ -1353,10 +1469,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete, onSkip }) =>
 
         {/* ARIA live region for step announcements */}
         <div aria-live="polite" aria-atomic="true" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
-          {currentStep === 'welcome' && 'Welcome to markupr setup'}
-          {currentStep === 'microphone' && 'Step 1 of 3: Microphone access'}
-          {currentStep === 'screen' && 'Step 2 of 3: Screen recording'}
-          {currentStep === 'apikey' && 'Step 3 of 3: OpenAI API key'}
+          {currentStep === 'welcome' && 'Welcome to markupR setup'}
+          {currentStep === 'microphone' && 'Step 1 of 4: Microphone access'}
+          {currentStep === 'screen' && 'Step 2 of 4: Screen recording'}
+          {currentStep === 'openai' && 'Step 3 of 4: OpenAI API key'}
+          {currentStep === 'anthropic' && 'Step 4 of 4: Anthropic API key'}
           {currentStep === 'success' && 'Setup complete'}
         </div>
 

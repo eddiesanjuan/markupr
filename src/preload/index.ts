@@ -1,5 +1,5 @@
 /**
- * markupr - Preload Script
+ * markupR - Preload Script
  *
  * Exposes a safe API to the renderer process via contextBridge.
  * This is the ONLY way the renderer can communicate with the main process.
@@ -57,7 +57,7 @@ function createEventSubscriber<T>(channel: string) {
 }
 
 // =============================================================================
-// markupr API
+// markupR API (exposed on window.markupr for backward compatibility)
 // =============================================================================
 
 const markuprApi = {

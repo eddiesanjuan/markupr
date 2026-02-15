@@ -350,7 +350,7 @@ export class SettingsManager implements ISettingsManager {
 
   private setFallbackApiKey(service: string, key: string): void {
     if (!this.canUseEncryptedFallback()) {
-      throw new Error('Secure storage is unavailable. API keys cannot be saved until the app is fully initialized. Try restarting markupr.');
+      throw new Error('Secure storage is unavailable. API keys cannot be saved until the app is fully initialized. Try restarting markupR.');
     }
 
     const encrypted = safeStorage.encryptString(key).toString('base64');
@@ -497,7 +497,7 @@ export class SettingsManager implements ISettingsManager {
         } catch (insecureError) {
           throw new Error(
             `Unable to store API key for ${service}. All storage methods failed. ` +
-            `Try restarting markupr or check filesystem permissions. ` +
+            `Try restarting markupR or check filesystem permissions. ` +
             `(${insecureError instanceof Error ? insecureError.message : String(insecureError)})`
           );
         }

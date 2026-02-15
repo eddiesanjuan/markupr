@@ -1,5 +1,5 @@
 /**
- * ErrorHandler - Centralized Error Management for markupr
+ * ErrorHandler - Centralized Error Management for markupR
  *
  * Provides:
  * - Categorized error handling (permission, API key, network, capture, critical)
@@ -129,7 +129,7 @@ class ErrorHandler {
     const messages = {
       microphone: {
         title: 'Microphone Access Required',
-        message: 'markupr needs microphone access to capture your voice feedback.',
+        message: 'markupR needs microphone access to capture your voice feedback.',
         detail:
           `Click "Open Settings" to grant microphone permission in ${settingsName}.` +
           '\n\nAfter enabling, you may need to restart the app.',
@@ -138,7 +138,7 @@ class ErrorHandler {
       },
       screen: {
         title: 'Screen Recording Required',
-        message: 'markupr needs screen recording permission to capture screenshots.',
+        message: 'markupR needs screen recording permission to capture screenshots.',
         detail:
           `Click "Open Settings" to grant screen recording permission in ${settingsName}.` +
           '\n\nYou will need to restart the app after enabling.',
@@ -210,7 +210,7 @@ class ErrorHandler {
       title: 'API Key Required',
       message: 'Your OpenAI API key is missing or invalid.',
       detail:
-        'markupr uses OpenAI for post-session narration transcription. ' +
+        'markupR uses OpenAI for post-session narration transcription. ' +
         'Please enter a valid API key in Settings.\n\n' +
         'Create a key at platform.openai.com/api-keys',
       buttons: ['Open Settings', 'OK'],
@@ -474,7 +474,7 @@ class ErrorHandler {
     // Also show system notification if supported
     if (Notification.isSupported()) {
       new Notification({
-        title: `markupr: ${title}`,
+        title: `markupR: ${title}`,
         body: message,
         silent: true,
       }).show();
