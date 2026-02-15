@@ -3,7 +3,7 @@
  *
  * Tests that createServer():
  * - Returns a valid McpServer instance
- * - Registers all 6 tools
+ * - Registers all 9 tools (6 core + pushToLinear + pushToGitHub + describeScreen)
  * - Registers resources
  * - Uses correct server name and version
  */
@@ -21,6 +21,9 @@ const {
   mockRegisterAnalyzeScreenshot,
   mockRegisterStartRecording,
   mockRegisterStopRecording,
+  mockRegisterPushToLinear,
+  mockRegisterPushToGitHub,
+  mockRegisterDescribeScreen,
   mockRegisterResources,
   mockTool,
   mockResource,
@@ -31,6 +34,9 @@ const {
   mockRegisterAnalyzeScreenshot: vi.fn(),
   mockRegisterStartRecording: vi.fn(),
   mockRegisterStopRecording: vi.fn(),
+  mockRegisterPushToLinear: vi.fn(),
+  mockRegisterPushToGitHub: vi.fn(),
+  mockRegisterDescribeScreen: vi.fn(),
   mockRegisterResources: vi.fn(),
   mockTool: vi.fn(),
   mockResource: vi.fn(),
@@ -60,6 +66,18 @@ vi.mock('../../../src/mcp/tools/stopRecording.js', () => ({
   register: mockRegisterStopRecording,
 }));
 
+vi.mock('../../../src/mcp/tools/pushToLinear.js', () => ({
+  register: mockRegisterPushToLinear,
+}));
+
+vi.mock('../../../src/mcp/tools/pushToGitHub.js', () => ({
+  register: mockRegisterPushToGitHub,
+}));
+
+vi.mock('../../../src/mcp/tools/describeScreen.js', () => ({
+  register: mockRegisterDescribeScreen,
+}));
+
 vi.mock('../../../src/mcp/resources/sessionResource.js', () => ({
   registerResources: mockRegisterResources,
 }));
@@ -86,7 +104,7 @@ describe('MCP Server Factory', () => {
     expect(server).toBeDefined();
   });
 
-  it('registers all 6 tool handlers', () => {
+  it('registers all 9 tool handlers', () => {
     const server = createServer();
 
     expect(mockRegisterCaptureScreenshot).toHaveBeenCalledOnce();
@@ -106,6 +124,15 @@ describe('MCP Server Factory', () => {
 
     expect(mockRegisterStopRecording).toHaveBeenCalledOnce();
     expect(mockRegisterStopRecording).toHaveBeenCalledWith(server);
+
+    expect(mockRegisterPushToLinear).toHaveBeenCalledOnce();
+    expect(mockRegisterPushToLinear).toHaveBeenCalledWith(server);
+
+    expect(mockRegisterPushToGitHub).toHaveBeenCalledOnce();
+    expect(mockRegisterPushToGitHub).toHaveBeenCalledWith(server);
+
+    expect(mockRegisterDescribeScreen).toHaveBeenCalledOnce();
+    expect(mockRegisterDescribeScreen).toHaveBeenCalledWith(server);
   });
 
   it('registers session resources', () => {
