@@ -1,6 +1,6 @@
 {
   "name": "markupr",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Record your screen, narrate feedback, get structured Markdown with screenshots. Desktop app, CLI, and MCP server for AI coding agents like Claude Code, Cursor, and Windsurf.",
   "type": "module",
   "main": "dist/main/index.mjs",
@@ -10,7 +10,8 @@
   },
   "files": [
     "dist/cli",
-    "dist/mcp"
+    "dist/mcp",
+    "scripts/postinstall.mjs"
   ],
   "author": "Eddie San Juan",
   "license": "MIT",

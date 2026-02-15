@@ -1,9 +1,22 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 function isRailwayEnvironment() {
   return Object.keys(process.env).some((key) => key.startsWith('RAILWAY_'));
+}
+
+function isInstalledAsDependency() {
+  // When installed from npm as a dependency, the package lives inside
+  // another project's node_modules. The source repo has a src/ directory
+  // at the root -- installed packages do not.
+  const repoRoot = join(__dirname, '..');
+  return !existsSync(join(repoRoot, 'src'));
 }
 
 function run(command, args) {
@@ -27,8 +40,9 @@ function run(command, args) {
   }
 }
 
-if (process.env.MARKUPR_SKIP_ELECTRON_POSTINSTALL === '1' || isRailwayEnvironment()) {
-  console.log('[postinstall] Skipping Electron native rebuild in Railway/skip mode.');
+if (process.env.MARKUPR_SKIP_ELECTRON_POSTINSTALL === '1' || isRailwayEnvironment() || isInstalledAsDependency()) {
+  // Skip Electron native rebuild when: env var is set, Railway environment,
+  // or installed as an npm dependency (CLI/MCP usage -- no Electron needed).
   process.exit(0);
 }
 
