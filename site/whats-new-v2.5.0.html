@@ -1,0 +1,1417 @@
+<!--
+  markupR v2.5.0 — What's New.
+  Same design system as launch.html.
+  Neo-brutalist structure, minimalist soul.
+  No frameworks, no tracking, no cookies, no external requests.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>markupR v2.5.0 — The feedback loop is closed</title>
+  <meta name="description" content="markupR v2.5.0 ships output templates, watch mode, GitHub Issues integration, Linear integration, and a GitHub Action. Record feedback. Structure it. Push it where it needs to go.">
+  <meta name="keywords" content="markupr, developer feedback, GitHub Issues, Linear, GitHub Action, output templates, watch mode, CI/CD, screen recording, markdown, open source">
+  <meta name="author" content="Eddie San Juan">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#0A0A0B">
+
+  <link rel="canonical" href="https://markupr.com/whats-new-v2.5.0">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="markupR v2.5.0 — The feedback loop is closed">
+  <meta property="og:description" content="Record feedback. Structure it. Push to GitHub Issues and Linear automatically. Output templates, watch mode, and a GitHub Action.">
+  <meta property="og:url" content="https://markupr.com/whats-new-v2.5.0">
+  <meta property="og:image" content="https://markupr.com/og-image.png">
+  <meta property="og:site_name" content="markupR">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="markupR v2.5.0 — The feedback loop is closed">
+  <meta name="twitter:description" content="Record feedback. Structure it. Push to GitHub Issues and Linear automatically. Output templates, watch mode, and a GitHub Action.">
+  <meta name="twitter:image" content="https://markupr.com/og-image.png">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+  <style>
+    /* ========================================
+       RESET
+       ======================================== */
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* ========================================
+       CUSTOM PROPERTIES — DARK MODE (default)
+       ======================================== */
+    :root {
+      color-scheme: dark light;
+
+      /* Typography */
+      --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
+
+      /* Colors — Dark (default) */
+      --bg-primary: #0A0A0B;
+      --bg-secondary: #141415;
+      --bg-tertiary: #1E1E20;
+      --text-primary: #F5F5F5;
+      --text-secondary: #A0A0A0;
+      --text-tertiary: #808080;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+
+      /* Accent — Warm Amber */
+      --accent: #F59E0B;
+      --accent-hover: #D97706;
+
+      /* Neo-brutalist shadows */
+      --shadow-sm: 2px 2px 0 rgba(255, 255, 255, 0.12);
+      --shadow-md: 4px 4px 0 rgba(255, 255, 255, 0.12);
+      --shadow-lg: 6px 6px 0 rgba(255, 255, 255, 0.12);
+
+      /* Syntax highlighting */
+      --syn-keyword: #C4B5FD;
+      --syn-string: #86EFAC;
+      --syn-function: #93C5FD;
+      --syn-comment: #525252;
+      --syn-operator: #F9A8D4;
+      --syn-default: #E5E5E5;
+
+      /* Spacing */
+      --section-gap: 160px;
+      --content-max: 720px;
+      --feature-max: 960px;
+      --side-pad: clamp(1.25rem, 5vw, 2.5rem);
+    }
+
+    /* ========================================
+       LIGHT MODE
+       ======================================== */
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg-primary: #FFFFFF;
+        --bg-secondary: #F8F8F8;
+        --bg-tertiary: #F0F0F0;
+        --text-primary: #0A0A0A;
+        --text-secondary: #525252;
+        --text-tertiary: #737373;
+        --border: rgba(0, 0, 0, 0.08);
+        --border-strong: rgba(0, 0, 0, 0.12);
+
+        --accent: #B45309;
+        --accent-hover: #92400E;
+
+        --shadow-sm: 2px 2px 0 var(--text-primary);
+        --shadow-md: 4px 4px 0 var(--text-primary);
+        --shadow-lg: 6px 6px 0 var(--text-primary);
+      }
+    }
+
+    /* ========================================
+       BASE
+       ======================================== */
+    html {
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      background-color: var(--bg-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    ::selection {
+      background-color: var(--accent);
+      color: #FFFFFF;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+      transition: color 150ms ease;
+    }
+
+    a:hover { color: var(--accent-hover); }
+
+    /* ========================================
+       TYPOGRAPHY
+       ======================================== */
+    h1, h2, h3, h4 {
+      color: var(--text-primary);
+      font-weight: 800;
+      text-wrap: balance;
+    }
+
+    .display {
+      font-size: clamp(36px, 7vw, 56px);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+    }
+
+    h2 {
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+    }
+
+    h3 {
+      font-size: clamp(20px, 3vw, 24px);
+      line-height: 1.3;
+      letter-spacing: -0.01em;
+    }
+
+    .overline {
+      font-size: 12px;
+      line-height: 1.4;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .body-lg {
+      font-size: clamp(17px, 2.5vw, 20px);
+      line-height: 1.6;
+    }
+
+    .body-sm {
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .caption {
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      color: var(--text-tertiary);
+    }
+
+    /* ========================================
+       LAYOUT
+       ======================================== */
+    .container {
+      max-width: var(--content-max);
+      margin: 0 auto;
+      padding-left: var(--side-pad);
+      padding-right: var(--side-pad);
+    }
+
+    .container--wide {
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      padding-left: var(--side-pad);
+      padding-right: var(--side-pad);
+    }
+
+    section {
+      padding-top: var(--section-gap);
+      padding-bottom: var(--section-gap);
+    }
+
+    @media (max-width: 768px) {
+      :root { --section-gap: 96px; }
+    }
+
+    .divider {
+      border: none;
+      height: 3px;
+      background: var(--text-primary);
+      margin: 0;
+      opacity: 0.12;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .divider { opacity: 0.08; }
+    }
+
+    /* ========================================
+       WORDMARK
+       ======================================== */
+    .wordmark {
+      font-family: var(--font-sans);
+      font-weight: 900;
+      font-size: 28px;
+      letter-spacing: -0.04em;
+      color: var(--text-primary);
+      display: inline-block;
+    }
+
+    .wordmark-r { color: var(--accent); }
+
+    /* ========================================
+       BUTTONS
+       ======================================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      font-family: var(--font-sans);
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: transform 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn--primary {
+      background: var(--text-primary);
+      color: var(--bg-primary);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn--primary:hover {
+      transform: translate(2px, 2px);
+      box-shadow: var(--shadow-sm);
+      color: var(--bg-primary);
+    }
+
+    .btn--primary:active {
+      transform: translate(4px, 4px);
+      box-shadow: none;
+    }
+
+    .btn--secondary {
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-md);
+    }
+
+    .btn--secondary:hover {
+      transform: translate(2px, 2px);
+      box-shadow: var(--shadow-sm);
+      color: var(--text-primary);
+    }
+
+    .btn--secondary:active {
+      transform: translate(4px, 4px);
+      box-shadow: none;
+    }
+
+    .btn:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    /* ========================================
+       CARDS
+       ======================================== */
+    .card {
+      background: var(--bg-secondary);
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      padding: 32px;
+      box-shadow: var(--shadow-lg);
+      transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+    }
+
+    .card:hover {
+      transform: translate(2px, 2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    /* ========================================
+       SCROLL REVEAL
+       ======================================== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 500ms cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .reveal-delay-1 { transition-delay: 75ms; }
+    .reveal-delay-2 { transition-delay: 150ms; }
+    .reveal-delay-3 { transition-delay: 225ms; }
+    .reveal-delay-4 { transition-delay: 300ms; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .reveal {
+        opacity: 1;
+        transform: none;
+        transition: none;
+      }
+    }
+
+    /* ========================================
+       CODE BLOCK
+       ======================================== */
+    .code-block {
+      background: #0A0A0B;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .code-block__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .code-block__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .code-block__dot--red { background: #FF5F57; }
+    .code-block__dot--yellow { background: #FEBC2E; }
+    .code-block__dot--green { background: #28C840; }
+
+    .code-block__title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #666;
+      margin-left: 8px;
+    }
+
+    .code-block pre {
+      padding: 24px 20px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--syn-default);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .code-block pre code { font-family: inherit; }
+
+    .syn-kw { color: var(--syn-keyword); }
+    .syn-str { color: var(--syn-string); }
+    .syn-fn { color: var(--syn-function); }
+    .syn-cm { color: var(--syn-comment); }
+    .syn-op { color: var(--syn-operator); }
+
+    /* ========================================
+       TERMINAL
+       ======================================== */
+    .terminal {
+      background: #0A0A0B;
+      border: 3px solid var(--text-primary);
+      border-radius: 4px;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+    }
+
+    .terminal__header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .terminal__dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .terminal__dot--red { background: #FF5F57; }
+    .terminal__dot--yellow { background: #FEBC2E; }
+    .terminal__dot--green { background: #28C840; }
+
+    .terminal__title {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #666;
+      margin-left: 8px;
+    }
+
+    .terminal__body {
+      padding: 24px 20px;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      line-height: 1.8;
+      color: #E5E5E5;
+    }
+
+    .terminal__prompt {
+      color: #86EFAC;
+      user-select: none;
+    }
+
+    .terminal__command { color: #93C5FD; }
+    .terminal__flag { color: #C4B5FD; }
+    .terminal__arg { color: #F9A8D4; }
+
+    .terminal__output {
+      color: #A0A0A0;
+      font-size: 13px;
+    }
+
+    .terminal__output--accent {
+      color: #86EFAC;
+    }
+
+    .terminal__line { margin-bottom: 12px; }
+    .terminal__line:last-child { margin-bottom: 0; }
+
+    .terminal__comment {
+      color: #666666;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* ========================================
+       SECTION HEADERS
+       ======================================== */
+    .section-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+
+    .section-header .overline { margin-bottom: 16px; }
+    .section-header h2 { margin-bottom: 16px; }
+
+    .section-header p {
+      max-width: 540px;
+      margin: 0 auto;
+    }
+
+    .section-header__subtitle {
+      max-width: 620px;
+      margin-top: 14px;
+    }
+
+    /* ========================================
+       TOP NAV
+       ======================================== */
+    .topnav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px var(--side-pad);
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    .topnav__back {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      transition: color 150ms ease;
+    }
+
+    .topnav__back:hover { color: var(--text-primary); }
+
+    .topnav__version {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    /* ========================================
+       HERO — Launch variant
+       ======================================== */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 64px var(--side-pad) 96px;
+    }
+
+    .hero__wordmark {
+      font-size: clamp(32px, 5vw, 40px);
+      margin-bottom: 32px;
+    }
+
+    .hero__headline {
+      max-width: 740px;
+      margin-bottom: 24px;
+    }
+
+    .hero__subtext {
+      max-width: 600px;
+      margin-bottom: 48px;
+      color: var(--text-secondary);
+    }
+
+    .hero__date {
+      margin-bottom: 20px;
+    }
+
+    .hero__ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+    }
+
+    @media (max-width: 480px) {
+      .hero__ctas {
+        flex-direction: column;
+        align-items: center;
+      }
+      .hero__ctas .btn {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+
+    /* ========================================
+       FLOW DIAGRAM
+       ======================================== */
+    .flow {
+      background: var(--bg-secondary);
+    }
+
+    .flow__steps {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      flex-wrap: wrap;
+    }
+
+    .flow__step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 24px 20px;
+      flex: 1;
+      min-width: 140px;
+    }
+
+    .flow__icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      line-height: 1;
+    }
+
+    .flow__step-label {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .flow__step-desc {
+      font-size: 13px;
+      color: var(--text-tertiary);
+    }
+
+    .flow__arrow {
+      font-size: 24px;
+      color: var(--accent);
+      font-weight: 900;
+      padding: 0 4px;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 640px) {
+      .flow__steps {
+        flex-direction: column;
+        gap: 0;
+      }
+      .flow__arrow {
+        transform: rotate(90deg);
+        padding: 4px 0;
+      }
+    }
+
+    /* ========================================
+       FEATURES
+       ======================================== */
+    .features {
+      background: var(--bg-primary);
+    }
+
+    .feature {
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      padding-bottom: 96px;
+    }
+
+    .feature:last-child {
+      padding-bottom: 0;
+    }
+
+    .feature__header {
+      margin-bottom: 32px;
+    }
+
+    .feature__number {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border: 2px solid var(--accent);
+      border-radius: 4px;
+      color: var(--accent);
+      background: rgba(245, 158, 11, 0.08);
+      margin-bottom: 16px;
+    }
+
+    .feature__header h3 {
+      font-size: clamp(24px, 3.5vw, 32px);
+      margin-bottom: 12px;
+    }
+
+    .feature__header p {
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+      max-width: 640px;
+    }
+
+    .feature__content {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+    }
+
+    @media (min-width: 768px) {
+      .feature__content {
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+        align-items: start;
+      }
+    }
+
+    .feature__detail {
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text-secondary);
+    }
+
+    .feature__detail p {
+      margin-bottom: 12px;
+    }
+
+    .feature__detail p:last-child {
+      margin-bottom: 0;
+    }
+
+    .feature__formats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 480px) {
+      .feature__formats {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .format-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border: 2px solid var(--border-strong);
+      border-radius: 4px;
+      background: var(--bg-secondary);
+      transition: border-color 150ms ease;
+    }
+
+    .format-chip:hover {
+      border-color: var(--accent);
+    }
+
+    .format-chip__icon {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 3px;
+      background: var(--bg-tertiary);
+      color: var(--accent);
+      white-space: nowrap;
+    }
+
+    .format-chip__label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* ========================================
+       STATS BAR
+       ======================================== */
+    .stats {
+      background: var(--bg-secondary);
+      padding: 48px var(--side-pad);
+    }
+
+    .stats__grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    @media (max-width: 640px) {
+      .stats__grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+      }
+    }
+
+    .stats__item strong {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 900;
+      color: var(--text-primary);
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 4px;
+    }
+
+    .stats__item span {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ========================================
+       GET STARTED
+       ======================================== */
+    .getstarted {
+      background: var(--bg-primary);
+    }
+
+    .getstarted__options {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 32px;
+      max-width: var(--feature-max);
+      margin: 0 auto;
+    }
+
+    @media (min-width: 768px) {
+      .getstarted__options {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .getstarted__option h3 {
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+
+    .getstarted__option p {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    /* ========================================
+       PREVIOUS RELEASES
+       ======================================== */
+    .previous {
+      text-align: center;
+      padding: 48px var(--side-pad) 0;
+    }
+
+    .previous p {
+      font-size: 15px;
+      color: var(--text-tertiary);
+    }
+
+    .previous a {
+      font-weight: 600;
+    }
+
+    /* ========================================
+       FOOTER
+       ======================================== */
+    .footer {
+      padding: 48px var(--side-pad);
+      text-align: center;
+    }
+
+    .footer__divider {
+      height: 3px;
+      background: var(--text-primary);
+      opacity: 0.12;
+      margin-bottom: 48px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .footer__divider { opacity: 0.08; }
+    }
+
+    .footer__links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .footer__link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: color 150ms ease;
+    }
+
+    .footer__link:hover { color: var(--text-primary); }
+
+    .footer__link svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .footer__license {
+      font-size: 14px;
+      color: var(--text-tertiary);
+      margin-bottom: 8px;
+    }
+
+    .footer__built {
+      font-size: 14px;
+      color: var(--text-tertiary);
+    }
+
+    /* ========================================
+       UTILITIES
+       ======================================== */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    a:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      z-index: 9999;
+      padding: 12px 24px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      border-radius: 4px;
+      font-size: 14px;
+      text-decoration: none;
+    }
+
+    .skip-link:focus {
+      top: 16px;
+      color: #fff;
+    }
+  </style>
+
+  <noscript>
+    <style>
+      .reveal { opacity: 1; transform: none; }
+    </style>
+  </noscript>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top nav -->
+  <nav class="topnav" aria-label="Page navigation">
+    <a href="/" class="topnav__back">&larr; markupr.com</a>
+    <span class="topnav__version">v2.5.0</span>
+  </nav>
+
+  <main id="main-content">
+
+  <!-- ==========================================
+       HERO
+       ========================================== -->
+  <section class="hero" aria-label="v2.5.0 announcement hero">
+    <div class="wordmark hero__wordmark" aria-label="markupR">
+      markup<span class="wordmark-r">R</span>
+    </div>
+
+    <p class="overline hero__date">February 2026</p>
+
+    <h1 class="display hero__headline">
+      The feedback loop is closed.
+    </h1>
+
+    <p class="body-lg hero__subtext">
+      markupr v2.5.0 doesn't just capture feedback anymore. It structures it into any format and pushes it directly to GitHub Issues and Linear. Record. Structure. Push.
+    </p>
+
+    <div class="hero__ctas">
+      <a href="https://github.com/eddiesanjuan/markupr" class="btn btn--primary" target="_blank" rel="noopener noreferrer">
+        View on GitHub<span class="sr-only"> (opens in new tab)</span>
+      </a>
+      <a href="/" class="btn btn--secondary">
+        Download Desktop App
+      </a>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       THE FLOW
+       ========================================== -->
+  <section class="flow" aria-label="The feedback flow">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">What changed</p>
+        <h2>From capture to delivery.</h2>
+        <p class="body-sm section-header__subtitle">
+          v2.4.0 gave your AI agent eyes and ears. v2.5.0 gives it hands. Feedback now flows from screen to issue tracker without you touching a thing.
+        </p>
+      </div>
+
+      <div class="flow__steps reveal reveal-delay-1">
+        <div class="flow__step">
+          <div class="flow__icon" aria-hidden="true">&#9679;</div>
+          <span class="flow__step-label">Record</span>
+          <span class="flow__step-desc">Screen + voice</span>
+        </div>
+        <span class="flow__arrow" aria-hidden="true">&rarr;</span>
+        <div class="flow__step">
+          <div class="flow__icon" aria-hidden="true">&#9638;</div>
+          <span class="flow__step-label">Structure</span>
+          <span class="flow__step-desc">Templates + AI</span>
+        </div>
+        <span class="flow__arrow" aria-hidden="true">&rarr;</span>
+        <div class="flow__step">
+          <div class="flow__icon" aria-hidden="true">&#9654;</div>
+          <span class="flow__step-label">Push</span>
+          <span class="flow__step-desc">GitHub / Linear</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       FEATURES
+       ========================================== -->
+  <section class="features" aria-label="New features in v2.5.0">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">5 new features</p>
+        <h2>Everything that shipped.</h2>
+      </div>
+
+      <!-- Feature 1: Output Templates -->
+      <div class="feature reveal">
+        <div class="feature__header">
+          <span class="feature__number">01</span>
+          <h3>Output templates.</h3>
+          <p>Five built-in formats. Same recording, different output for different destinations. Markdown for AI agents. JSON for automation. GitHub Issue format for your tracker. Linear format for your team. Jira format for enterprise.</p>
+        </div>
+
+        <div class="feature__content">
+          <div class="terminal">
+            <div class="terminal__header">
+              <span class="terminal__dot terminal__dot--red"></span>
+              <span class="terminal__dot terminal__dot--yellow"></span>
+              <span class="terminal__dot terminal__dot--green"></span>
+              <span class="terminal__title">terminal</span>
+            </div>
+            <div class="terminal__body">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr analyze</span> <span class="terminal__flag">--template</span> <span class="terminal__arg">github-issue</span> <span class="terminal__command">./recording.mov</span>
+              </div>
+              <div class="terminal__line" style="margin-top: 16px;">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Transcribed 2m 34s of audio</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Extracted 4 key moments</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Output: ./feedback-github-issue.md</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature__formats">
+            <div class="format-chip">
+              <span class="format-chip__icon">.md</span>
+              <span class="format-chip__label">Markdown</span>
+            </div>
+            <div class="format-chip">
+              <span class="format-chip__icon">.json</span>
+              <span class="format-chip__label">JSON</span>
+            </div>
+            <div class="format-chip">
+              <span class="format-chip__icon">GH</span>
+              <span class="format-chip__label">GitHub Issue</span>
+            </div>
+            <div class="format-chip">
+              <span class="format-chip__icon">LIN</span>
+              <span class="format-chip__label">Linear</span>
+            </div>
+            <div class="format-chip">
+              <span class="format-chip__icon">JIRA</span>
+              <span class="format-chip__label">Jira</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 2: Watch Mode -->
+      <div class="feature reveal">
+        <div class="feature__header">
+          <span class="feature__number">02</span>
+          <h3>Watch mode.</h3>
+          <p>Point markupr at a directory. Every new recording that appears gets processed automatically. Drop a file, get structured output. No commands to run. No buttons to click.</p>
+        </div>
+
+        <div class="feature__content">
+          <div class="terminal">
+            <div class="terminal__header">
+              <span class="terminal__dot terminal__dot--red"></span>
+              <span class="terminal__dot terminal__dot--yellow"></span>
+              <span class="terminal__dot terminal__dot--green"></span>
+              <span class="terminal__title">terminal</span>
+            </div>
+            <div class="terminal__body">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr watch</span> <span class="terminal__arg">./recordings</span>
+              </div>
+              <div class="terminal__line" style="margin-top: 16px;">
+                <span class="terminal__output">Watching ./recordings for new files...</span>
+              </div>
+              <div class="terminal__line" style="margin-top: 20px;">
+                <span class="terminal__output terminal__output--accent">&#9656;</span> <span class="terminal__output">New file: bug-report.mov</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output">&nbsp;&nbsp;Transcribing...</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output">&nbsp;&nbsp;Extracting frames...</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Output: ./recordings/bug-report.md</span>
+              </div>
+              <div class="terminal__line" style="margin-top: 16px;">
+                <span class="terminal__output">Waiting for next file...</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature__detail">
+            <p>Combine with <strong style="color: var(--text-primary);">--template</strong> to control the output format. Combine with <strong style="color: var(--text-primary);">--push</strong> to automatically create issues from every recording.</p>
+            <p>Leave it running. Record whenever you find something. Every recording becomes a structured, actionable document.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 3: GitHub Issues -->
+      <div class="feature reveal">
+        <div class="feature__header">
+          <span class="feature__number">03</span>
+          <h3>Push to GitHub Issues.</h3>
+          <p>One command. Your feedback becomes a GitHub issue with a structured title, body, labels, and screenshots -- uploaded and embedded. No copy-paste. No browser tabs.</p>
+        </div>
+
+        <div class="feature__content">
+          <div class="terminal">
+            <div class="terminal__header">
+              <span class="terminal__dot terminal__dot--red"></span>
+              <span class="terminal__dot terminal__dot--yellow"></span>
+              <span class="terminal__dot terminal__dot--green"></span>
+              <span class="terminal__title">terminal</span>
+            </div>
+            <div class="terminal__body">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr push github</span> <span class="terminal__flag">--repo</span> <span class="terminal__arg">acme/app</span> <span class="terminal__command">./feedback.md</span>
+              </div>
+              <div class="terminal__line" style="margin-top: 16px;">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Uploaded 4 screenshots</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Created issue #247: "Login button hidden on mobile viewport"</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output">&nbsp;&nbsp;https://github.com/acme/app/issues/247</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature__detail">
+            <p>Uses <strong style="color: var(--text-primary);">gh</strong> CLI for authentication -- if you can push code, you can push issues. Screenshots are uploaded to GitHub and embedded in the issue body. Labels are applied automatically based on feedback type.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 4: Linear -->
+      <div class="feature reveal">
+        <div class="feature__header">
+          <span class="feature__number">04</span>
+          <h3>Push to Linear.</h3>
+          <p>Same idea, different tracker. Feedback becomes a Linear issue with priority, labels, and structured description. Assigned to the right team automatically.</p>
+        </div>
+
+        <div class="feature__content">
+          <div class="terminal">
+            <div class="terminal__header">
+              <span class="terminal__dot terminal__dot--red"></span>
+              <span class="terminal__dot terminal__dot--yellow"></span>
+              <span class="terminal__dot terminal__dot--green"></span>
+              <span class="terminal__title">terminal</span>
+            </div>
+            <div class="terminal__body">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr push linear</span> <span class="terminal__flag">--team</span> <span class="terminal__arg">ENG</span> <span class="terminal__command">./feedback.md</span>
+              </div>
+              <div class="terminal__line" style="margin-top: 16px;">
+                <span class="terminal__output terminal__output--accent">&#10003;</span> <span class="terminal__output">Created ENG-412: "Layout shift after spinner dismiss"</span>
+              </div>
+              <div class="terminal__line">
+                <span class="terminal__output">&nbsp;&nbsp;Priority: High | Label: Bug</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="feature__detail">
+            <p>Requires a Linear API key (stored securely in your OS keychain). Priority and labels are inferred from the feedback content -- urgent language gets flagged as high priority.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature 5: GitHub Action -->
+      <div class="feature reveal">
+        <div class="feature__header">
+          <span class="feature__number">05</span>
+          <h3>GitHub Action.</h3>
+          <p>Visual feedback in CI/CD. Run markupr on recordings checked into your repo or captured during E2E tests. The structured report posts as a PR comment automatically.</p>
+        </div>
+
+        <div class="feature__content">
+          <div class="code-block">
+            <div class="code-block__header">
+              <span class="code-block__dot code-block__dot--red"></span>
+              <span class="code-block__dot code-block__dot--yellow"></span>
+              <span class="code-block__dot code-block__dot--green"></span>
+              <span class="code-block__title">.github/workflows/feedback.yml</span>
+            </div>
+            <pre><code><span class="syn-kw">name:</span> Visual Feedback
+<span class="syn-kw">on:</span> [pull_request]
+
+<span class="syn-kw">jobs:</span>
+  <span class="syn-fn">feedback:</span>
+    <span class="syn-kw">runs-on:</span> ubuntu-latest
+    <span class="syn-kw">steps:</span>
+      - <span class="syn-kw">uses:</span> actions/checkout@v4
+      - <span class="syn-kw">uses:</span> <span class="syn-str">eddiesanjuan/markupr-action@v1</span>
+        <span class="syn-kw">with:</span>
+          <span class="syn-fn">recording:</span> <span class="syn-str">'./test-recordings/*.mov'</span>
+          <span class="syn-fn">template:</span> <span class="syn-str">'github-issue'</span></code></pre>
+          </div>
+
+          <div class="feature__detail">
+            <p>Runs the full markupr pipeline inside GitHub Actions. Processes any recordings captured during your CI run and posts the structured feedback directly as a PR comment.</p>
+            <p>Pairs with E2E test frameworks that capture screen recordings on failure. Your test fails, markupr processes the recording, and the visual context lands on the PR.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       STATS BAR
+       ========================================== -->
+  <div class="stats reveal" aria-label="Project stats">
+    <div class="stats__grid">
+      <div class="stats__item">
+        <strong>860</strong>
+        <span>Tests</span>
+      </div>
+      <div class="stats__item">
+        <strong>MIT</strong>
+        <span>License</span>
+      </div>
+      <div class="stats__item">
+        <strong>5</strong>
+        <span>Templates</span>
+      </div>
+      <div class="stats__item">
+        <strong>0</strong>
+        <span>Tracking</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider" aria-hidden="true">
+
+  <!-- ==========================================
+       GET STARTED
+       ========================================== -->
+  <section class="getstarted" aria-label="Get started">
+    <div class="container--wide">
+      <div class="section-header reveal">
+        <p class="overline">Get started</p>
+        <h2>Try it now.</h2>
+      </div>
+
+      <div class="getstarted__options">
+        <div class="card getstarted__option reveal reveal-delay-1">
+          <h3>Analyze a recording</h3>
+          <p>Point it at any screen recording. Get structured Markdown with screenshots at the right moments.</p>
+          <div class="terminal" style="box-shadow: none; border-width: 2px;">
+            <div class="terminal__body" style="padding: 16px;">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr analyze ./recording.mov</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card getstarted__option reveal reveal-delay-2">
+          <h3>Push to GitHub</h3>
+          <p>Turn any feedback document into a GitHub issue with one command.</p>
+          <div class="terminal" style="box-shadow: none; border-width: 2px;">
+            <div class="terminal__body" style="padding: 16px;">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr push github</span> <span class="terminal__flag">--repo</span> <span class="terminal__arg">you/app</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card getstarted__option reveal reveal-delay-3">
+          <h3>Add the GitHub Action</h3>
+          <p>Visual feedback on every PR. Copy the YAML above into your workflows.</p>
+          <div class="terminal" style="box-shadow: none; border-width: 2px;">
+            <div class="terminal__body" style="padding: 16px; font-size: 12px;">
+              <div class="terminal__line">
+                <span class="terminal__command">uses: eddiesanjuan/markupr-action@v1</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card getstarted__option reveal reveal-delay-4">
+          <h3>Watch a directory</h3>
+          <p>Auto-process every new recording. Leave it running, record whenever.</p>
+          <div class="terminal" style="box-shadow: none; border-width: 2px;">
+            <div class="terminal__body" style="padding: 16px;">
+              <div class="terminal__line">
+                <span class="terminal__prompt">$</span> <span class="terminal__command">npx markupr watch</span> <span class="terminal__arg">./recordings</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Previous release link -->
+  <div class="previous reveal">
+    <p>Previous: <a href="/launch">What's new in v2.4.0</a> -- MCP server, CLI, and the pipeline that started it all.</p>
+  </div>
+
+  </main>
+
+  <!-- ==========================================
+       FOOTER
+       ========================================== -->
+  <footer class="footer" aria-label="Footer">
+    <div class="footer__divider"></div>
+
+    <nav class="footer__links" aria-label="Footer navigation">
+      <a href="/" class="footer__link">
+        markupr.com
+      </a>
+      <a href="https://github.com/eddiesanjuan/markupr" class="footer__link" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        GitHub<span class="sr-only"> (opens in new tab)</span>
+      </a>
+      <a href="https://www.npmjs.com/package/markupr" class="footer__link" target="_blank" rel="noopener noreferrer">
+        npm<span class="sr-only"> (opens in new tab)</span>
+      </a>
+    </nav>
+
+    <p class="footer__license">MIT License. Free as in freedom, free as in beer.</p>
+    <p class="footer__built">Built by <a href="https://github.com/eddiesanjuan" target="_blank" rel="noopener noreferrer">Eddie San Juan<span class="sr-only"> (opens in new tab)</span></a>.</p>
+  </footer>
+
+  <!-- ==========================================
+       SCROLL REVEAL
+       ========================================== -->
+  <script>
+    (function() {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.15 });
+
+      document.querySelectorAll('.reveal').forEach(function(el) {
+        observer.observe(el);
+      });
+    })();
+  </script>
+
+</body>
+</html>
