@@ -12,6 +12,7 @@ import { record } from '../capture/ScreenRecorder.js';
 import { sessionStore } from '../session/SessionStore.js';
 import { log } from '../utils/Logger.js';
 import { CLIPipeline } from '../../cli/CLIPipeline.js';
+import { templateRegistry } from '../../main/output/templates/index.js';
 
 export function register(server: McpServer): void {
   server.tool(
@@ -21,8 +22,11 @@ export function register(server: McpServer): void {
       duration: z.number().min(3).max(300).describe('Recording duration in seconds (3-300)'),
       outputDir: z.string().optional().describe('Output directory (default: session directory)'),
       skipFrames: z.boolean().optional().default(false).describe('Skip frame extraction'),
+      template: z.string().optional().describe(
+        `Output template (default: markdown). Options: ${templateRegistry.list().join(', ')}`
+      ),
     },
-    async ({ duration, outputDir, skipFrames }) => {
+    async ({ duration, outputDir, skipFrames, template }) => {
       try {
         // Create session
         const session = await sessionStore.create();
@@ -41,6 +45,7 @@ export function register(server: McpServer): void {
             videoPath,
             outputDir: pipelineOutputDir,
             skipFrames,
+            template,
             verbose: false,
           },
           (msg) => log(msg),

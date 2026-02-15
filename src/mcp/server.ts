@@ -14,6 +14,8 @@ import { register as registerAnalyzeVideo } from './tools/analyzeVideo.js';
 import { register as registerAnalyzeScreenshot } from './tools/analyzeScreenshot.js';
 import { register as registerStartRecording } from './tools/startRecording.js';
 import { register as registerStopRecording } from './tools/stopRecording.js';
+import { register as registerPushToLinear } from './tools/pushToLinear.js';
+import { register as registerPushToGitHub } from './tools/pushToGitHub.js';
 
 // Resource registrations
 import { registerResources } from './resources/sessionResource.js';
@@ -29,13 +31,15 @@ export function createServer(): McpServer {
     version: VERSION,
   });
 
-  // Register all 6 tools
+  // Register all tools
   registerCaptureScreenshot(server);
   registerCaptureWithVoice(server);
   registerAnalyzeVideo(server);
   registerAnalyzeScreenshot(server);
   registerStartRecording(server);
   registerStopRecording(server);
+  registerPushToLinear(server);
+  registerPushToGitHub(server);
 
   // Register resources (session://latest, session://{id})
   registerResources(server);

@@ -12,6 +12,7 @@ import { stat } from 'fs/promises';
 import { sessionStore } from '../session/SessionStore.js';
 import { log } from '../utils/Logger.js';
 import { CLIPipeline } from '../../cli/CLIPipeline.js';
+import { templateRegistry } from '../../main/output/templates/index.js';
 
 export function register(server: McpServer): void {
   server.tool(
@@ -22,8 +23,11 @@ export function register(server: McpServer): void {
       audioPath: z.string().optional().describe('Separate audio file path (if not embedded)'),
       outputDir: z.string().optional().describe('Output directory (default: session directory)'),
       skipFrames: z.boolean().optional().default(false).describe('Skip frame extraction'),
+      template: z.string().optional().describe(
+        `Output template (default: markdown). Options: ${templateRegistry.list().join(', ')}`
+      ),
     },
-    async ({ videoPath, audioPath, outputDir, skipFrames }) => {
+    async ({ videoPath, audioPath, outputDir, skipFrames, template }) => {
       try {
         // Validate video file exists and is non-empty
         let fileStats;
@@ -74,6 +78,7 @@ export function register(server: McpServer): void {
             audioPath,
             outputDir: pipelineOutputDir,
             skipFrames,
+            template,
             verbose: false,
           },
           (msg) => log(msg),

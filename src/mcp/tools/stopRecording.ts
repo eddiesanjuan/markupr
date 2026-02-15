@@ -12,6 +12,7 @@ import { activeRecording } from '../session/ActiveRecording.js';
 import { sessionStore } from '../session/SessionStore.js';
 import { log } from '../utils/Logger.js';
 import { CLIPipeline } from '../../cli/CLIPipeline.js';
+import { templateRegistry } from '../../main/output/templates/index.js';
 
 export function register(server: McpServer): void {
   server.tool(
@@ -20,8 +21,11 @@ export function register(server: McpServer): void {
     {
       sessionId: z.string().optional().describe('Session ID (default: current active recording)'),
       skipFrames: z.boolean().optional().default(false).describe('Skip frame extraction'),
+      template: z.string().optional().describe(
+        `Output template (default: markdown). Options: ${templateRegistry.list().join(', ')}`
+      ),
     },
-    async ({ sessionId: _requestedSessionId, skipFrames }) => {
+    async ({ sessionId: _requestedSessionId, skipFrames, template }) => {
       try {
         // Verify there's an active recording
         if (!activeRecording.isRecording()) {
@@ -57,6 +61,7 @@ export function register(server: McpServer): void {
             videoPath,
             outputDir: sessionDir,
             skipFrames,
+            template,
             verbose: false,
           },
           (msg) => log(msg),

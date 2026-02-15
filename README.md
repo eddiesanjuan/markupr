@@ -291,6 +291,7 @@ Process a screen recording into a structured Markdown document with extracted fr
 | `--output <dir>` | Output directory | `./markupr-output` |
 | `--whisper-model <path>` | Path to local Whisper model file | Auto-detected in `~/.markupr/whisper-models/` |
 | `--no-frames` | Skip frame extraction | `false` |
+| `--template <name>` | Output template (`markdown`, `json`, `github-issue`, `linear`, `jira`, `html`) | `markdown` |
 | `--verbose` | Show detailed progress output | `false` |
 
 **Examples:**
@@ -308,6 +309,86 @@ markupr analyze ./screen.mov --audio ./voiceover.wav
 # Skip frame extraction (transcript only)
 markupr analyze ./recording.mov --no-frames
 ```
+
+#### `markupr watch [directory]`
+
+Watch a directory for new screen recordings and auto-process them as they appear. Ideal for continuous feedback workflows.
+
+```bash
+# Watch the current directory
+markupr watch
+
+# Watch a specific directory with custom output
+markupr watch ./recordings --output ./reports
+
+# Watch with verbose logging
+markupr watch ~/Desktop --verbose
+```
+
+#### `markupr push github <report>`
+
+Create GitHub issues from a markupr feedback report. Each feedback item (FB-001, FB-002, etc.) becomes a separate issue with labels and structured markdown.
+
+```bash
+# Create issues from a report (uses gh CLI auth or GITHUB_TOKEN)
+markupr push github ./markupr-output/report.md --repo myorg/myapp
+
+# Preview what would be created
+markupr push github ./report.md --repo myorg/myapp --dry-run
+
+# Push specific items only
+markupr push github ./report.md --repo myorg/myapp --items FB-001 FB-003
+```
+
+Authentication resolves in order: `--token` flag, `GITHUB_TOKEN` env var, `gh auth token` CLI.
+
+#### `markupr push linear <report>`
+
+Create Linear issues from a markupr feedback report.
+
+```bash
+# Create issues in a Linear team
+markupr push linear ./report.md --team ENG
+
+# Assign to a project with dry run
+markupr push linear ./report.md --team DES --project "Q1 Polish" --dry-run
+```
+
+Set `LINEAR_API_KEY` env var or pass `--token`.
+
+### Output Templates
+
+markupr supports multiple output templates for the `analyze` command:
+
+| Template | Description |
+|----------|-------------|
+| `markdown` | Default structured Markdown (llms.txt-inspired) |
+| `json` | Machine-readable JSON for integrations |
+| `github-issue` | GitHub-flavored Markdown optimized for issues |
+| `linear` | Linear-optimized issue format |
+| `jira` | Jira-compatible markup |
+| `html` | Self-contained HTML document |
+
+```bash
+# Generate JSON output for automation
+markupr analyze ./recording.mov --template json
+
+# Generate GitHub-ready issue format
+markupr analyze ./recording.mov --template github-issue
+```
+
+### GitHub Action
+
+Run markupr in CI to get visual feedback on pull requests. Add the action to your workflow:
+
+```yaml
+- uses: eddiesanjuan/markupr-action@v1
+  with:
+    video-path: ./test-recording.mov
+    output-dir: ./markupr-output
+```
+
+See [markupr-action/README.md](markupr-action/README.md) for full configuration options.
 
 ### Requirements
 
