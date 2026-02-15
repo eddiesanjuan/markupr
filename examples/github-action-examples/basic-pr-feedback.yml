@@ -1,0 +1,26 @@
+# Basic PR Feedback
+# Analyzes screen recordings in ./recordings/ and posts a visual feedback report on the PR.
+#
+# Setup:
+# 1. Add screen recordings to a recordings/ directory in your repo (or use Git LFS)
+# 2. This workflow runs automatically on every PR
+
+name: Visual Feedback
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  feedback:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Analyze recordings and comment on PR
+        uses: eddiesanjuan/markupr-action@v1
+        with:
+          video-path: ./recordings/
+          github-token: ${{ secrets.GITHUB_TOKEN }}

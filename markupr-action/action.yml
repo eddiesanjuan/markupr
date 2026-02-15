@@ -3,8 +3,8 @@ description: 'Analyze screen recordings and post structured visual feedback repo
 author: 'Eddie San Juan'
 
 branding:
-  icon: 'video'
-  color: 'purple'
+  icon: 'camera'
+  color: 'orange'
 
 inputs:
   video-path:

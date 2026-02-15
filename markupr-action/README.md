@@ -1,5 +1,8 @@
 # markupr GitHub Action
 
+[![GitHub Action](https://img.shields.io/badge/GitHub%20Action-markupr--action-orange?style=flat-square&logo=github)](https://github.com/marketplace/actions/markupr-analyze)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../LICENSE)
+
 Analyze screen recordings in CI/CD and post structured visual feedback reports directly on pull requests.
 
 ## What it does
@@ -144,6 +147,16 @@ Video recording(s)
 - **Recording in CI**: Use tools like `xvfb` + `ffmpeg` to record E2E test runs, then pipe them through markupr
 - **Manual recordings**: Drop screen recordings into a `recordings/` directory and commit them (or use Git LFS)
 - **PR updates**: The action updates an existing markupr comment instead of creating duplicates on re-runs
+
+## Example Workflows
+
+Ready-to-use workflow files in [`examples/github-action-examples/`](../examples/github-action-examples/):
+
+| Workflow | Description |
+|----------|-------------|
+| [`basic-pr-feedback.yml`](../examples/github-action-examples/basic-pr-feedback.yml) | Analyze recordings in `./recordings/` and comment on PRs |
+| [`visual-regression.yml`](../examples/github-action-examples/visual-regression.yml) | Record E2E test runs with xvfb + ffmpeg, then analyze for visual regressions |
+| [`qa-pipeline.yml`](../examples/github-action-examples/qa-pipeline.yml) | On `needs-qa` label, download attached recordings and create sub-issues |
 
 ## License
 

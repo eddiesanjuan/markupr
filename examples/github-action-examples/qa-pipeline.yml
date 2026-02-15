@@ -1,0 +1,76 @@
+# QA Pipeline
+# When an issue is labeled "needs-qa", analyzes attached recordings and creates
+# sub-issues for each feedback item found.
+#
+# Setup:
+# 1. Upload recordings as issue attachments or reference paths in the issue body
+# 2. Add the "needs-qa" label to trigger analysis
+
+name: QA Pipeline
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  analyze:
+    if: github.event.label.name == 'needs-qa'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract recording URLs from issue
+        id: extract
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_BODY=$(gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }} --jq '.body')
+
+          # Extract video URLs from issue body (GitHub attachment URLs)
+          URLS=$(echo "$ISSUE_BODY" | grep -oP 'https://[^\s)]+\.(mp4|mov|webm|mkv)' || echo "")
+
+          if [ -z "$URLS" ]; then
+            echo "No video URLs found in issue body"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mkdir -p ./qa-recordings
+          i=0
+          for url in $URLS; do
+            i=$((i + 1))
+            echo "Downloading: $url"
+            curl -L -o "./qa-recordings/recording-$i.mp4" "$url"
+          done
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "Downloaded $i recording(s)"
+
+      - name: Analyze recordings and create issues
+        if: steps.extract.outputs.found == 'true'
+        uses: eddiesanjuan/markupr-action@v1
+        with:
+          video-path: ./qa-recordings/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          create-issues: 'true'
+          comment-on-pr: 'false'
+
+      - name: Comment on original issue
+        if: steps.extract.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "markupr QA analysis complete. Sub-issues have been created for each feedback item found in the attached recordings."
+
+      - name: No recordings found
+        if: steps.extract.outputs.found != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} \
+            --body "No video recordings found in this issue. Attach .mp4, .mov, .webm, or .mkv files and re-apply the \`needs-qa\` label."
+
+          gh issue edit ${{ github.event.issue.number }} --remove-label "needs-qa"

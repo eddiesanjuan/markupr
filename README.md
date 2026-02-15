@@ -20,6 +20,7 @@
   <a href="https://github.com/eddiesanjuan/markupr/releases"><img src="https://img.shields.io/github/v/release/eddiesanjuan/markupr?style=flat-square" alt="Latest Release"></a>
   <a href="https://github.com/eddiesanjuan/markupr/releases"><img src="https://img.shields.io/github/downloads/eddiesanjuan/markupr/total?style=flat-square" alt="Downloads"></a>
   <a href="https://www.npmjs.com/package/markupr"><img src="https://img.shields.io/npm/v/markupr?style=flat-square" alt="npm version"></a>
+  <a href="https://github.com/marketplace/actions/markupr-analyze"><img src="https://img.shields.io/badge/GitHub%20Action-markupr--action-orange?style=flat-square&logo=github" alt="GitHub Action"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://ko-fi.com/eddiesanjuan"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=flat-square&logo=ko-fi" alt="Ko-fi"></a>
 </p>
@@ -379,16 +380,16 @@ markupr analyze ./recording.mov --template github-issue
 
 ### GitHub Action
 
-Run markupr in CI to get visual feedback on pull requests. Add the action to your workflow:
+Run markupr in CI to get visual feedback on pull requests:
 
 ```yaml
 - uses: eddiesanjuan/markupr-action@v1
   with:
-    video-path: ./test-recording.mov
-    output-dir: ./markupr-output
+    video-path: ./recordings/
+    github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-See [markupr-action/README.md](markupr-action/README.md) for full configuration options.
+See [markupr-action/README.md](markupr-action/README.md) for full configuration and [example workflows](examples/github-action-examples/) for ready-to-use templates.
 
 ### Requirements
 
