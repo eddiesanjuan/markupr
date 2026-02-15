@@ -51,7 +51,7 @@ export class PopoverManager {
    * Create the popover window with proper configuration
    */
   create(): BrowserWindow {
-    const preloadPath = join(app.getAppPath(), 'dist', 'preload', 'index.mjs');
+    const preloadPath = join(app.getAppPath(), 'dist', 'preload', 'index.cjs');
 
     this.window = new BrowserWindow({
       width: this.config.width,

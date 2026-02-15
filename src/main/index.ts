@@ -283,7 +283,7 @@ async function loadRendererIntoWindow(window: BrowserWindow, label: string): Pro
 
 function createWindow(): void {
   // Resolve preload path - works in both dev and production
-  const preloadPath = join(app.getAppPath(), 'dist', 'preload', 'index.mjs');
+  const preloadPath = join(app.getAppPath(), 'dist', 'preload', 'index.cjs');
   console.log('[Main] Preload path:', preloadPath);
 
   mainWindow = new BrowserWindow({
