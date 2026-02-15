@@ -1,3 +1,9 @@
+> **This project has moved.** FeedbackFlow has been rebranded and evolved into **[markupr](https://github.com/eddiesanjuan/markupr)** -- with cross-platform support, a CLI, an MCP server for AI coding agents, and an intelligent post-processing pipeline. All future development happens at [github.com/eddiesanjuan/markupr](https://github.com/eddiesanjuan/markupr).
+>
+> **Install:** `npm install -g markupr` | **Download:** [markupr.com](https://markupr.com) | **Releases:** [github.com/eddiesanjuan/markupr/releases](https://github.com/eddiesanjuan/markupr/releases)
+
+---
+
 <p align="center">
   <img src="src/renderer/assets/logo.svg" alt="markupr Logo" width="120" height="120">
 </p>
