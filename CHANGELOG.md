@@ -5,6 +5,13 @@ All notable changes to markupR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.6] - 2026-02-15
+
+### Fixed
+- Removed duplicate renderer `ThemeProvider` nesting that could apply conflicting theme variables and cause low-contrast/dark text in BYOK settings under dark mode.
+- Fixed BYOK key readiness sync in Settings > Advanced by recalculating both OpenAI and Anthropic key presence after each successful key save.
+- Fixed main capture card readiness state so successful OpenAI key setup is reflected immediately instead of getting stuck on `Add OpenAI Key`.
+
 ## [2.6.5] - 2026-02-15
 
 ### Added

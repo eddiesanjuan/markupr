@@ -64,6 +64,20 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
 
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const refreshRequiredByokKeys = useCallback(async (): Promise<{ hasOpenAiKey: boolean; hasAnthropicKey: boolean }> => {
+    try {
+      const [hasOpenAiKey, hasAnthropicKey] = await Promise.all([
+        window.markupr.settings.hasApiKey('openai'),
+        window.markupr.settings.hasApiKey('anthropic'),
+      ]);
+      setHasRequiredByokKeys(hasOpenAiKey && hasAnthropicKey);
+      return { hasOpenAiKey, hasAnthropicKey };
+    } catch {
+      setHasRequiredByokKeys(false);
+      return { hasOpenAiKey: false, hasAnthropicKey: false };
+    }
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Load settings on mount
   // ---------------------------------------------------------------------------
@@ -79,27 +93,15 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
         const devices = await window.markupr.audio.getDevices();
         setAudioDevices(devices);
 
-        try {
-          const [hasOpenAiKey, hasAnthropicKey] = await Promise.all([
-            window.markupr.settings.hasApiKey('openai'),
-            window.markupr.settings.hasApiKey('anthropic'),
-          ]);
-          if (hasOpenAiKey) {
-            setOpenAiApiKey((prev) => ({ ...prev, value: MASKED_API_KEY_PLACEHOLDER, valid: true }));
-          }
-          if (hasAnthropicKey) {
-            setAnthropicApiKey((prev) => ({ ...prev, value: MASKED_API_KEY_PLACEHOLDER, valid: true }));
-          }
-          const hasRequiredKeys = hasOpenAiKey && hasAnthropicKey;
-          setHasRequiredByokKeys(hasRequiredKeys);
-          if (!hasRequiredKeys && initialTab === 'general') {
-            setActiveTab('advanced');
-          }
-        } catch {
-          setHasRequiredByokKeys(false);
-          if (initialTab === 'general') {
-            setActiveTab('advanced');
-          }
+        const { hasOpenAiKey, hasAnthropicKey } = await refreshRequiredByokKeys();
+        if (hasOpenAiKey) {
+          setOpenAiApiKey((prev) => ({ ...prev, value: MASKED_API_KEY_PLACEHOLDER, valid: true }));
+        }
+        if (hasAnthropicKey) {
+          setAnthropicApiKey((prev) => ({ ...prev, value: MASKED_API_KEY_PLACEHOLDER, valid: true }));
+        }
+        if (!(hasOpenAiKey && hasAnthropicKey) && initialTab === 'general') {
+          setActiveTab('advanced');
         }
 
         try {
@@ -114,7 +116,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
     };
 
     loadSettings();
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, refreshRequiredByokKeys]);
 
   // ---------------------------------------------------------------------------
   // Setting change handlers
@@ -193,8 +195,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
           }));
           return;
         }
-        const hasAnthropic = await window.markupr.settings.hasApiKey('anthropic').catch(() => false);
-        setHasRequiredByokKeys(Boolean(hasAnthropic));
+        await refreshRequiredByokKeys();
         setOpenAiApiKey((prev) => ({ ...prev, valid: true }));
         window.dispatchEvent(new CustomEvent('markupr:settings-updated', { detail: { type: 'api-key', provider: 'openai' } }));
       } else {
@@ -211,7 +212,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
     } finally {
       setOpenAiApiKey((prev) => ({ ...prev, testing: false }));
     }
-  }, [openAiApiKey.value]);
+  }, [openAiApiKey.value, refreshRequiredByokKeys]);
 
   const handleAnthropicApiKeyChange = useCallback((value: string) => {
     setAnthropicApiKey((prev) => ({ ...prev, value, valid: null, error: null }));
@@ -254,8 +255,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
           }));
           return;
         }
-        const hasOpenAi = await window.markupr.settings.hasApiKey('openai').catch(() => false);
-        setHasRequiredByokKeys(Boolean(hasOpenAi));
+        await refreshRequiredByokKeys();
         setAnthropicApiKey((prev) => ({ ...prev, valid: true }));
         window.dispatchEvent(new CustomEvent('markupr:settings-updated', { detail: { type: 'api-key', provider: 'anthropic' } }));
       } else {
@@ -272,7 +272,7 @@ export function useSettingsPanel(isOpen: boolean, onClose: () => void, initialTa
     } finally {
       setAnthropicApiKey((prev) => ({ ...prev, testing: false }));
     }
-  }, [anthropicApiKey.value]);
+  }, [anthropicApiKey.value, refreshRequiredByokKeys]);
 
   // ---------------------------------------------------------------------------
   // Reset handlers

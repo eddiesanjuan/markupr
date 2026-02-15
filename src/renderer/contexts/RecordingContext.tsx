@@ -202,10 +202,25 @@ export const RecordingProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Transcription capability check
   // ---------------------------------------------------------------------------
   const refreshTranscriptionCapability = useCallback(() => {
-    if (!window.markupr?.whisper) return;
-    void window.markupr.whisper
-      .hasTranscriptionCapability()
-      .then((ready) => setHasTranscriptionCapability(ready))
+    const whisperApi = window.markupr?.whisper;
+    const settingsApi = window.markupr?.settings;
+
+    if (!whisperApi && !settingsApi) {
+      setHasTranscriptionCapability(false);
+      return;
+    }
+
+    const capabilityCheck = whisperApi?.hasTranscriptionCapability
+      ? whisperApi.hasTranscriptionCapability().catch(() => false)
+      : Promise.resolve(false);
+    const openAiKeyCheck = settingsApi?.hasApiKey
+      ? settingsApi.hasApiKey('openai').catch(() => false)
+      : Promise.resolve(false);
+
+    void Promise.all([capabilityCheck, openAiKeyCheck])
+      .then(([hasCapability, hasOpenAiKey]) => {
+        setHasTranscriptionCapability(Boolean(hasCapability || hasOpenAiKey));
+      })
       .catch(() => setHasTranscriptionCapability(false));
   }, []);
 
