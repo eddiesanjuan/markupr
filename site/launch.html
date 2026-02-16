@@ -1,5 +1,5 @@
 <!--
-  markupR v2.5.0 Launch Announcement.
+  markupR v2.6.6 Launch Announcement.
   Same design system as index.html.
   Neo-brutalist structure, minimalist soul.
   No frameworks, no tracking, no cookies, no external requests.
@@ -9,9 +9,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>markupR v2.5.0 — Templates, watch mode, and integrations</title>
-  <meta name="description" content="markupR v2.5.0 ships output templates, watch mode, GitHub Issues integration, Linear integration, and a GitHub Action for CI/CD visual feedback. Push structured feedback directly where your team works.">
-  <meta name="keywords" content="markupR, output templates, watch mode, GitHub Issues, Linear, GitHub Action, CI/CD, AI coding agents, Claude Code, Cursor, Windsurf, screen recording, developer tools, open source">
+  <title>markupR v2.6.6 — Context-aware capture for AI agent handoff</title>
+  <meta name="description" content="markupR v2.6.6 adds context-aware capture across desktop app and MCP: cursor coordinates, active app/window hints, and focused-element hints in structured reports.">
+  <meta name="keywords" content="markupR, context-aware capture, cursor tracking, active window, focused element, MCP, AI coding agents, Claude Code, Cursor, Windsurf, screen recording, developer tools, open source">
   <meta name="author" content="Eddie San Juan">
   <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#0A0A0B">
@@ -20,16 +20,16 @@
 
   <!-- Open Graph -->
   <meta property="og:type" content="article">
-  <meta property="og:title" content="markupR v2.5.0 — Templates, watch mode, and integrations">
-  <meta property="og:description" content="Output templates, watch mode, GitHub Issues, Linear integration, and a GitHub Action for CI/CD visual feedback. Push structured feedback where your team works.">
+  <meta property="og:title" content="markupR v2.6.6 — Context-aware capture for AI agent handoff">
+  <meta property="og:description" content="Desktop capture now includes cursor, active window, and focus hints in agent-ready reports across app, CLI, and MCP workflows.">
   <meta property="og:url" content="https://markupr.com/launch">
   <meta property="og:image" content="https://markupr.com/og-image.png">
   <meta property="og:site_name" content="markupR">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="markupR v2.5.0 — Templates, watch mode, and integrations">
-  <meta name="twitter:description" content="Output templates, watch mode, GitHub Issues, Linear integration, and a GitHub Action for CI/CD visual feedback. Push structured feedback where your team works.">
+  <meta name="twitter:title" content="markupR v2.6.6 — Context-aware capture for AI agent handoff">
+  <meta name="twitter:description" content="Desktop capture now includes cursor, active window, and focus hints in agent-ready reports across app, CLI, and MCP workflows.">
   <meta name="twitter:image" content="https://markupr.com/og-image.png">
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
@@ -916,7 +916,7 @@
   <!-- Top nav -->
   <nav class="topnav" aria-label="Page navigation">
     <a href="/" class="topnav__back">&larr; markupr.com</a>
-    <span class="topnav__version">v2.5.0</span>
+    <span class="topnav__version">v2.6.6</span>
   </nav>
 
   <main id="main-content">
@@ -929,14 +929,14 @@
       markup<span class="wordmark-r">R</span>
     </div>
 
-    <p class="overline hero__date">February 14, 2026</p>
+    <p class="overline hero__date">February 15, 2026</p>
 
     <h1 class="display hero__headline">
-      Templates. Watch mode. Integrations.
+      Context-aware capture. Agent-ready handoff.
     </h1>
 
     <p class="body-lg hero__subtext">
-      markupR v2.5.0 ships output templates, watch mode, and direct integrations with GitHub Issues, Linear, and CI/CD via a GitHub Action. Your feedback now flows directly where your team works.
+      markupR v2.6.6 makes desktop and MCP capture more explicit for AI agents: each shot can carry cursor position, active app/window hints, and focused-element context when available.
     </p>
 
     <div class="hero__ctas">
@@ -959,26 +959,26 @@
       <div class="ps__grid">
         <div class="ps__block reveal">
           <span class="ps__label ps__label--problem">The problem</span>
-          <h3>Feedback stays trapped in local files.</h3>
+          <h3>Your agent still misses intent from raw screenshots.</h3>
           <p>
-            markupR captures great structured feedback. But what happens after? You copy the markdown, paste it into a GitHub issue, manually format it, tag teammates. For CI/CD? You're on your own.
+            Even with a transcript and images, agents can misread what you meant: where your pointer was, which window was active, and what element you were referencing are often missing.
           </p>
           <p>
-            Every team has different tools -- GitHub Issues, Linear, Slack. Feedback that lives only in local files doesn't reach the people who need to act on it.
+            That ambiguity creates extra back-and-forth and slower fixes, especially when you're reviewing dense interfaces or multi-window workflows.
           </p>
         </div>
 
         <div class="ps__block reveal reveal-delay-1">
           <span class="ps__label ps__label--solution">The solution</span>
-          <h3>Push feedback where your team works.</h3>
+          <h3>Capture context, not just pixels.</h3>
           <p>
-            v2.5.0 adds output templates so you control the shape of every report. Watch mode monitors a directory and processes recordings as they appear. GitHub Issues and Linear integrations push feedback directly into your issue tracker.
+            v2.6.6 enriches capture events with cursor coordinates, active app/window metadata, and focused-element hints (best effort). Reports now carry the same contextual signals you used while narrating.
           </p>
           <p>
-            The new GitHub Action brings markupR into CI/CD -- add visual feedback to every pull request automatically. Record what's wrong, and the structured report lands right on the PR.
+            This metadata flows through desktop app output, CLI templates, and MCP sessions so your agent sees what changed, where attention was focused, and what to fix next.
           </p>
           <p>
-            860 tests. Same MIT license. Same pipeline, now connected to everything.
+            931 tests. Same MIT license. Same pipeline, now with stronger context fidelity.
           </p>
         </div>
       </div>
@@ -990,63 +990,60 @@
   <!-- ==========================================
        WHAT'S NEW — MCP SERVER
        ========================================== -->
-  <section class="mcp" aria-label="What's new in v2.5.0">
+  <section class="mcp" aria-label="What's new in v2.6.6">
     <div class="container--wide">
       <div class="section-header reveal">
-        <p class="overline">What's new in v2.5.0</p>
-        <h2>Five features that connect your feedback loop.</h2>
+        <p class="overline">What's new in v2.6.6</p>
+        <h2>Five upgrades for precise agent handoff.</h2>
         <p class="body-sm section-header__subtitle">
-          Output templates, watch mode, GitHub Issues, Linear, and a GitHub Action. Record once, push everywhere.
+          Context metadata now travels with your captures across desktop, CLI, and MCP workflows.
         </p>
       </div>
 
       <div class="mcp__content">
-        <!-- GitHub Action YAML snippet -->
+        <!-- Context-aware markdown snippet -->
         <div class="code-block reveal">
           <div class="code-block__header">
             <span class="code-block__dot code-block__dot--red"></span>
             <span class="code-block__dot code-block__dot--yellow"></span>
             <span class="code-block__dot code-block__dot--green"></span>
-            <span class="code-block__title">.github/workflows/feedback.yml</span>
+            <span class="code-block__title">feedback-report.md</span>
           </div>
-          <pre><code><span class="syn-kw">name:</span> Visual Feedback
-<span class="syn-kw">on:</span> [pull_request]
-<span class="syn-kw">jobs:</span>
-  <span class="syn-fn">feedback:</span>
-    <span class="syn-kw">runs-on:</span> ubuntu-latest
-    <span class="syn-kw">steps:</span>
-      - <span class="syn-kw">uses:</span> <span class="syn-str">eddiesanjuan/markupr-action@v1</span>
-        <span class="syn-kw">with:</span>
-          <span class="syn-fn">video:</span> <span class="syn-str">./recordings/review.mov</span>
-          <span class="syn-fn">template:</span> <span class="syn-str">github-issue</span></code></pre>
+          <pre><code><span class="syn-kw">### FB-003: Primary CTA disabled state unreadable</span>
+The button text almost disappears in dark mode.
+Looks like contrast token fallback is wrong.
+
+<span class="syn-fn">![Screenshot at 01:42]</span><span class="syn-str">(screenshots/fb-003.png)</span>
+<span class="syn-cm">Capture context:</span> cursor 1186,642 • app "Arc" • window "Settings"
+<span class="syn-cm">Focus hint:</span> button[aria-label="Retest"]</code></pre>
         </div>
 
         <!-- Features grid -->
         <div class="mcp__tools reveal reveal-delay-1">
           <div class="mcp__tool">
-            <strong>Output Templates</strong>
-            <span>Control the shape of every report. Use built-in templates or create your own for GitHub Issues, Linear, Slack, or plain markdown.</span>
+            <strong>Cursor-aware captures</strong>
+            <span>Shot markers now carry cursor coordinates so your agent can reason about precise screen location.</span>
           </div>
           <div class="mcp__tool">
-            <strong>Watch Mode</strong>
-            <span>Monitor a directory for new recordings. markupR processes them as they appear -- no manual intervention required.</span>
+            <strong>Active window metadata</strong>
+            <span>Capture context includes frontmost app/window hints for multi-window and multi-app sessions.</span>
           </div>
           <div class="mcp__tool">
-            <strong>GitHub Issues Integration</strong>
-            <span>Push structured feedback directly to GitHub Issues. Screenshots, transcript, and timestamps -- all formatted and ready to assign.</span>
+            <strong>Focused-element hints</strong>
+            <span>Focused element role/text/title hints are included when available to reduce ambiguity in UI feedback.</span>
           </div>
           <div class="mcp__tool">
-            <strong>Linear Integration</strong>
-            <span>Create Linear issues from feedback sessions. Structured reports land in your sprint backlog with full visual context.</span>
+            <strong>MCP parity</strong>
+            <span>MCP screenshot and recording flows now persist capture context in session metadata, not just image files.</span>
           </div>
           <div class="mcp__tool">
-            <strong>GitHub Action</strong>
-            <span>Add visual feedback to every PR. The action runs markupR in CI/CD and posts structured reports as PR comments.</span>
+            <strong>UI reliability polish</strong>
+            <span>Dark-mode BYOK readability and readiness-sync issues are fixed for a cleaner first-run experience.</span>
           </div>
         </div>
       </div>
 
-      <p class="caption mcp__note reveal reveal-delay-2">All integrations work with the same pipeline: Record &rarr; Transcribe &rarr; Structure &rarr; Push. 860 tests across the full suite.</p>
+      <p class="caption mcp__note reveal reveal-delay-2">All interfaces still use one pipeline: Capture &rarr; Transcribe &rarr; Align &rarr; Enrich &rarr; Generate. 931 tests across the suite.</p>
     </div>
   </section>
 
@@ -1101,29 +1098,29 @@
         <p class="overline">Under the hood</p>
         <h2>The pipeline.</h2>
         <p class="body-sm section-header__subtitle">
-          Every interface -- desktop, CLI, MCP, GitHub Action -- runs the same pipeline. Record &rarr; Transcribe &rarr; Structure &rarr; Push.
+          Every interface -- desktop, CLI, MCP, GitHub Action -- runs the same core pipeline. Capture &rarr; Transcribe &rarr; Align &rarr; Enrich &rarr; Generate.
         </p>
       </div>
 
       <ul class="tech__bullets reveal">
         <li>
-          <strong>Output templates</strong>
-          <span>Customizable templates shape the output for your destination: GitHub Issues, Linear tickets, Slack messages, or plain markdown. Create your own or use built-in presets.</span>
+          <strong>Context-aware capture snapshots</strong>
+          <span>Shot events now include cursor coordinates, active app/window hints, and focused-element context (best effort) for clearer agent interpretation.</span>
         </li>
         <li>
-          <strong>Watch mode</strong>
-          <span>Point markupR at a directory and it processes recordings as they appear. Pairs with screen recording tools for hands-free feedback capture.</span>
+          <strong>Desktop + MCP parity</strong>
+          <span>Context metadata now flows through desktop output, MCP session metadata, and generated templates so every interface tells the same story.</span>
         </li>
         <li>
-          <strong>GitHub Issues + Linear</strong>
-          <span>Push structured feedback directly into your issue tracker. Screenshots, transcript, and timestamps land formatted and ready to assign.</span>
+          <strong>Template-aware report output</strong>
+          <span>Structured Markdown and JSON outputs now carry capture context near relevant frames to reduce follow-up clarification.</span>
         </li>
         <li>
-          <strong>GitHub Action for CI/CD</strong>
-          <span>Add visual feedback to every pull request. The action runs markupR in your workflow and posts structured reports as PR comments.</span>
+          <strong>BYOK reliability polish</strong>
+          <span>Dark mode readability and key-readiness sync were tightened so onboarding and advanced settings stay clear and accurate.</span>
         </li>
         <li>
-          <strong>860 tests, MIT licensed</strong>
+          <strong>931 tests, MIT licensed</strong>
           <span>No telemetry. No tracking. No analytics. Open source with comprehensive test coverage across the full pipeline.</span>
         </li>
       </ul>
@@ -1145,7 +1142,7 @@
       <div class="getstarted__options" style="grid-template-columns: 1fr 1fr;">
         <div class="card getstarted__option reveal reveal-delay-1">
           <h3>Desktop App</h3>
-          <p>Download the macOS or Windows app. Lives in your menu bar. No setup required.</p>
+          <p>Download the macOS or Windows app. Lives in your menu bar. BYOK keys are optional depending on your transcription/analysis path.</p>
           <a href="/" class="btn btn--primary">Download</a>
         </div>
 

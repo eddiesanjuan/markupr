@@ -18,7 +18,8 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &middot;
-  <a href="#why-markupR">Why markupR</a> &middot;
+  <a href="#context-aware-capture-what-your-agent-actually-gets">Context-Aware Capture</a> &middot;
+  <a href="#why-markupr">Why markupR</a> &middot;
   <a href="#mcp-server">MCP Server</a> &middot;
   <a href="#cli">CLI</a> &middot;
   <a href="#integrations">Integrations</a> &middot;
@@ -28,8 +29,10 @@
 ---
 
 <p align="center">
-  <img src="assets/demo-cli.gif" alt="markupR CLI demo" width="800">
+  <img src="assets/demo-cli.gif" alt="markupR desktop-to-report workflow demo" width="800">
 </p>
+
+Desktop app workflow is the default: record + narrate + stop, then ship context-rich markdown (frames + cursor/window/focus hints when available) directly to your agent.
 
 ## The Problem
 
@@ -37,11 +40,12 @@ AI coding agents can't see your screen. When you find a bug, you context-switch 
 
 ## The Solution
 
-markupR records your screen while you narrate what's wrong. When you stop, it runs an intelligent pipeline that correlates your transcript timestamps with the video to extract the right frames at the right moments -- then stitches everything into structured Markdown your AI agent can act on immediately.
+markupR is a desktop capture app first. You hit a hotkey, narrate what you see, and stop. Then it runs a post-session pipeline that aligns transcript timestamps with the recording, extracts the right frames, and outputs structured Markdown your agent can execute against immediately.
 
 - **Record** -- press a hotkey, talk through what you see
 - **Process** -- Whisper transcribes, ffmpeg extracts frames at the exact moments you described
-- **Output** -- structured Markdown with screenshots placed exactly where they belong
+- **Enrich** -- capture context is attached to shot markers (cursor position, active window/app, focused element hints when available)
+- **Output** -- structured Markdown with screenshots and context your agent can trust
 
 ```
 Cmd+Shift+F  -->  talk  -->  Cmd+Shift+F  -->  Cmd+V into your agent
@@ -49,11 +53,14 @@ Cmd+Shift+F  -->  talk  -->  Cmd+Shift+F  -->  Cmd+V into your agent
 
 ## Quick Start
 
-### CLI (zero install)
+### Desktop App (recommended)
 
-```bash
-npx markupr analyze ./recording.mov
-```
+Download from [markupr.com](https://markupr.com) or [GitHub Releases](https://github.com/eddiesanjuan/markupr/releases).
+
+1. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows) to start
+2. Narrate what you see and mark shots when needed
+3. Press the hotkey again to stop
+4. Paste the generated report path into Claude Code, Cursor, Windsurf, or any coding agent
 
 ### MCP Server (for AI coding agents)
 
@@ -61,19 +68,32 @@ npx markupr analyze ./recording.mov
 npx markupr-mcp
 ```
 
-### Desktop App
+### CLI (for existing recordings / CI / automation)
 
-Download from [markupr.com](https://markupr.com) or [GitHub Releases](https://github.com/eddiesanjuan/markupr/releases). Available for macOS and Windows.
+```bash
+npx markupr analyze ./recording.mov
+```
 
-No API keys required. Local Whisper transcription works out of the box.
+Use this when you already have a video file. The desktop app remains the primary capture workflow.
+
+## Context-Aware Capture: What Your Agent Actually Gets
+
+Every important frame can carry extra machine-usable context, not just pixels.
+
+- **Cursor coordinates** at capture time
+- **Active app + window title** (best-effort from OS context)
+- **Focused element hints** (role/text/title hints when available)
+- **Trigger metadata** (`manual`, `pause`, or `voice-command`)
+
+This makes the report a high-signal liaison between you and your agent: what you said, what you saw, and where your attention was.
 
 ## Why markupR?
 
 **Local-first.** Whisper runs on your device. Your recordings, transcripts, and screenshots never leave your machine. No cloud dependency, no account required.
 
-**AI-native output.** The Markdown output is structured for LLM consumption -- headings, categories, severity levels, and inline screenshots. Not a raw transcript with random images. Every screenshot shows exactly what you were describing when you said it.
+**AI-native output.** The Markdown output is structured for LLM consumption -- headings, categories, severity levels, inline screenshots, and capture-context hints. Not a raw transcript with random images.
 
-**Works everywhere.** Desktop app for daily use. CLI for scripts and CI/CD. MCP server for agent integration. GitHub Action for PR feedback. Same pipeline, four interfaces.
+**Works everywhere.** Desktop app for daily flow. CLI for scripts and CI/CD. MCP server for agent integration. GitHub Action for PR feedback. Same pipeline, four interfaces.
 
 **Open source.** MIT licensed. No telemetry, no tracking, no analytics. Read the source, fork it, ship it.
 
@@ -97,7 +117,7 @@ There's a visible layout shift -- the sidebar jumps left by about
 ![Screenshot at 1:12](screenshots/fb-002.png)
 ```
 
-Each screenshot is extracted from the exact video frame matching your narration timestamp. See full examples in [`examples/`](examples/).
+Each screenshot is extracted from the exact video frame matching your narration timestamp, with context hints attached when available. See full examples in [`examples/`](examples/).
 
 ## MCP Server
 
@@ -124,9 +144,9 @@ Give your AI coding agent eyes and ears. Add markupR as an MCP server and it can
 
 | Tool | Description |
 |------|-------------|
-| `capture_screenshot` | Grab the current screen. Your agent sees what you see. |
+| `capture_screenshot` | Grab the current screen and attach context metadata (cursor + active app/window + focus hints when available). |
 | `capture_with_voice` | Record screen + mic for a set duration. Returns a structured report. |
-| `analyze_video` | Process any `.mov` or `.mp4` into Markdown with extracted frames. |
+| `analyze_video` | Process any existing `.mov` or `.mp4` into Markdown with extracted frames (fallback path for externally captured recordings). |
 | `analyze_screenshot` | Run a screenshot through the AI analysis pipeline. |
 | `start_recording` | Begin an interactive recording session. |
 | `stop_recording` | End the session and run the full pipeline. |
@@ -143,7 +163,7 @@ Agent: [calls capture_screenshot]
        [fixes the code]
 ```
 
-No copy-pasting screenshots. No describing the bug in text. The agent looks at your screen and acts.
+No copy-pasting screenshots. No rewriting what you already know. The agent gets structured report context and acts.
 
 Full MCP documentation: [README-MCP.md](README-MCP.md)
 
@@ -161,7 +181,7 @@ npm install -g markupr
 
 ### Commands
 
-**`markupR analyze <video>`** -- Process a screen recording into structured Markdown.
+**`markupR analyze <video>`** -- Process an existing screen recording into structured Markdown.
 
 ```bash
 markupR analyze ./bug-demo.mov
@@ -211,10 +231,10 @@ Run markupR in CI to get visual feedback on pull requests:
     github-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-### Desktop App Workflow
+### Desktop App Workflow (Primary)
 
 1. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows)
-2. Narrate what you see -- screenshots capture automatically during pauses
+2. Narrate what you see and mark shots as needed
 3. Press the hotkey again to stop
 4. Paste the file path from your clipboard into Claude Code, Cursor, or any AI agent
 
@@ -239,6 +259,8 @@ Run markupR in CI to get visual feedback on pull requests:
 ```
 
 The pipeline degrades gracefully. No ffmpeg? Transcript-only output. No Whisper model? Timer-based screenshots. No API keys? Everything runs locally.
+
+Desktop app capture remains the default path. CLI/MCP `analyze_video` remains available when you need to process an existing recording.
 
 For architecture details, see [CLAUDE.md](CLAUDE.md).
 

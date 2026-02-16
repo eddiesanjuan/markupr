@@ -1,13 +1,13 @@
-# Getting Started with markupr
+# Getting Started with markupR
 
-This guide walks you through setting up markupr for the first time.
+This guide walks you through setting up markupR for the first time.
 
 ## Table of Contents
 
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
 - [First-Time Setup](#first-time-setup)
-- [Obtaining a OpenAI API Key](#obtaining-a-openai-api-key)
+- [Configuring BYOK API Keys (Optional)](#configuring-byok-api-keys-optional)
 - [Granting Permissions](#granting-permissions)
 - [Your First Recording](#your-first-recording)
 
@@ -37,9 +37,9 @@ This guide walks you through setting up markupr for the first time.
 
 1. Download the latest `.dmg` file from the [releases page](https://github.com/eddiesanjuan/markupr/releases)
 2. Open the downloaded DMG file
-3. Drag the markupr icon to your Applications folder
+3. Drag the markupR icon to your Applications folder
 4. Eject the DMG
-5. Open markupr from your Applications folder
+5. Open markupR from your Applications folder
 
 **Note**: On first launch, macOS may show a security warning. Click "Open" to continue, or go to System Preferences > Security & Privacy to allow the app.
 
@@ -48,7 +48,7 @@ This guide walks you through setting up markupr for the first time.
 1. Download the latest `.exe` installer from the [releases page](https://github.com/eddiesanjuan/markupr/releases)
 2. Run the installer
 3. Follow the installation wizard
-4. Launch markupr from the Start menu or desktop shortcut
+4. Launch markupR from the Start menu or desktop shortcut
 
 ### Linux
 
@@ -74,76 +74,64 @@ sudo apt-get install -f  # Install dependencies if needed
 
 ## First-Time Setup
 
-When you launch markupr for the first time, the onboarding wizard will guide you through:
+When you launch markupR for the first time, the onboarding wizard will guide you through:
 
-1. **Welcome** - Introduction to markupr
+1. **Welcome** - Introduction to markupR
 2. **Permissions** - Granting required system permissions
-3. **API Key** - Configuring your OpenAI API key
+3. **BYOK Keys (Optional)** - Configuring OpenAI + Anthropic keys for full AI-assisted reports
 4. **Quick Tour** - Learning the basic workflow
 
 You can skip the wizard and configure settings manually, but we recommend completing it.
 
-## Obtaining a OpenAI API Key
+## Configuring BYOK API Keys (Optional)
 
-markupr uses OpenAI for real-time speech-to-text transcription. Here's how to get your API key:
+markupR can run local-first, and you can optionally configure BYOK keys for full cloud-assisted transcription + analysis.
 
-### Step 1: Create a OpenAI Account
+### Which keys do I need?
 
-1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-2. Click "Sign Up" (or "Sign In" if you have an account)
-3. Complete the registration process
+- **OpenAI key**: used for BYOK transcription workflows
+- **Anthropic key**: used for BYOK AI analysis workflows
 
-### Step 2: Create an API Key
+If you only want capture + basic local workflows, you can start without keys and add them later.
 
-1. Once logged in, go to **API Keys** in the left sidebar
-2. Click **Create a New API Key**
-3. Give your key a descriptive name (e.g., "markupr")
-4. Select the following permissions:
-   - **Usage** (required for transcription)
-5. Click **Create Key**
-6. **Copy the key immediately** - you won't be able to see it again!
+### Create your keys
 
-### Step 3: Add the Key to markupr
+1. OpenAI: [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Anthropic: [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+3. Create keys and copy them immediately (you may not be able to view them again).
 
-1. Open markupr
+### Add keys in markupR
+
+1. Open markupR
 2. Go to **Settings** (`Cmd+,` on macOS, `Ctrl+,` on Windows)
-3. Navigate to **Advanced** > **Transcription Service**
-4. Paste your API key in the input field
-5. Click **Test Connection** to verify
-6. You should see "API key verified and saved securely"
-
-### OpenAI Free Tier
-
-OpenAI offers a generous free tier:
-- **200 hours** of transcription per month
-- **No credit card required** to start
-- Perfect for individual developers
-
-For higher volume usage, OpenAI offers paid plans starting at pay-as-you-go pricing.
+3. Navigate to **Advanced**
+4. Paste your OpenAI and Anthropic keys in their respective fields
+5. Click **Test Connection** for each key
+6. Confirm each shows **API key verified and saved securely**
 
 ## Granting Permissions
 
-markupr requires certain system permissions to function properly.
+markupR requires certain system permissions to function properly.
 
 ### macOS Permissions
 
 #### Microphone Access
 
-markupr needs microphone access to capture your voice narration.
+markupR needs microphone access to capture your voice narration.
 
 1. When prompted, click **OK** to allow microphone access
 2. If you denied access, go to:
    - System Preferences > Security & Privacy > Privacy > Microphone
-   - Check the box next to markupr
+   - Check the box next to markupR
 
 #### Screen Recording
 
-markupr needs screen recording permission to capture screenshots.
+markupR needs screen recording permission to capture screenshots.
 
 1. When prompted, click **Open System Preferences**
 2. Go to Security & Privacy > Privacy > Screen Recording
-3. Check the box next to markupr
-4. **Restart markupr** for the change to take effect
+3. Check the box next to markupR
+4. **Restart markupR** for the change to take effect
 
 #### Accessibility (Optional)
 
@@ -151,13 +139,13 @@ For global hotkeys to work in all applications:
 
 1. Go to System Preferences > Security & Privacy > Privacy > Accessibility
 2. Click the lock icon and enter your password
-3. Check the box next to markupr
+3. Check the box next to markupR
 
 ### Windows Permissions
 
 Windows typically handles permissions automatically. If you encounter issues:
 
-1. Right-click on markupr in the Start menu
+1. Right-click on markupR in the Start menu
 2. Select "Run as administrator" (for first run only)
 3. Follow any Windows Security prompts
 
@@ -195,11 +183,11 @@ Click on your selection to start.
 Start speaking! Some tips:
 - Speak naturally and clearly
 - Pause briefly when you want a screenshot captured
-- The live transcription preview shows what markupr hears
+- The live transcription preview shows what markupR hears
 
 ### Step 4: Screenshots
 
-markupr captures screenshots automatically when you pause speaking. You can also:
+markupR captures screenshots automatically when you pause speaking. You can also:
 - Press `Cmd+Shift+S` (or `Ctrl+Shift+S`) to manually capture
 - Watch the screenshot count in the overlay
 
@@ -227,7 +215,7 @@ The Markdown format is optimized for AI consumption.
 
 ## Next Steps
 
-- [Configure settings](CONFIGURATION.md) to customize markupr
+- [Configure settings](CONFIGURATION.md) to customize markupR
 - [Learn keyboard shortcuts](KEYBOARD_SHORTCUTS.md) for efficient workflows
 - [Explore export formats](EXPORT_FORMATS.md) for different use cases
 

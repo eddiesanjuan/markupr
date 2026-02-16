@@ -1,8 +1,8 @@
 # markupR MCP Server
 
-Give your AI coding agent eyes and ears. The markupR MCP server lets Claude Code, Cursor, and Windsurf capture screenshots and screen recordings with voice narration -- then processes everything into structured, AI-ready Markdown reports.
+Give your AI coding agent eyes and ears. The markupR MCP server lets Claude Code, Cursor, and Windsurf capture screenshots and screen recordings with voice narration, plus context metadata (cursor, active app/window, focused element hints when available), then processes everything into structured, AI-ready Markdown reports.
 
-**Version:** 2.3.0 | **Platform:** macOS | **Protocol:** MCP (Model Context Protocol) over stdio
+**Version:** 2.6.6 | **Platform:** macOS/Windows/Linux | **Protocol:** MCP (Model Context Protocol) over stdio
 
 ---
 
@@ -38,6 +38,8 @@ npm install -g markupr
 ```
 
 This installs both the `markupR` CLI and the `markupr-mcp` server binary.
+
+> The MCP server is the agent-facing interface. For day-to-day manual capture, the desktop app is the primary workflow.
 
 ---
 
@@ -98,7 +100,7 @@ The MCP server exposes 6 tools. Your AI agent can call these directly during a c
 
 ### `capture_screenshot`
 
-Take a screenshot of the current screen. Returns a markdown image reference saved to the session directory.
+Take a screenshot of the current screen. Returns a markdown image reference saved to the session directory, plus context summary when available.
 
 **Input:**
 | Parameter | Type | Default | Description |
@@ -116,13 +118,14 @@ capture_screenshot({ label: "broken navbar", display: 1 })
 ```
 Screenshot saved: /Users/you/Documents/markupr/mcp/session-20260214-143022/screenshot-001.png
 ![broken navbar](screenshots/screenshot-001.png)
+Context: Cursor: 914, 622 | App: Arc | Focus: Submit button
 ```
 
 ---
 
 ### `capture_with_voice`
 
-Record screen and voice for a fixed duration, then run the full markupR pipeline. Produces a structured Markdown report with transcript, key moments, and extracted frames.
+Record screen and voice for a fixed duration, then run the full markupR pipeline. Produces a structured Markdown report with transcript, key moments, extracted frames, and capture context metadata.
 
 **Input:**
 | Parameter | Type | Default | Description |
@@ -151,7 +154,7 @@ Report: /Users/you/Documents/markupr/mcp/session-20260214-143022/feedback-report
 
 ### `analyze_video`
 
-Process an existing video file through the markupR pipeline. Useful for recordings made outside markupR.
+Process an existing video file through the markupR pipeline. Useful for recordings made outside markupR (fallback flow; capture tools are the primary flow).
 
 **Input:**
 | Parameter | Type | Default | Description |
@@ -241,6 +244,8 @@ The server also exposes MCP resources for querying session data:
 | `session://latest` | Metadata for the most recent session |
 | `session://{id}` | Metadata for a specific session by ID |
 
+Session metadata now includes capture-context snapshots (for example: cursor coordinates, active window/app, focused element hints when available).
+
 ---
 
 ## How It Works
@@ -248,7 +253,7 @@ The server also exposes MCP resources for querying session data:
 1. **Your AI agent calls a tool** -- e.g., `capture_with_voice({ duration: 30 })`
 2. **markupR captures** -- records screen and microphone via ffmpeg
 3. **The pipeline runs** -- transcribes audio (Whisper), detects key moments, extracts frames at those timestamps
-4. **Structured output** -- produces a Markdown report with screenshots placed at the exact moments you described them
+4. **Structured output** -- produces a Markdown report with screenshots placed at the exact moments you described them, enriched with capture context metadata
 5. **Agent reads the report** -- the tool returns the file path; the agent reads and acts on the structured feedback
 
 All processing happens locally. No data leaves your machine unless you configure an OpenAI API key for cloud transcription.

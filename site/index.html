@@ -15,8 +15,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>markupR — App feedback, made effortless</title>
-  <meta name="description" content="markupR closes the feedback loop between what you see on screen and what your AI coding agent fixes. Record your screen, say what's wrong, and get structured Markdown your agent can act on immediately.">
+  <title>markupR — Desktop feedback capture for AI coding agents</title>
+  <meta name="description" content="markupR is the desktop app for capturing screen + voice feedback and turning it into context-rich, AI-ready Markdown with screenshots, cursor position, active window, and focus hints.">
   <meta name="keywords" content="developer tools, screen recording, AI feedback, voice narration, markdown, MCP server, model context protocol, whisper, transcription, screenshots, code review, AI agents, Claude Code, Cursor, Windsurf, open source, macOS, Windows, CLI, npx">
   <meta name="author" content="Eddie San Juan">
   <meta name="robots" content="index, follow">
@@ -29,8 +29,8 @@
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="markupR — Turn Screen Recordings into AI-Ready Markdown">
-  <meta property="og:description" content="Record your screen, narrate what's wrong, and get structured Markdown with screenshots your AI coding agent can act on immediately. Open source developer tool for macOS and Windows.">
+  <meta property="og:title" content="markupR — Desktop capture app for AI coding agents">
+  <meta property="og:description" content="Record your screen, narrate what's wrong, and generate context-rich Markdown your AI coding agent can execute against immediately.">
   <meta property="og:url" content="https://markupr.com/">
   <meta property="og:image" content="https://markupr.com/og-image.png">
   <meta property="og:image:width" content="1200">
@@ -40,8 +40,8 @@
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="markupR — Turn Screen Recordings into AI-Ready Markdown">
-  <meta name="twitter:description" content="Record your screen, narrate what's wrong, and get structured Markdown with screenshots your AI coding agent can act on immediately. Open source developer tool for macOS and Windows.">
+  <meta name="twitter:title" content="markupR — Desktop capture app for AI coding agents">
+  <meta name="twitter:description" content="Record your screen, narrate what's wrong, and generate context-rich Markdown your AI coding agent can execute against immediately.">
   <meta name="twitter:image" content="https://markupr.com/og-image.png">
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
@@ -1777,7 +1777,7 @@
     "@type": "SoftwareApplication",
     "name": "markupR",
     "description": "Record your screen, say what's wrong, and get structured Markdown your AI coding agent can act on immediately.",
-    "softwareVersion": "2.5.0",
+    "softwareVersion": "2.6.6",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Windows",
     "offers": {
@@ -1790,7 +1790,7 @@
       "name": "Eddie San Juan",
       "url": "https://github.com/eddiesanjuan"
     },
-    "datePublished": "2026-02-14",
+    "datePublished": "2026-02-15",
     "license": "https://opensource.org/licenses/MIT",
     "url": "https://markupr.com",
     "downloadUrl": "https://github.com/eddiesanjuan/markupr/releases/latest",
@@ -1818,7 +1818,7 @@
         "name": "How does markupR work?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Press a hotkey to start recording, talk through what you see on screen, then press the hotkey again to stop. markupR transcribes your narration, analyzes the transcript for key moments, extracts video frames at those timestamps, and assembles everything into a structured Markdown document."
+          "text": "Press a hotkey to start recording, narrate what you see, and stop. markupR transcribes your narration, aligns key frames, and enriches shot markers with cursor, active window, and focused-element hints when available."
         }
       },
       {
@@ -1850,7 +1850,7 @@
         "name": "Is markupR free?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. markupR is MIT-licensed open source. The desktop app, CLI, and MCP server are all free. A premium tier offers hosted API keys for convenience, but the core tool is free forever."
+          "text": "Yes. markupR is MIT-licensed open source. The desktop app, CLI, and MCP server are all free, and you can run fully in BYOK mode."
         }
       },
       {
@@ -1866,7 +1866,7 @@
         "name": "How is markupR different from screen recording?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Screen recorders give you a video file. markupR gives you a structured document. It transcribes your narration, correlates timestamps with the recording, extracts the exact frames that matter, and assembles everything into Markdown your AI agent can act on immediately."
+          "text": "Screen recorders give you a video file. markupR gives you an agent-ready report: aligned transcript, extracted frames, and context hints like cursor position and active window so your agent can act with less ambiguity."
         }
       }
     ]
@@ -1919,7 +1919,7 @@
     </div>
 
     <a href="/launch" class="hero__announcement">
-      v2.5.0: Templates, Watch Mode &amp; Integrations <span class="hero__announcement-arrow" aria-hidden="true">&rarr;</span>
+      v2.6.6: Context-aware capture + BYOK reliability updates <span class="hero__announcement-arrow" aria-hidden="true">&rarr;</span>
     </a>
 
     <h1 class="display hero__headline">
@@ -1927,19 +1927,19 @@
     </h1>
 
     <p class="body-lg hero__subtext">
-      You know exactly what's wrong. You just can't describe it precisely enough for the AI to fix it. markupR records your screen while you talk, then gives your coding agent the structured context it needs to act.
+      You know exactly what's wrong. markupR captures it as a desktop-native recording workflow, then hands your agent structured context: transcript, frames, cursor location, active window, and focused-element hints when available.
     </p>
 
     <div class="hero__ctas">
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.5.0/markupr-2.5.0-arm64.dmg" class="btn btn--primary download-btn" data-platform="mac-arm" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.6/markupr-2.6.6-arm64.dmg" class="btn btn--primary download-btn" data-platform="mac-arm" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.5l.9-3.5h4.52l.9 3.5A10 10 0 0 0 12 2Z"/><path d="M12 2v7"/><path d="M8 9h8"/></svg>
         Download for macOS (Apple Silicon)<span class="sr-only"> (opens in new tab)</span>
       </a>
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.5.0/markupr-2.5.0-x64.dmg" class="btn btn--primary download-btn" data-platform="mac-intel" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.6/markupr-2.6.6-x64.dmg" class="btn btn--primary download-btn" data-platform="mac-intel" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.5l.9-3.5h4.52l.9 3.5A10 10 0 0 0 12 2Z"/><path d="M12 2v7"/><path d="M8 9h8"/></svg>
         Download for macOS (Intel)<span class="sr-only"> (opens in new tab)</span>
       </a>
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.5.0/markupr-Setup-2.5.0.exe" class="btn btn--primary download-btn" data-platform="windows" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.6/markupr-Setup-2.6.6.exe" class="btn btn--primary download-btn" data-platform="windows" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download for Windows<span class="sr-only"> (opens in new tab)</span>
       </a>
@@ -1982,7 +1982,7 @@
         <p class="overline">Quick visual walkthrough</p>
         <h2>See the full flow in a few seconds.</h2>
         <p class="body-sm section-header__subtitle">
-          You record and mark shots. After you stop, markupR aligns narration with frames and closes the loop -- your agent gets structured context to start fixing.
+          You record and mark shots. After stop, markupR aligns narration with frames and attaches context cues (cursor/window/focus) so your agent can fix with less interpretation.
         </p>
       </div>
 
@@ -2057,8 +2057,8 @@
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
             </svg>
           </div>
-          <div class="loop__label">Mark + Assemble</div>
-          <div class="loop__desc">Manual shots are confirmed instantly, then AI aligns transcript + frames after stop.</div>
+          <div class="loop__label">Mark + Enrich</div>
+          <div class="loop__desc">Manual shots confirm instantly, then AI aligns transcript + frames and attaches capture context metadata after stop.</div>
         </div>
 
         <!-- Step 3 -->
@@ -2127,7 +2127,7 @@
         <div class="card why__card reveal reveal-delay-2">
           <h3>You talk at 150 wpm. You type at 60.</h3>
           <p>
-            A five-minute narration gives your AI agent more precise context than twenty minutes of writing. markupR places screenshots at the exact moments you were describing something -- so the agent sees what you saw, when you saw it.
+            A five-minute narration gives your AI agent more precise context than twenty minutes of writing. markupR places screenshots at exact moments and adds cursor/window/focus hints -- so the agent sees what you saw, where your attention was, and when.
           </p>
         </div>
 
@@ -2164,6 +2164,10 @@
           <li>
             <strong>Intelligent frame extraction</strong>
             <span>Records your full screen, then uses transcript timestamps to pull the exact frames that match what you were describing.</span>
+          </li>
+          <li>
+            <strong>Context-aware shot metadata</strong>
+            <span>Each marked shot can include cursor coordinates, active app/window, and focused-element hints (best effort), so reports carry more than pixels.</span>
           </li>
           <li>
             <strong>macOS native</strong>
@@ -2221,17 +2225,17 @@ isn't updating on route change.
   <section class="cli" aria-label="CLI installation">
     <div class="container--wide">
       <div class="section-header reveal">
-        <p class="overline">For developers and AI agents</p>
+        <p class="overline">For automation and existing recordings</p>
         <h2>Install from your terminal.</h2>
       </div>
 
       <div class="cli__content">
         <div class="cli__text reveal">
           <p>
-            Same pipeline, no desktop app required. Process screen recordings from CI/CD, scripts, or AI agents.
+            Same pipeline, no desktop app required. Process existing screen recordings from CI/CD, scripts, or AI agents.
           </p>
           <p>
-            The CLI runs the full markupR pipeline: transcription, frame extraction, and markdown generation. Point it at a video file and get structured context your agent can act on.
+            The CLI runs the full markupR pipeline: transcription, frame extraction, context enrichment, and markdown generation. Point it at a video file and get structured context your agent can act on.
           </p>
         </div>
 
@@ -2274,7 +2278,7 @@ isn't updating on route change.
         <p class="overline">MCP Server</p>
         <h2>Give your AI agent eyes and ears.</h2>
         <p class="body-sm section-header__subtitle">
-          Add markupR as an MCP server and your AI coding agent can capture screenshots, record your screen with voice, and receive structured reports -- all mid-conversation.
+          Add markupR as an MCP server and your AI coding agent can capture screenshots, record your screen with voice, and receive context-enriched reports -- all mid-conversation.
         </p>
       </div>
 
@@ -2301,15 +2305,15 @@ isn't updating on route change.
         <div class="mcp__tools reveal reveal-delay-1">
           <div class="mcp__tool">
             <strong>capture_screenshot</strong>
-            <span>Grab the current screen instantly. Your agent sees what you see.</span>
+            <span>Grab the current screen instantly with context cues (cursor/app/focus when available).</span>
           </div>
           <div class="mcp__tool">
             <strong>capture_with_voice</strong>
-            <span>Record screen + microphone for a set duration. Get a full report back.</span>
+            <span>Record screen + microphone for a set duration. Get a full context-enriched report back.</span>
           </div>
           <div class="mcp__tool">
             <strong>analyze_video</strong>
-            <span>Process any .mov or .mp4 into structured Markdown with extracted frames.</span>
+            <span>Process any existing .mov or .mp4 into structured Markdown with extracted frames.</span>
           </div>
           <div class="mcp__tool">
             <strong>analyze_screenshot</strong>
@@ -2333,12 +2337,12 @@ isn't updating on route change.
   <hr class="divider" aria-hidden="true">
 
   <!-- ==========================================
-       INTEGRATIONS — New in v2.5.0
+       INTEGRATIONS
        ========================================== -->
   <section aria-label="Integrations">
     <div class="container--wide">
       <div class="section-header reveal">
-        <p class="overline">New in v2.5.0</p>
+        <p class="overline">Integrations</p>
         <h2>Push feedback where your team works.</h2>
         <p class="body-sm section-header__subtitle">
           Output templates, watch mode, and direct integrations with GitHub Issues, Linear, and CI/CD.
@@ -2430,7 +2434,7 @@ isn't updating on route change.
         <details class="faq__item reveal">
           <summary>How does markupR work?</summary>
           <div class="faq__answer">
-            Press a hotkey to start recording, talk through what you see on screen, then press the hotkey again to stop. markupR transcribes your narration, analyzes the transcript for key moments, extracts video frames at those timestamps, and assembles everything into a structured Markdown document.
+            Press a hotkey to start recording, narrate what you see, and stop. markupR transcribes your narration, aligns key frames, and enriches shot markers with context hints (cursor, active window, focused element when available), then assembles everything into agent-ready Markdown.
           </div>
         </details>
 
@@ -2458,7 +2462,7 @@ isn't updating on route change.
         <details class="faq__item reveal">
           <summary>Is markupR free?</summary>
           <div class="faq__answer">
-            Yes. markupR is MIT-licensed open source. The desktop app, CLI, and MCP server are all free. A premium tier offers hosted API keys for convenience, but the core tool is free forever.
+            Yes. markupR is MIT-licensed open source. The desktop app, CLI, and MCP server are free, and BYOK mode keeps you in control.
           </div>
         </details>
 
@@ -2472,7 +2476,7 @@ isn't updating on route change.
         <details class="faq__item reveal">
           <summary>How is markupR different from screen recording?</summary>
           <div class="faq__answer">
-            Screen recorders give you a video file. markupR gives you a structured document. It transcribes your narration, correlates timestamps with the recording, extracts the exact frames that matter, and assembles everything into Markdown your AI agent can act on immediately.
+            Screen recorders give you a video file. markupR gives you an agent-ready report: aligned transcript, extracted frames, and context cues like cursor position and active window so your agent can execute with less ambiguity.
           </div>
         </details>
       </div>
