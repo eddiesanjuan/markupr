@@ -80,12 +80,13 @@ function resolveRequestPath(pathname) {
 function sendFile(req, res, filePath) {
   const mimeType = getMimeType(filePath);
   const acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
-  const isIndex = filePath === INDEX_PATH;
+  const isHtml = mimeType.startsWith('text/html');
 
   const baseHeaders = {
     'Content-Type': mimeType,
     'X-Content-Type-Options': 'nosniff',
-    'Cache-Control': isIndex ? 'public, max-age=300' : 'public, max-age=86400',
+    // Keep HTML fresh for rapid launch updates; cache assets longer.
+    'Cache-Control': isHtml ? 'public, max-age=0, must-revalidate' : 'public, max-age=86400',
   };
 
   if (acceptGzip && isCompressible(mimeType)) {
