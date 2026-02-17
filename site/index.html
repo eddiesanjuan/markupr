@@ -1480,7 +1480,7 @@
 
     .donate-amounts {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
       gap: 10px;
     }
 
@@ -1965,7 +1965,7 @@
     </p>
 
     <p class="caption hero__support-note">
-      If markupR saves you a debugging session, chip in a small donation to keep shipping updates fast.
+      If markupR helps, optional support keeps it independent and shipping fast.
     </p>
 
     <div class="hero__shortcut">
@@ -2518,7 +2518,7 @@ isn't updating on route change.
 
     <p class="footer__license">MIT License. Free as in freedom, free as in beer.</p>
     <p class="footer__built">Built by <a href="https://github.com/eddiesanjuan" target="_blank" rel="noopener noreferrer">Eddie San Juan<span class="sr-only"> (opens in new tab)</span></a>.</p>
-    <p class="footer__support">Want faster shipping? <a href="https://ko-fi.com/eddiesanjuan" target="_blank" rel="noopener noreferrer">Support markupR on Ko-fi<span class="sr-only"> (opens in new tab)</span></a>.</p>
+    <p class="footer__support">Want to support the project? <a href="https://ko-fi.com/eddiesanjuan" target="_blank" rel="noopener noreferrer">Contribute any amount on Ko-fi<span class="sr-only"> (opens in new tab)</span></a>.</p>
   </footer>
 
   <div class="donate-modal" id="donateModal" aria-hidden="true">
@@ -2528,15 +2528,17 @@ isn't updating on route change.
         <button type="button" class="donate-modal__close" aria-label="Close donation dialog" data-donate-close>&times;</button>
       </div>
       <p class="donate-modal__text">
-        If markupR saves you time, you can drop a quick contribution here. Pick an amount and continue straight to Ko-fi checkout.
+        If markupR saves you time, you can support development here. Pick a suggested amount or continue with any amount on Ko-fi.
       </p>
-      <div class="donate-amounts" role="radiogroup" aria-label="Donation amount">
-        <button type="button" role="radio" class="donate-amount" data-amount="5" aria-checked="false">$5</button>
-        <button type="button" role="radio" class="donate-amount is-selected" data-amount="10" aria-checked="true">$10</button>
-        <button type="button" role="radio" class="donate-amount" data-amount="25" aria-checked="false">$25</button>
+      <div class="donate-amounts" role="group" aria-label="Suggested donation amounts">
+        <button type="button" class="donate-amount" data-amount="1" aria-pressed="false">$1</button>
+        <button type="button" class="donate-amount" data-amount="2" aria-pressed="false">$2</button>
+        <button type="button" class="donate-amount" data-amount="5" aria-pressed="false">$5</button>
+        <button type="button" class="donate-amount" data-amount="10" aria-pressed="false">$10</button>
+        <button type="button" class="donate-amount" data-amount="15" aria-pressed="false">$15</button>
       </div>
       <p class="donate-modal__meta">
-        You will complete payment securely on Ko-fi.
+        No amount is preselected. You will complete payment securely on Ko-fi, and starring <a href="https://github.com/eddiesanjuan/markupr" target="_blank" rel="noopener noreferrer">markupR on GitHub<span class="sr-only"> (opens in new tab)</span></a> also helps.
       </p>
       <div class="donate-modal__actions">
         <button type="button" class="btn btn--accent" id="donateContinue">Continue to Ko-fi</button>
@@ -2584,16 +2586,16 @@ isn't updating on route change.
       var continueButton = document.getElementById('donateContinue');
       var amountButtons = document.querySelectorAll('.donate-amount');
       var closeButtons = document.querySelectorAll('[data-donate-close]');
-      var selectedAmount = '10';
+      var selectedAmount = '';
 
-      if (!modal || !openButtons.length || !continueButton || !amountButtons.length) return;
+      if (!modal || !openButtons.length || !continueButton) return;
 
       function setAmount(amount) {
-        selectedAmount = amount;
+        selectedAmount = selectedAmount === amount ? '' : (amount || '');
         amountButtons.forEach(function(button) {
-          var isSelected = button.getAttribute('data-amount') === amount;
+          var isSelected = button.getAttribute('data-amount') === selectedAmount;
           button.classList.toggle('is-selected', isSelected);
-          button.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+          button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
         });
       }
 
@@ -2652,14 +2654,18 @@ isn't updating on route change.
 
       amountButtons.forEach(function(button) {
         button.addEventListener('click', function() {
-          var amount = button.getAttribute('data-amount') || '10';
+          var amount = button.getAttribute('data-amount') || '';
           setAmount(amount);
         });
       });
 
+      setAmount('');
+
       continueButton.addEventListener('click', function() {
         var donateUrl = new URL('https://ko-fi.com/eddiesanjuan');
-        donateUrl.searchParams.set('amount', selectedAmount);
+        if (selectedAmount) {
+          donateUrl.searchParams.set('amount', selectedAmount);
+        }
         donateUrl.searchParams.set('hidefeed', 'true');
         donateUrl.searchParams.set('utm_source', 'markupr_site');
         donateUrl.searchParams.set('utm_medium', 'donation_modal');
