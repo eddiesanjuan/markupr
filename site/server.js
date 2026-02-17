@@ -1,143 +1,137 @@
 const http = require('http');
-const { createReadStream, existsSync, statSync } = require('fs');
-const { readFile } = require('fs/promises');
+const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
 const PORT = process.env.PORT || 3000;
-const SITE_ROOT = __dirname;
-const INDEX_PATH = path.join(SITE_ROOT, 'index.html');
+const SITE_DIR = __dirname;
 
+// ---------- MIME types ----------
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.xml': 'application/xml; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
+  '.json': 'application/json',
+  '.xml': 'application/xml',
+  '.txt': 'text/plain',
+  '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webp': 'image/webp',
   '.gif': 'image/gif',
-  '.mp4': 'video/mp4',
+  '.woff': 'font/woff2',
+  '.woff2': 'font/woff2',
 };
 
-const COMPRESSIBLE_PREFIXES = [
-  'text/',
-  'application/javascript',
-  'application/json',
-  'application/xml',
-  'image/svg+xml',
-];
+// Text-based types that benefit from gzip compression.
+const COMPRESSIBLE = new Set([
+  '.html',
+  '.css',
+  '.js',
+  '.json',
+  '.xml',
+  '.txt',
+  '.svg',
+]);
 
-function getMimeType(filePath) {
-  return MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
+// ---------- helpers ----------
+
+function getMime(ext) {
+  return MIME_TYPES[ext] || 'application/octet-stream';
 }
 
-function isCompressible(mimeType) {
-  return COMPRESSIBLE_PREFIXES.some((prefix) => mimeType.startsWith(prefix));
+function acceptsGzip(req) {
+  return (req.headers['accept-encoding'] || '').includes('gzip');
 }
 
-function toSafeFilePath(pathname) {
-  const normalized = path.posix.normalize(pathname);
-  const relativePath = normalized.startsWith('/') ? normalized.slice(1) : normalized;
-  const resolvedPath = path.resolve(SITE_ROOT, relativePath);
-  const safeRoot = path.resolve(SITE_ROOT) + path.sep;
-  if (resolvedPath !== path.resolve(SITE_ROOT) && !resolvedPath.startsWith(safeRoot)) {
-    return null;
-  }
-  return resolvedPath;
-}
-
-function resolveRequestPath(pathname) {
-  if (pathname === '/') return INDEX_PATH;
-
-  const directPath = toSafeFilePath(pathname);
-  if (directPath && existsSync(directPath) && statSync(directPath).isFile()) {
-    return directPath;
-  }
-
-  if (!pathname.endsWith('.html')) {
-    const htmlPath = toSafeFilePath(`${pathname}.html`);
-    if (htmlPath && existsSync(htmlPath) && statSync(htmlPath).isFile()) {
-      return htmlPath;
-    }
-  }
-
-  if (!path.extname(pathname) || pathname.endsWith('/')) {
-    const indexPath = toSafeFilePath(path.posix.join(pathname, 'index.html'));
-    if (indexPath && existsSync(indexPath) && statSync(indexPath).isFile()) {
-      return indexPath;
-    }
-  }
-
-  return INDEX_PATH;
-}
-
-function sendFile(req, res, filePath) {
-  const mimeType = getMimeType(filePath);
-  const acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
-  const isHtml = mimeType.startsWith('text/html');
-
-  const baseHeaders = {
-    'Content-Type': mimeType,
-    'X-Content-Type-Options': 'nosniff',
-    // Keep HTML fresh for rapid launch updates; cache assets longer.
-    'Cache-Control': isHtml ? 'public, max-age=0, must-revalidate' : 'public, max-age=86400',
-  };
-
-  if (acceptGzip && isCompressible(mimeType)) {
-    readFile(filePath)
-      .then((buffer) => {
-        zlib.gzip(buffer, (err, gzipped) => {
-          if (err) {
-            res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('Internal Server Error');
-            return;
-          }
-
-          res.writeHead(200, {
-            ...baseHeaders,
-            'Content-Encoding': 'gzip',
-            Vary: 'Accept-Encoding',
-          });
-          res.end(gzipped);
-        });
-      })
-      .catch(() => {
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Internal Server Error');
-      });
-    return;
-  }
-
-  res.writeHead(200, baseHeaders);
-  createReadStream(filePath)
-    .on('error', () => {
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-      }
-      res.end('Internal Server Error');
-    })
-    .pipe(res);
-}
+// ---------- request handler ----------
 
 const server = http.createServer((req, res) => {
+  // Parse pathname, stripping query string.
   let pathname = '/';
   try {
-    const parsed = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-    pathname = decodeURIComponent(parsed.pathname || '/');
+    pathname = decodeURIComponent(new URL(req.url || '/', 'http://localhost').pathname);
   } catch {
     pathname = '/';
   }
 
-  const filePath = resolveRequestPath(pathname);
-  sendFile(req, res, filePath);
+  // Directory traversal protection: reject any path containing "..".
+  if (pathname.includes('..')) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden');
+    return;
+  }
+
+  // Default "/" to "/index.html".
+  if (pathname === '/') {
+    pathname = '/index.html';
+  }
+
+  // Build the absolute file path. Strip leading slash so path.join works correctly.
+  const relative = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+  const filePath = path.join(SITE_DIR, relative);
+
+  // Extra safety: ensure resolved path is still inside SITE_DIR.
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(SITE_DIR))) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    res.end('Forbidden');
+    return;
+  }
+
+  // Check if the file exists. If not, fall back to index.html (SPA routing).
+  const target = fs.existsSync(filePath) && fs.statSync(filePath).isFile()
+    ? filePath
+    : path.join(SITE_DIR, 'index.html');
+
+  const ext = path.extname(target).toLowerCase();
+  const contentType = getMime(ext);
+  const isHtml = ext === '.html';
+  const shouldCompress = COMPRESSIBLE.has(ext) && acceptsGzip(req);
+
+  const headers = {
+    'Content-Type': contentType,
+    'X-Content-Type-Options': 'nosniff',
+    // HTML: never cache (rapid deploy updates). Everything else: cache 1 day.
+    'Cache-Control': isHtml ? 'public, max-age=0, must-revalidate' : 'public, max-age=86400',
+  };
+
+  if (shouldCompress) {
+    // Read the file into memory, gzip, and send.
+    fs.readFile(target, (err, data) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Internal Server Error');
+        return;
+      }
+      zlib.gzip(data, (gzErr, compressed) => {
+        if (gzErr) {
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+          res.end('Internal Server Error');
+          return;
+        }
+        headers['Content-Encoding'] = 'gzip';
+        headers['Vary'] = 'Accept-Encoding';
+        res.writeHead(200, headers);
+        res.end(compressed);
+      });
+    });
+  } else {
+    // Stream binary / uncompressed content directly.
+    res.writeHead(200, headers);
+    fs.createReadStream(target)
+      .on('error', () => {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+        }
+        res.end('Internal Server Error');
+      })
+      .pipe(res);
+  }
 });
 
 server.listen(PORT, () => {
-  console.log(`markupR landing page serving on port ${PORT}`);
+  console.log(`markupR site serving on port ${PORT}`);
 });

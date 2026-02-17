@@ -7,23 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.6.8] - 2026-02-17
 
-### Fixed
-- Fixed macOS release packaging race in GitHub Actions by making DMG volume titles architecture-specific (`Install markupR ${arch}`), preventing x64/arm64 mount collisions.
-- Fixed MCP setup instructions across docs/site to use the working npm invocation: `npx --package markupr markupr-mcp` (with non-interactive config args including `--yes` and `--package`).
+- fix: resolve macOS DMG mount collision during parallel builds (arm64/x64 volumes now use unique names)
+- chore: bump version to 2.6.8
 
-### Changed
-- Updated npm publish pipeline so `prepublishOnly` builds both CLI and MCP bundles before publish.
+## [2.6.7] - 2026-02-16
 
-## [2.6.7] - 2026-02-17
-
-### Fixed
-- Fixed updater UX by suppressing transient background network errors and showing actionable errors for user-initiated checks only.
-- Fixed renderer update-notification rendering/styling regressions that could produce broken oversized error UI.
-- Fixed dark-mode control polish in settings toggles to prevent knob clipping/over-travel and improve contrast consistency.
-
-### Changed
-- Updated website/favicon branding assets to match app branding (PNG favicons + Apple touch icon).
-- Added macOS first-launch/Gatekeeper install guidance in README and launch pages while notarization rollout completes.
+- feat: context-aware capture with cue-time alignment across app and MCP
+- fix: stabilize BYOK dark mode and readiness sync
+- docs: desktop-first launch messaging updates
+- docs: add CLI demo GIF and logo PNG to README
+- release: v2.6.7 stability and launch polish
 
 ## [2.6.6] - 2026-02-15
 
