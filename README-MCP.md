@@ -2,7 +2,7 @@
 
 Give your AI coding agent eyes and ears. The markupR MCP server lets Claude Code, Cursor, and Windsurf capture screenshots and screen recordings with voice narration, plus context metadata (cursor, active app/window, focused element hints when available), then processes everything into structured, AI-ready Markdown reports.
 
-**Version:** 2.6.6 | **Platform:** macOS/Windows/Linux | **Protocol:** MCP (Model Context Protocol) over stdio
+**Version:** 2.6.8 | **Platform:** macOS/Windows/Linux | **Protocol:** MCP (Model Context Protocol) over stdio
 
 ---
 
