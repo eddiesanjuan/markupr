@@ -57,6 +57,8 @@ Cmd+Shift+F  -->  talk  -->  Cmd+Shift+F  -->  Cmd+V into your agent
 
 Download from [markupr.com](https://markupr.com) or [GitHub Releases](https://github.com/eddiesanjuan/markupr/releases).
 
+> **macOS install note:** Apple notarization is currently rolling out. If macOS warns on first launch, use **Right-click -> Open** once to trust the app. If needed, run: `xattr -dr com.apple.quarantine /Applications/markupR.app`
+
 1. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows) to start
 2. Narrate what you see and mark shots when needed
 3. Press the hotkey again to stop

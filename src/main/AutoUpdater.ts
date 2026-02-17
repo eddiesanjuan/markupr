@@ -42,6 +42,10 @@ interface UpdateManagerState {
   downloadProgress?: number;
 }
 
+interface UpdateCheckOptions {
+  userInitiated?: boolean;
+}
+
 // =============================================================================
 // AutoUpdater Manager Class
 // =============================================================================
@@ -53,6 +57,7 @@ class AutoUpdaterManager {
   private updaterAvailable = false;
   private autoCheckEnabled = true;
   private isChecking = false;
+  private activeCheckUserInitiated = false;
   private startupCheckTimer: NodeJS.Timeout | null = null;
   private periodicCheckTimer: NodeJS.Timeout | null = null;
   private readonly STARTUP_CHECK_DELAY_MS = 5000;
@@ -125,11 +130,11 @@ class AutoUpdaterManager {
     }
 
     this.startupCheckTimer = setTimeout(() => {
-      void this.checkForUpdates();
+      void this.checkForUpdates({ userInitiated: false });
     }, this.STARTUP_CHECK_DELAY_MS);
 
     this.periodicCheckTimer = setInterval(() => {
-      void this.checkForUpdates();
+      void this.checkForUpdates({ userInitiated: false });
     }, this.PERIODIC_CHECK_INTERVAL_MS);
   }
 
@@ -196,15 +201,15 @@ class AutoUpdaterManager {
 
     // Error handling
     autoUpdater.on('error', (error: Error) => {
-      if (this.shouldSuppressUpdateError(error)) {
+      if (this.shouldSuppressUpdateError(error, this.activeCheckUserInitiated)) {
         log.warn('[AutoUpdater] Suppressing expected updater error:', error.message);
-        this.updateState('not-available');
+        this.updateState(this.activeCheckUserInitiated ? 'not-available' : 'idle');
         return;
       }
 
       log.error('[AutoUpdater] Error:', error);
       this.sendStatus('error', {
-        message: error.message,
+        message: this.getUserFacingUpdateErrorMessage(error),
       });
     });
   }
@@ -215,7 +220,7 @@ class AutoUpdaterManager {
   private setupIPCHandlers(): void {
     // Check for updates
     ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
-      return this.checkForUpdates();
+      return this.checkForUpdates({ userInitiated: true });
     });
 
     // Download update
@@ -244,7 +249,9 @@ class AutoUpdaterManager {
   /**
    * Check for available updates
    */
-  async checkForUpdates(): Promise<UpdateCheckResult | null> {
+  async checkForUpdates(options: UpdateCheckOptions = {}): Promise<UpdateCheckResult | null> {
+    const userInitiated = options.userInitiated ?? true;
+
     if (!this.updaterAvailable) {
       this.updateState('not-available');
       return null;
@@ -252,29 +259,31 @@ class AutoUpdaterManager {
     if (this.isChecking) {
       return null;
     }
-    if (this.state.status === 'downloading') {
+    if (this.state.status === 'downloading' || (!userInitiated && this.state.status === 'ready')) {
       return null;
     }
 
     try {
       this.isChecking = true;
+      this.activeCheckUserInitiated = userInitiated;
       log.info('[AutoUpdater] Checking for updates');
       const result = await autoUpdater.checkForUpdates();
       return result;
     } catch (error) {
-      if (error instanceof Error && this.shouldSuppressUpdateError(error)) {
+      if (error instanceof Error && this.shouldSuppressUpdateError(error, userInitiated)) {
         log.warn('[AutoUpdater] Update check skipped:', error.message);
-        this.updateState('not-available');
+        this.updateState(userInitiated ? 'not-available' : 'idle');
         return null;
       }
 
       log.error('[AutoUpdater] Check for updates failed:', error);
       this.sendStatus('error', {
-        message: error instanceof Error ? error.message : 'Failed to check for updates',
+        message: this.getUserFacingUpdateErrorMessage(error),
       });
       return null;
     } finally {
       this.isChecking = false;
+      this.activeCheckUserInitiated = false;
     }
   }
 
@@ -294,7 +303,7 @@ class AutoUpdaterManager {
     } catch (error) {
       log.error('[AutoUpdater] Download failed:', error);
       this.sendStatus('error', {
-        message: error instanceof Error ? error.message : 'Failed to download update',
+        message: this.getUserFacingUpdateErrorMessage(error),
       });
     }
   }
@@ -374,9 +383,48 @@ class AutoUpdaterManager {
   /**
    * Suppress known local-install update errors (not actionable for users).
    */
-  private shouldSuppressUpdateError(error: Error): boolean {
+  private shouldSuppressUpdateError(error: Error, userInitiated: boolean): boolean {
     const message = error.message.toLowerCase();
-    return message.includes('app-update.yml') || message.includes('latest.yml') || message.includes('enoent');
+    const isLocalBuildMetadataError =
+      message.includes('app-update.yml') || message.includes('latest.yml') || message.includes('enoent');
+
+    if (isLocalBuildMetadataError) {
+      return true;
+    }
+
+    // Avoid alarming users for expected connectivity hiccups during background checks.
+    if (!userInitiated && this.isTransientNetworkError(message)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private isTransientNetworkError(message: string): boolean {
+    return (
+      message.includes('err_internet_disconnected') ||
+      message.includes('err_network_changed') ||
+      message.includes('err_name_not_resolved') ||
+      message.includes('econnrefused') ||
+      message.includes('eai_again') ||
+      message.includes('enotfound') ||
+      message.includes('timed out') ||
+      message.includes('timeout') ||
+      message.includes('network request failed') ||
+      message.includes('failed to fetch')
+    );
+  }
+
+  private getUserFacingUpdateErrorMessage(error: unknown): string {
+    if (!(error instanceof Error)) {
+      return 'Unable to check for updates right now. Please try again.';
+    }
+
+    if (this.isTransientNetworkError(error.message.toLowerCase())) {
+      return 'No internet connection detected. Reconnect and try again.';
+    }
+
+    return error.message;
   }
 
   /**

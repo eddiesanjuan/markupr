@@ -560,7 +560,7 @@ function handleMenuAction(action: string, data?: unknown): void {
       mainWindow?.webContents.send(IPC_CHANNELS.SHOW_SHORTCUTS);
       break;
     case 'check-updates':
-      autoUpdaterManager.checkForUpdates();
+      void autoUpdaterManager.checkForUpdates({ userInitiated: true });
       break;
     case 'open-session':
       showWindow();

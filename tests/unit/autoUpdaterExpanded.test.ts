@@ -63,13 +63,34 @@ class AutoUpdaterLogic {
     return null;
   }
 
-  shouldSuppressUpdateError(error: { message: string }): boolean {
-    const message = error.message.toLowerCase();
+  private isTransientNetworkError(message: string): boolean {
     return (
+      message.includes('err_internet_disconnected') ||
+      message.includes('err_network_changed') ||
+      message.includes('err_name_not_resolved') ||
+      message.includes('econnrefused') ||
+      message.includes('eai_again') ||
+      message.includes('enotfound') ||
+      message.includes('timed out') ||
+      message.includes('timeout') ||
+      message.includes('network request failed') ||
+      message.includes('failed to fetch')
+    );
+  }
+
+  shouldSuppressUpdateError(error: { message: string }, userInitiated: boolean): boolean {
+    const message = error.message.toLowerCase();
+    const isLocalBuildMetadataError = (
       message.includes('app-update.yml') ||
       message.includes('latest.yml') ||
       message.includes('enoent')
     );
+
+    if (isLocalBuildMetadataError) {
+      return true;
+    }
+
+    return !userInitiated && this.isTransientNetworkError(message);
   }
 
   scheduleAutoChecks(startupDelayMs: number, periodicIntervalMs: number): void {
@@ -188,7 +209,7 @@ describe('AutoUpdater Logic (expanded)', () => {
       expect(
         logic.shouldSuppressUpdateError({
           message: 'Cannot find module APP-UPDATE.YML',
-        }),
+        }, false),
       ).toBe(true);
     });
 
@@ -196,7 +217,7 @@ describe('AutoUpdater Logic (expanded)', () => {
       expect(
         logic.shouldSuppressUpdateError({
           message: 'HttpError: 404 - latest.yml not found',
-        }),
+        }, false),
       ).toBe(true);
     });
 
@@ -204,19 +225,25 @@ describe('AutoUpdater Logic (expanded)', () => {
       expect(
         logic.shouldSuppressUpdateError({
           message: 'ENOENT: no such file or directory',
-        }),
+        }, false),
       ).toBe(true);
     });
 
-    it('does not suppress network errors', () => {
+    it('suppresses network errors for background checks', () => {
       expect(
-        logic.shouldSuppressUpdateError({ message: 'Network request failed' }),
+        logic.shouldSuppressUpdateError({ message: 'net::ERR_INTERNET_DISCONNECTED' }, false),
+      ).toBe(true);
+    });
+
+    it('does not suppress network errors for manual checks', () => {
+      expect(
+        logic.shouldSuppressUpdateError({ message: 'Network request failed' }, true),
       ).toBe(false);
     });
 
     it('does not suppress permission errors', () => {
       expect(
-        logic.shouldSuppressUpdateError({ message: 'EPERM: operation not permitted' }),
+        logic.shouldSuppressUpdateError({ message: 'EPERM: operation not permitted' }, true),
       ).toBe(false);
     });
   });

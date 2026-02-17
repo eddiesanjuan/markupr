@@ -28,6 +28,7 @@ import {
   type SaveResult,
   type HotkeyConfig,
   type SessionState,
+  type UpdateStatusType,
   type UpdateStatusPayload,
   type WhisperDownloadProgressPayload,
   type WhisperModelInfoPayload,
@@ -833,7 +834,7 @@ const markuprApi = {
      * Get current update state (version info, availability, etc.)
      */
     getStatus: (): Promise<{
-      status: string;
+      status: UpdateStatusType;
       currentVersion: string;
       availableVersion: string | null;
       releaseNotes: string | null;

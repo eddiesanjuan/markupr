@@ -44,7 +44,10 @@
   <meta name="twitter:description" content="Record your screen, narrate what's wrong, and generate context-rich Markdown your AI coding agent can execute against immediately.">
   <meta name="twitter:image" content="https://markupr.com/og-image.png">
 
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>M</text></svg>">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png?v=2.6.7">
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png?v=2.6.7">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png?v=2.6.7">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2.6.7">
   <style>
     /* ========================================
        RESET
@@ -1777,7 +1780,7 @@
     "@type": "SoftwareApplication",
     "name": "markupR",
     "description": "Record your screen, say what's wrong, and get structured Markdown your AI coding agent can act on immediately.",
-    "softwareVersion": "2.6.6",
+    "softwareVersion": "2.6.7",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Windows",
     "offers": {
@@ -1919,7 +1922,7 @@
     </div>
 
     <a href="/launch" class="hero__announcement">
-      v2.6.6: Context-aware capture + BYOK reliability updates <span class="hero__announcement-arrow" aria-hidden="true">&rarr;</span>
+      v2.6.7: Context-aware capture + BYOK reliability updates <span class="hero__announcement-arrow" aria-hidden="true">&rarr;</span>
     </a>
 
     <h1 class="display hero__headline">
@@ -1931,15 +1934,15 @@
     </p>
 
     <div class="hero__ctas">
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.6/markupr-2.6.6-arm64.dmg" class="btn btn--primary download-btn" data-platform="mac-arm" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.7/markupr-2.6.7-arm64.dmg" class="btn btn--primary download-btn" data-platform="mac-arm" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.5l.9-3.5h4.52l.9 3.5A10 10 0 0 0 12 2Z"/><path d="M12 2v7"/><path d="M8 9h8"/></svg>
         Download for macOS (Apple Silicon)<span class="sr-only"> (opens in new tab)</span>
       </a>
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.6/markupr-2.6.6-x64.dmg" class="btn btn--primary download-btn" data-platform="mac-intel" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.7/markupr-2.6.7-x64.dmg" class="btn btn--primary download-btn" data-platform="mac-intel" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.5l.9-3.5h4.52l.9 3.5A10 10 0 0 0 12 2Z"/><path d="M12 2v7"/><path d="M8 9h8"/></svg>
         Download for macOS (Intel)<span class="sr-only"> (opens in new tab)</span>
       </a>
-      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.6/markupr-Setup-2.6.6.exe" class="btn btn--primary download-btn" data-platform="windows" target="_blank" rel="noopener noreferrer">
+      <a href="https://github.com/eddiesanjuan/markupr/releases/download/v2.6.7/markupr-Setup-2.6.7.exe" class="btn btn--primary download-btn" data-platform="windows" target="_blank" rel="noopener noreferrer">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download for Windows<span class="sr-only"> (opens in new tab)</span>
       </a>
@@ -1955,6 +1958,10 @@
 
     <p class="hero__platforms-spacer">
       <a href="https://github.com/eddiesanjuan/markupr/releases/latest" class="hero__other-platforms" target="_blank" rel="noopener noreferrer">Other platforms &amp; versions<span class="sr-only"> (opens in new tab)</span></a>
+    </p>
+
+    <p class="caption hero__install-note">
+      macOS install note: notarization approval is in progress. If first launch shows an unidentified-developer warning, use right-click &rarr; Open once.
     </p>
 
     <p class="caption hero__support-note">
@@ -2477,6 +2484,13 @@ isn't updating on route change.
           <summary>How is markupR different from screen recording?</summary>
           <div class="faq__answer">
             Screen recorders give you a video file. markupR gives you an agent-ready report: aligned transcript, extracted frames, and context cues like cursor position and active window so your agent can execute with less ambiguity.
+          </div>
+        </details>
+
+        <details class="faq__item reveal">
+          <summary>Why does macOS warn on first launch?</summary>
+          <div class="faq__answer">
+            During notarization rollout, some builds may show an unidentified-developer warning on first open. This is expected for unsigned transitions. Open once via right-click &rarr; Open, then markupR launches normally after trust is granted.
           </div>
         </details>
       </div>

@@ -22,6 +22,7 @@ import type {
   SessionState,
   TranscriptionTier,
   TranscriptionTierStatus,
+  UpdateStatusType,
   UpdateStatusPayload,
   WhisperDownloadProgressPayload,
   WhisperModelInfoPayload,
@@ -323,6 +324,14 @@ interface UpdatesAPI {
   check: () => Promise<unknown>;
   download: () => Promise<void>;
   install: () => Promise<void>;
+  getStatus: () => Promise<{
+    status: UpdateStatusType;
+    currentVersion: string;
+    availableVersion: string | null;
+    releaseNotes: string | null;
+    downloadProgress: number | null;
+    updaterAvailable: boolean;
+  }>;
   onStatus: (callback: (status: UpdateStatusPayload) => void) => Unsubscribe;
 }
 
