@@ -183,32 +183,32 @@ npm install -g markupr
 
 ### Commands
 
-**`markupR analyze <video>`** -- Process an existing screen recording into structured Markdown.
+**`markupr analyze <video>`** -- Process an existing screen recording into structured Markdown.
 
 ```bash
-markupR analyze ./bug-demo.mov
-markupR analyze ./recording.mov --output ./reports
-markupR analyze ./recording.mov --template github-issue
-markupR analyze ./recording.mov --no-frames  # transcript only
+markupr analyze ./bug-demo.mov
+markupr analyze ./recording.mov --output ./reports
+markupr analyze ./recording.mov --template github-issue
+markupr analyze ./recording.mov --no-frames  # transcript only
 ```
 
-**`markupR watch [directory]`** -- Watch for new recordings and auto-process them.
+**`markupr watch [directory]`** -- Watch for new recordings and auto-process them.
 
 ```bash
-markupR watch ~/Desktop --output ./reports
+markupr watch ~/Desktop --output ./reports
 ```
 
-**`markupR push github <report>`** -- Create GitHub issues from a feedback report.
+**`markupr push github <report>`** -- Create GitHub issues from a feedback report.
 
 ```bash
-markupR push github ./report.md --repo myorg/myapp
-markupR push github ./report.md --repo myorg/myapp --dry-run
+markupr push github ./report.md --repo myorg/myapp
+markupr push github ./report.md --repo myorg/myapp --dry-run
 ```
 
-**`markupR push linear <report>`** -- Create Linear issues from a feedback report.
+**`markupr push linear <report>`** -- Create Linear issues from a feedback report.
 
 ```bash
-markupR push linear ./report.md --team ENG
+markupr push linear ./report.md --team ENG
 ```
 
 ### Output Templates
