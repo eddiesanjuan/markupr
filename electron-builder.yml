@@ -71,7 +71,7 @@ dmg:
       y: 170
       type: link
       path: /Applications
-  title: "Install markupR"
+  title: "Install markupR ${arch}"
   artifactName: "markupr-${version}-${arch}.dmg"
 
 # =============================================================================
