@@ -5,6 +5,26 @@ All notable changes to markupR will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.8] - 2026-02-17
+
+### Fixed
+- Fixed macOS release packaging race in GitHub Actions by making DMG volume titles architecture-specific (`Install markupR ${arch}`), preventing x64/arm64 mount collisions.
+- Fixed MCP setup instructions across docs/site to use the working npm invocation: `npx --package markupr markupr-mcp` (with non-interactive config args including `--yes` and `--package`).
+
+### Changed
+- Updated npm publish pipeline so `prepublishOnly` builds both CLI and MCP bundles before publish.
+
+## [2.6.7] - 2026-02-17
+
+### Fixed
+- Fixed updater UX by suppressing transient background network errors and showing actionable errors for user-initiated checks only.
+- Fixed renderer update-notification rendering/styling regressions that could produce broken oversized error UI.
+- Fixed dark-mode control polish in settings toggles to prevent knob clipping/over-travel and improve contrast consistency.
+
+### Changed
+- Updated website/favicon branding assets to match app branding (PNG favicons + Apple touch icon).
+- Added macOS first-launch/Gatekeeper install guidance in README and launch pages while notarization rollout completes.
+
 ## [2.6.6] - 2026-02-15
 
 ### Fixed

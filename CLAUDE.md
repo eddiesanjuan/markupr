@@ -6,7 +6,7 @@ markupR is a macOS/Windows menu bar app and CLI/MCP tool that intelligently capt
 
 As of v2.5.0, markupR also ships as:
 - **CLI tool** (`npx markupr analyze ./recording.mov`) -- headless video analysis pipeline
-- **MCP server** (`npx markupr-mcp`) -- Model Context Protocol server for AI coding agents (capture screenshots, analyze video, start/stop recordings)
+- **MCP server** (`npx --package markupr markupr-mcp`) -- Model Context Protocol server for AI coding agents (capture screenshots, analyze video, start/stop recordings)
 - **GitHub Action** (`eddiesanjuan/markupr-action@v1`) -- CI/CD visual feedback on PRs
 
 **Version:** 2.6.0
@@ -228,4 +228,4 @@ Optional API keys (stored securely in OS keychain):
 - Secure API key storage via keytar (macOS Keychain, Windows Credential Manager) with encrypted fallback
 - Native module rebuilds handled by `electron-rebuild` (keytar, sharp)
 - CLI and MCP builds use esbuild (see `scripts/build-cli.mjs` and `scripts/build-mcp.mjs`)
-- Published to npm as `markupr` (markupR CLI) and `markupr-mcp` (MCP server)
+- Published to npm as `markupr` (includes both `markupR` CLI and `markupr-mcp` binary)

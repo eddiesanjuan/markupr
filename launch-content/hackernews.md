@@ -32,7 +32,7 @@ There are three ways to use it:
 ```json
 {
   "mcpServers": {
-    "markupr": { "command": "npx", "args": ["-y", "markupr-mcp"] }
+    "markupr": { "command": "npx", "args": ["--yes", "--package", "markupr", "markupr-mcp"] }
   }
 }
 ```
@@ -55,5 +55,5 @@ Open source, MIT licensed. 860 tests.
 
 Repo: https://github.com/eddiesanjuan/markupr
 Site: https://markupr.com
-npm: `npx markupr-mcp` (MCP server) / `npx markupr analyze` (CLI)
+npm: `npx --package markupr markupr-mcp` (MCP server) / `npx markupr analyze` (CLI)
 GitHub Action: `eddiesanjuan/markupr-action@v1`

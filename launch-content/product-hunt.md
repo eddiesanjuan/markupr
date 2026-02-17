@@ -51,7 +51,7 @@ Everything needed to launch markupr on Product Hunt. Copy-paste ready.
 >
 > The output is purpose-built for AI coding agents. Paste the file path into Claude Code, Cursor, or Windsurf and the agent has everything it needs to start fixing.
 >
-> The **MCP server** gives your AI agent eyes and ears. Three lines of JSON config, zero install (`npx markupr-mcp`), and your agent has `capture_screenshot`, `capture_with_voice`, `start_recording`, and `stop_recording` tools. The agent looks at your screen and acts.
+> The **MCP server** gives your AI agent eyes and ears. Three lines of JSON config, zero install (`npx --package markupr markupr-mcp`), and your agent has `capture_screenshot`, `capture_with_voice`, `start_recording`, and `stop_recording` tools. The agent looks at your screen and acts.
 >
 > What I'm most excited about in **v2.5.0** is the delivery pipeline. markupr now pushes feedback directly to your issue tracker:
 > - `markupr push github --repo owner/repo` -- creates a GitHub issue with embedded screenshots
@@ -67,7 +67,7 @@ Everything needed to launch markupr on Product Hunt. Copy-paste ready.
 > Five ways to use it:
 > 1. **Desktop app** -- menu bar on macOS, system tray on Windows
 > 2. **CLI** -- `npx markupr analyze ./recording.mov`
-> 3. **MCP server** -- `npx markupr-mcp` in your IDE config
+> 3. **MCP server** -- `npx --package markupr markupr-mcp` in your IDE config
 > 4. **Watch Mode** -- `markupr watch ./dir` auto-processes recordings
 > 5. **GitHub Action** -- `eddiesanjuan/markupr-action@v1` in CI/CD
 >
@@ -89,7 +89,7 @@ Everything needed to launch markupr on Product Hunt. Copy-paste ready.
 > **Three distribution channels, same pipeline:**
 > - Desktop app (Electron + React, ~30 UI components)
 > - CLI (`npx markupr analyze ./video.mov` -- no Electron, no desktop)
-> - MCP server (`npx markupr-mcp` -- gives AI agents 6 tools including `capture_screenshot` and `capture_with_voice`)
+> - MCP server (`npx --package markupr markupr-mcp` -- gives AI agents 6 tools including `capture_screenshot` and `capture_with_voice`)
 >
 > The MCP server is the one I think will surprise people. Zero install -- npx handles everything. Add 3 lines to your Claude Code or Cursor config and your agent can look at your screen mid-conversation. It's the bridge between "I can see the bug" and "my agent can fix it."
 >
@@ -229,7 +229,7 @@ Send this via DM, email, or group chat. Keep it personal -- never mass-blast.
 - [ ] 20+ followers on the upcoming page
 - [ ] Website live and all links working (https://markupr.com)
 - [ ] GitHub repo public with clean README
-- [ ] npm packages published and working (`npx markupr`, `npx markupr-mcp`)
+- [ ] npm packages published and working (`npx markupr`, `npx --package markupr markupr-mcp`)
 - [ ] Download links working for macOS and Windows
 - [ ] Reply templates ready for common questions
 - [ ] Social media posts scheduled

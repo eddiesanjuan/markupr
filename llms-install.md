@@ -34,7 +34,7 @@ Before installing, verify the following:
 The markupR MCP server requires zero global installation. It runs via `npx`:
 
 ```bash
-npx markupr-mcp
+npx --package markupr markupr-mcp
 ```
 
 No additional setup, build steps, or configuration files are needed beyond the MCP server config shown below.
@@ -52,7 +52,7 @@ File: `~/.claude/settings.json`
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -67,7 +67,7 @@ Add to your Cline MCP settings (Settings > Cline > MCP Servers, or in `cline_mcp
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -82,7 +82,7 @@ File: `.cursor/mcp.json` (project-level) or `~/.cursor/mcp.json` (global)
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -97,7 +97,7 @@ File: `~/.codeium/windsurf/mcp_config.json`
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -120,7 +120,7 @@ To set environment variables in the MCP config, add an `env` field:
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"],
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"],
       "env": {
         "ANTHROPIC_API_KEY": "sk-ant-..."
       }
@@ -157,7 +157,7 @@ After adding the MCP config and restarting your IDE:
 
 **"Cannot find module" or "markupr-mcp not found":**
 - Ensure Node.js 18+ is installed
-- Try running `npx markupr-mcp` manually in a terminal to see the error output
+- Try running `npx --package markupr markupr-mcp` manually in a terminal to see the error output
 - The server outputs logs to stderr; stdout is reserved for MCP protocol communication
 
 **"Screen Recording permission not granted":**
@@ -170,5 +170,5 @@ After adding the MCP config and restarting your IDE:
 
 **Server appears but tools are not listed:**
 - Restart your IDE
-- Check that `npx markupr-mcp` runs without errors in a terminal
+- Check that `npx --package markupr markupr-mcp` runs without errors in a terminal
 - Ensure you're using the `-y` flag in the args to auto-confirm npx installation

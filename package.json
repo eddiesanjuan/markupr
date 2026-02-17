@@ -99,7 +99,7 @@
     "prebuild:win": "npm run generate:installer-images",
     "build:cli": "node scripts/build-cli.mjs",
     "build:mcp": "node scripts/build-mcp.mjs",
-    "prepublishOnly": "npm run build:cli"
+    "prepublishOnly": "npm run build:cli && npm run build:mcp"
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",

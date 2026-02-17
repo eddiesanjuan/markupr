@@ -28,7 +28,7 @@ Give your AI coding agent eyes and ears. The markupR MCP server lets Claude Code
 Use `npx` -- no global install needed. Your IDE configuration handles the rest:
 
 ```bash
-npx markupr-mcp
+npx --package markupr markupr-mcp
 ```
 
 ### Global install
@@ -54,7 +54,7 @@ Add to `~/.claude/settings.json`:
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -69,7 +69,7 @@ Add to `.cursor/mcp.json` in your project root (or `~/.cursor/mcp.json` globally
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -84,7 +84,7 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -325,8 +325,8 @@ Fix:
 
 If your IDE can't connect to the MCP server:
 
-1. **Verify the config** -- check that `"command": "npx"` and `"args": ["-y", "markupr-mcp"]` are correct
-2. **Test manually** -- run `npx markupr-mcp` in a terminal. It should start silently (output goes to stderr)
+1. **Verify the config** -- check that `"command": "npx"` and `"args": ["--yes", "--package", "markupr", "markupr-mcp"]` are correct
+2. **Test manually** -- run `npx --package markupr markupr-mcp` in a terminal. It should start silently (output goes to stderr)
 3. **Check Node.js version** -- `node --version` should be 18+
 4. **Restart your IDE** after adding or changing MCP configuration
 

@@ -136,7 +136,7 @@ Add to your IDE config -- Claude Code, Cursor, or Windsurf:
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -302,7 +302,7 @@ You control when and whether data leaves your machine.
 
 - **GitHub**: [github.com/eddiesanjuan/markupr](https://github.com/eddiesanjuan/markupr)
 - **Site**: [markupr.com](https://markupr.com)
-- **MCP server**: `npx markupr-mcp` (zero install)
+- **MCP server**: `npx --package markupr markupr-mcp` (zero install)
 - **CLI**: `npx markupr analyze ./video.mov`
 - **GitHub Action**: `eddiesanjuan/markupr-action@v1`
 - **npm**: [npmjs.com/package/markupr](https://www.npmjs.com/package/markupr)

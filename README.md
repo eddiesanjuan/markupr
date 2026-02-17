@@ -67,7 +67,7 @@ Download from [markupr.com](https://markupr.com) or [GitHub Releases](https://gi
 ### MCP Server (for AI coding agents)
 
 ```bash
-npx markupr-mcp
+npx --package markupr markupr-mcp
 ```
 
 ### CLI (for existing recordings / CI / automation)
@@ -134,7 +134,7 @@ Give your AI coding agent eyes and ears. Add markupR as an MCP server and it can
   "mcpServers": {
     "markupR": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }

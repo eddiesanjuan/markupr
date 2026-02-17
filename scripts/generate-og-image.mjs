@@ -1,9 +1,13 @@
 import sharp from 'sharp';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outputPath = join(__dirname, '..', 'site', 'og-image.png');
+const packageJsonPath = join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
+const versionTag = `v${packageJson.version}`;
 
 const width = 1200;
 const height = 630;
@@ -14,6 +18,9 @@ const textPrimary = '#F5F5F5';
 const accent = '#F59E0B';
 const textSecondary = '#A0A0A0';
 const textTertiary = '#666666';
+const versionBadgeWidth = 100;
+const versionBadgeX = 860;
+const versionBadgeCenter = versionBadgeX + versionBadgeWidth / 2;
 
 const svg = `
 <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
@@ -75,9 +82,9 @@ const svg = `
   </text>
 
   <!-- Version badge -->
-  <rect x="880" y="${height - 60}" width="80" height="28" rx="4" fill="rgba(245,158,11,0.15)" stroke="${accent}" stroke-width="2"/>
-  <text x="920" y="${height - 40}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="${accent}">
-    v2.5.0
+  <rect x="${versionBadgeX}" y="${height - 60}" width="${versionBadgeWidth}" height="28" rx="4" fill="rgba(245,158,11,0.15)" stroke="${accent}" stroke-width="2"/>
+  <text x="${versionBadgeCenter}" y="${height - 40}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="700" fill="${accent}">
+    ${versionTag}
   </text>
 
   <!-- MIT badge -->

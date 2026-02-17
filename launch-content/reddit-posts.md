@@ -70,7 +70,7 @@ Add this to `~/.claude/settings.json`:
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -135,7 +135,7 @@ Add to `.cursor/mcp.json` (project-level) or `~/.cursor/mcp.json` (global):
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -209,7 +209,7 @@ The result isn't "screenshots taken every 5 seconds." It's contextually-aware fr
 
 **CLI** -- `npx markupr analyze ./recording.mov` -- process any screen recording. Supports output templates: `--template github-issue`, `--template linear`, `--template jira`, `--template json`.
 
-**MCP server** -- `npx markupr-mcp` -- your AI coding agent (Claude Code, Cursor, Windsurf) gets direct access to screen capture and recording. The agent can see what you see mid-conversation.
+**MCP server** -- `npx --package markupr markupr-mcp` -- your AI coding agent (Claude Code, Cursor, Windsurf) gets direct access to screen capture and recording. The agent can see what you see mid-conversation.
 
 **Watch Mode** -- `markupr watch ./dir` -- monitors a directory and auto-processes any new recording that appears. Drop a screen recording in a folder, get a structured report back.
 

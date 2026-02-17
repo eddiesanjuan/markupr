@@ -102,7 +102,7 @@ Add under the **Developer Tools** section, maintaining alphabetical order:
 
 - **Name:** markupr
 - **URL:** https://github.com/eddiesanjuan/markupr
-- **npm:** `npx markupr-mcp`
+- **npm:** `npx --package markupr markupr-mcp`
 - **Language:** TypeScript
 - **Scope:** Local (runs on device)
 - **OS:** macOS, Windows
@@ -205,7 +205,7 @@ If not indexed within a week, join their Discord to request manual addition.
 ```
 **Server Name:** markupr
 **GitHub:** https://github.com/eddiesanjuan/markupr
-**npm:** markupr (run via `npx markupr-mcp`)
+**npm:** markupr (run via `npx --package markupr markupr-mcp`)
 **Description:** Screen capture and voice recording MCP server for AI coding agents. Capture screenshots with voice narration, analyze video, generate structured Markdown feedback, and push to GitHub Issues or Linear. v2.5.0 includes output templates, watch mode, and GitHub Action.
 **Tools:** capture_screenshot, capture_with_voice, analyze_video, analyze_screenshot, start_recording, stop_recording
 **Category:** Developer Tools

@@ -59,7 +59,7 @@ MCP server -- Add 3 lines of JSON to your Claude Code or Cursor config and your 
 
   {
     "mcpServers": {
-      "markupr": { "command": "npx", "args": ["-y", "markupr-mcp"] }
+      "markupr": { "command": "npx", "args": ["--yes", "--package", "markupr", "markupr-mcp"] }
     }
   }
 
@@ -81,7 +81,7 @@ Open source, MIT licensed. 860 tests.
 
 Repo: https://github.com/eddiesanjuan/markupr
 Site: https://markupr.com
-npm: `npx markupr-mcp` (MCP server) / `npx markupr analyze` (CLI)
+npm: `npx --package markupr markupr-mcp` (MCP server) / `npx markupr analyze` (CLI)
 GitHub Action: `eddiesanjuan/markupr-action@v1`
 ```
 
@@ -114,7 +114,7 @@ Add this to your Claude Code settings and your agent gets 6 tools -- screenshot 
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -194,7 +194,7 @@ Five ways to use it now:
 
 Desktop app -- menu bar, one hotkey
 CLI -- `npx markupr analyze ./video.mov`
-MCP server -- `npx markupr-mcp`
+MCP server -- `npx --package markupr markupr-mcp`
 Watch mode -- `markupr watch ./dir` (auto-process recordings)
 GitHub Action -- CI/CD visual feedback
 
@@ -207,7 +207,7 @@ If you're tired of describing visual bugs in text, give it a try.
 
 GitHub: https://github.com/eddiesanjuan/markupr
 Site: https://markupr.com
-npm: `npx markupr-mcp`
+npm: `npx --package markupr markupr-mcp`
 Action: `eddiesanjuan/markupr-action@v1`
 
 860 tests. MIT licensed. Contributions welcome.
@@ -241,7 +241,7 @@ Add this to `~/.claude/settings.json`:
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -329,7 +329,7 @@ Add to `.cursor/mcp.json` (project-level) or `~/.cursor/mcp.json` (global):
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -520,7 +520,7 @@ Add to your IDE config -- Claude Code, Cursor, or Windsurf:
   "mcpServers": {
     "markupr": {
       "command": "npx",
-      "args": ["-y", "markupr-mcp"]
+      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
     }
   }
 }
@@ -667,7 +667,7 @@ You control when and whether data leaves your machine.
 
 - **GitHub**: [github.com/eddiesanjuan/markupr](https://github.com/eddiesanjuan/markupr)
 - **Site**: [markupr.com](https://markupr.com)
-- **MCP server**: `npx markupr-mcp` (zero install)
+- **MCP server**: `npx --package markupr markupr-mcp` (zero install)
 - **CLI**: `npx markupr analyze ./video.mov`
 - **GitHub Action**: `eddiesanjuan/markupr-action@v1`
 - **npm**: [npmjs.com/package/markupr](https://www.npmjs.com/package/markupr)
@@ -844,7 +844,7 @@ The result isn't "screenshots taken every 5 seconds." It's contextually-aware fr
 
 **CLI** -- `npx markupr analyze ./recording.mov` -- process any screen recording. Supports output templates: `--template github-issue`, `--template linear`, `--template jira`, `--template json`.
 
-**MCP server** -- `npx markupr-mcp` -- your AI coding agent (Claude Code, Cursor, Windsurf) gets direct access to screen capture and recording. The agent can see what you see mid-conversation.
+**MCP server** -- `npx --package markupr markupr-mcp` -- your AI coding agent (Claude Code, Cursor, Windsurf) gets direct access to screen capture and recording. The agent can see what you see mid-conversation.
 
 **Watch Mode** -- `markupr watch ./dir` -- monitors a directory and auto-processes any new recording that appears.
 
@@ -930,7 +930,7 @@ So I built markupr. You press a hotkey, narrate what you see, press the hotkey a
 
 The output is purpose-built for AI coding agents. Paste the file path into Claude Code, Cursor, or Windsurf and the agent has everything it needs to start fixing.
 
-The **MCP server** gives your AI agent eyes and ears. Three lines of JSON config, zero install (`npx markupr-mcp`), and your agent has `capture_screenshot`, `capture_with_voice`, `start_recording`, and `stop_recording` tools. The agent looks at your screen and acts.
+The **MCP server** gives your AI agent eyes and ears. Three lines of JSON config, zero install (`npx --package markupr markupr-mcp`), and your agent has `capture_screenshot`, `capture_with_voice`, `start_recording`, and `stop_recording` tools. The agent looks at your screen and acts.
 
 What I'm most excited about in **v2.5.0** is the delivery pipeline. markupr now pushes feedback directly to your issue tracker:
 - `markupr push github --repo owner/repo` -- creates a GitHub issue with embedded screenshots
@@ -946,7 +946,7 @@ markupr is fully open source and MIT licensed. No telemetry, no tracking, no ana
 Five ways to use it:
 1. **Desktop app** -- menu bar on macOS, system tray on Windows
 2. **CLI** -- `npx markupr analyze ./recording.mov`
-3. **MCP server** -- `npx markupr-mcp` in your IDE config
+3. **MCP server** -- `npx --package markupr markupr-mcp` in your IDE config
 4. **Watch Mode** -- `markupr watch ./dir` auto-processes recordings
 5. **GitHub Action** -- `eddiesanjuan/markupr-action@v1` in CI/CD
 
@@ -967,7 +967,7 @@ The recording session is governed by a 7-state finite state machine with watchdo
 **Three distribution channels, same pipeline:**
 - Desktop app (Electron + React, ~30 UI components)
 - CLI (`npx markupr analyze ./video.mov` -- no Electron, no desktop)
-- MCP server (`npx markupr-mcp` -- gives AI agents 6 tools including `capture_screenshot` and `capture_with_voice`)
+- MCP server (`npx --package markupr markupr-mcp` -- gives AI agents 6 tools including `capture_screenshot` and `capture_with_voice`)
 
 The MCP server is the one I think will surprise people. Zero install -- npx handles everything. Add 3 lines to your Claude Code or Cursor config and your agent can look at your screen mid-conversation. It's the bridge between "I can see the bug" and "my agent can fix it."
 
@@ -1047,7 +1047,7 @@ Add markupr - Screen capture & voice recording for AI agents
 
 - **Name:** markupr
 - **URL:** https://github.com/eddiesanjuan/markupr
-- **npm:** `npx markupr-mcp`
+- **npm:** `npx --package markupr markupr-mcp`
 - **Language:** TypeScript
 - **Scope:** Local (runs on device)
 - **OS:** macOS, Windows
@@ -1098,7 +1098,7 @@ Add a comment with:
 ```
 **Server Name:** markupr
 **GitHub:** https://github.com/eddiesanjuan/markupr
-**npm:** markupr (run via `npx markupr-mcp`)
+**npm:** markupr (run via `npx --package markupr markupr-mcp`)
 **Description:** Screen capture and voice recording MCP server for AI coding agents. Capture screenshots with voice narration, analyze video, and generate structured Markdown feedback documents for code review.
 **Tools:** capture_screenshot, capture_with_voice, analyze_video, analyze_screenshot, start_recording, stop_recording
 **Category:** Developer Tools

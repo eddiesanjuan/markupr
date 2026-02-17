@@ -23,7 +23,7 @@
 >   "mcpServers": {
 >     "markupr": {
 >       "command": "npx",
->       "args": ["-y", "markupr-mcp"]
+>       "args": ["--yes", "--package", "markupr", "markupr-mcp"]
 >     }
 >   }
 > }
@@ -114,7 +114,7 @@
 >
 > Desktop app -- menu bar, one hotkey
 > CLI -- `npx markupr analyze ./video.mov`
-> MCP server -- `npx markupr-mcp`
+> MCP server -- `npx --package markupr markupr-mcp`
 > Watch mode -- `markupr watch ./dir` (auto-process recordings)
 > GitHub Action -- CI/CD visual feedback
 >
@@ -129,7 +129,7 @@
 >
 > GitHub: https://github.com/eddiesanjuan/markupr
 > Site: https://markupr.com
-> npm: `npx markupr-mcp`
+> npm: `npx --package markupr markupr-mcp`
 > Action: `eddiesanjuan/markupr-action@v1`
 >
 > 860 tests. MIT licensed. Contributions welcome.

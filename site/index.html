@@ -1829,7 +1829,7 @@
         "name": "What is the MCP server?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "The MCP (Model Context Protocol) server lets AI coding agents like Claude Code, Cursor, and Windsurf trigger markupR directly. Add it to your agent config with npx markupr-mcp and your agent can capture screenshots, record sessions, and receive structured reports mid-conversation."
+          "text": "The MCP (Model Context Protocol) server lets AI coding agents like Claude Code, Cursor, and Windsurf trigger markupR directly. Add it to your agent config with npx --package markupr markupr-mcp and your agent can capture screenshots, record sessions, and receive structured reports mid-conversation."
         }
       },
       {
@@ -2302,7 +2302,7 @@ isn't updating on route change.
   <span class="syn-fn">"mcpServers"</span>: {
     <span class="syn-fn">"markupR"</span>: {
       <span class="syn-fn">"command"</span>: <span class="syn-str">"npx"</span>,
-      <span class="syn-fn">"args"</span>: [<span class="syn-str">"-y"</span>, <span class="syn-str">"markupr-mcp"</span>]
+      <span class="syn-fn">"args"</span>: [<span class="syn-str">"--yes"</span>, <span class="syn-str">"--package"</span>, <span class="syn-str">"markupr"</span>, <span class="syn-str">"markupr-mcp"</span>]
     }
   }
 }</code></pre>
@@ -2448,7 +2448,7 @@ isn't updating on route change.
         <details class="faq__item reveal">
           <summary>What is the MCP server?</summary>
           <div class="faq__answer">
-            The MCP (Model Context Protocol) server lets AI coding agents trigger markupR directly mid-conversation. Add it with <code>npx markupr-mcp</code> in your agent's config and it can capture screenshots, record sessions, and receive structured reports without you switching apps.
+            The MCP (Model Context Protocol) server lets AI coding agents trigger markupR directly mid-conversation. Add it with <code>npx --package markupr markupr-mcp</code> in your agent's config and it can capture screenshots, record sessions, and receive structured reports without you switching apps.
           </div>
         </details>
 
@@ -2672,29 +2672,55 @@ isn't updating on route change.
     (function() {
       var ua = navigator.userAgent || '';
       var platform = navigator.platform || '';
-      var detected = 'other';
 
-      if (/Mac/.test(platform)) {
-        detected = /arm/i.test(ua) || /arm/i.test(platform) ? 'mac-arm' : 'mac-intel';
-      } else if (/Win/.test(platform)) {
-        detected = 'windows';
+      function detectPlatformFallback() {
+        if (/Win/i.test(platform) || /Windows/i.test(ua)) return 'windows';
+        if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return 'mac-arm';
+        return 'other';
+      }
+
+      function detectPlatform() {
+        var fallback = detectPlatformFallback();
+        var uaData = navigator.userAgentData;
+
+        if (!uaData || typeof uaData.getHighEntropyValues !== 'function') {
+          return Promise.resolve(fallback);
+        }
+
+        return uaData
+          .getHighEntropyValues(['architecture', 'platform'])
+          .then(function(values) {
+            var detectedPlatform = (values.platform || '').toLowerCase();
+            if (!detectedPlatform.includes('mac')) return fallback;
+
+            var arch = (values.architecture || '').toLowerCase();
+            if (arch.includes('arm') || arch.includes('aarch')) return 'mac-arm';
+            if (arch.includes('x86') || arch.includes('amd64') || arch.includes('intel')) return 'mac-intel';
+
+            return fallback;
+          })
+          .catch(function() {
+            return fallback;
+          });
       }
 
       // Show the right download button
       var buttons = document.querySelectorAll('.download-btn');
-      var shown = false;
-      buttons.forEach(function(btn) {
-        if (btn.getAttribute('data-platform') === detected) {
-          btn.classList.add('active');
-          shown = true;
+      detectPlatform().then(function(detected) {
+        var shown = false;
+        buttons.forEach(function(btn) {
+          if (btn.getAttribute('data-platform') === detected) {
+            btn.classList.add('active');
+            shown = true;
+          }
+        });
+
+        // Fallback: if no platform matched, show Apple Silicon (most common)
+        if (!shown) {
+          var fallback = document.querySelector('.download-btn[data-platform="mac-arm"]');
+          if (fallback) fallback.classList.add('active');
         }
       });
-
-      // Fallback: if no platform matched, show Apple Silicon (most common)
-      if (!shown) {
-        var fallback = document.querySelector('.download-btn[data-platform="mac-arm"]');
-        if (fallback) fallback.classList.add('active');
-      }
 
       // Resolve latest release URLs from GitHub API (non-blocking)
       fetch('https://api.github.com/repos/eddiesanjuan/markupr/releases/latest')

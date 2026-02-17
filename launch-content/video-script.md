@@ -111,7 +111,7 @@
     "mcpServers": {
       "markupr": {
         "command": "npx",
-        "args": ["-y", "markupr-mcp"]
+        "args": ["--yes", "--package", "markupr", "markupr-mcp"]
       }
     }
   }
