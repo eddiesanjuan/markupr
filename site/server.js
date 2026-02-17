@@ -81,10 +81,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Check if the file exists. If not, fall back to index.html (SPA routing).
-  const target = fs.existsSync(filePath) && fs.statSync(filePath).isFile()
-    ? filePath
-    : path.join(SITE_DIR, 'index.html');
+  // Check if the file exists. Try appending .html for extensionless URLs (e.g. /launch -> /launch.html).
+  // If nothing matches, fall back to index.html (SPA routing).
+  let target;
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+    target = filePath;
+  } else if (!path.extname(filePath) && fs.existsSync(filePath + '.html') && fs.statSync(filePath + '.html').isFile()) {
+    target = filePath + '.html';
+  } else {
+    target = path.join(SITE_DIR, 'index.html');
+  }
 
   const ext = path.extname(target).toLowerCase();
   const contentType = getMime(ext);
