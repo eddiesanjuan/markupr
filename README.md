@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/eddiesanjuan-markupr-badge.png)](https://mseep.ai/app/eddiesanjuan-markupr)
+
 <p align="center">
   <img src="src/renderer/assets/logo.svg" alt="markupR" width="80" height="80">
 </p>
