@@ -5,13 +5,16 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use global_hotkey::{hotkey::HotKey, GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use markupr_core::{Clock, Config, PackDir};
-use recorder::{RecordOptions, Recorder};
+use recorder::{ProcessingOptions, RecordOptions, Recorder};
 use signal_hook::{
     consts::{SIGINT, SIGTERM},
     iterator::Signals,
 };
 use std::{
+    fs,
+    io::Write,
     path::PathBuf,
+    process::{Command as ProcessCommand, Stdio},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -39,9 +42,26 @@ enum Command {
         #[arg(long)]
         note: Option<String>,
     },
-    Doctor,
+    Doctor {
+        #[arg(long)]
+        request: bool,
+    },
     Pack {
+        dir: PathBuf,
+        #[command(flatten)]
+        processing: ProcessingOptions,
+    },
+    Displays,
+    Browser {
+        #[arg(long)]
+        port: Option<u16>,
+        #[arg(long)]
+        url: Option<String>,
+    },
+    Prompt {
         dir: Option<PathBuf>,
+        #[arg(long)]
+        copy: bool,
     },
 }
 #[derive(Debug)]
@@ -65,11 +85,112 @@ fn main() -> Result<()> {
         Command::Record(opts) => record(opts),
         Command::Stop => control::send(serde_json::json!({"cmd":"stop"})),
         Command::Mark { note } => control::send(serde_json::json!({"cmd":"mark","note":note})),
-        Command::Doctor | Command::Pack { .. } => {
-            println!("not wired yet");
+        Command::Doctor { request } => doctor(request),
+        Command::Pack { dir, processing } => {
+            let report = recorder::build_pack(
+                &PackDir::open(dir)?,
+                &Config::load()?,
+                &processing.pack_options(),
+            )?;
+            println!("{}", serde_json::to_string(&report)?);
             Ok(())
         }
+        Command::Displays => {
+            println!(
+                "{}",
+                serde_json::to_string(&markupr_screen::list_displays()?)?
+            );
+            Ok(())
+        }
+        Command::Browser { port, url } => {
+            let info = markupr_browser::launch_debug_browser(
+                port.unwrap_or(Config::load()?.browser.port),
+                url.as_deref(),
+            )?;
+            println!("{}", serde_json::to_string(&info)?);
+            Ok(())
+        }
+        Command::Prompt { dir, copy } => prompt(dir, copy),
     }
+}
+
+fn prompt(dir: Option<PathBuf>, copy: bool) -> Result<()> {
+    let dir = match dir {
+        Some(dir) => dir,
+        None => fs::read_dir(Config::load()?.packs_dir)?
+            .collect::<std::io::Result<Vec<_>>>()?
+            .into_iter()
+            .filter(|entry| entry.path().join("session.json").is_file())
+            .max_by_key(|entry| entry.file_name())
+            .ok_or_else(|| anyhow!("no packs found"))?
+            .path(),
+    };
+    let text = markupr_pack::prompt_text(&PackDir::open(dir)?);
+    print!("{text}");
+    if copy {
+        let mut child = ProcessCommand::new("/usr/bin/pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()?;
+        child.stdin.take().unwrap().write_all(text.as_bytes())?;
+        anyhow::ensure!(child.wait()?.success(), "pbcopy failed");
+        println!("copied");
+    }
+    Ok(())
+}
+
+fn doctor(request: bool) -> Result<()> {
+    if request {
+        markupr_events::permissions::request_missing();
+    }
+    let permissions = markupr_events::permissions::check();
+    for (name, granted) in [
+        ("screen", permissions.screen),
+        ("accessibility", permissions.accessibility),
+        ("input_monitoring", permissions.input_monitoring),
+        ("microphone", permissions.microphone),
+    ] {
+        println!("{name}: {}", if granted { "granted" } else { "missing" });
+    }
+    let config = Config::load()?;
+    for (name, bin, arg) in [
+        ("ffmpeg", &config.ffmpeg_bin, "-version"),
+        ("whisper-cli", &config.whisper.bin, "--help"),
+    ] {
+        let runs = ProcessCommand::new(bin)
+            .arg(arg)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        println!("{name}: {}", if runs { "runs" } else { "unavailable" });
+    }
+    for (name, path) in [
+        ("accurate_model", &config.whisper.model),
+        ("fast_model", &config.whisper.fast_model),
+    ] {
+        println!(
+            "{name}: {}",
+            if path.as_ref().is_some_and(|p| p.is_file()) {
+                "exists"
+            } else {
+                "missing or not configured"
+            }
+        );
+    }
+    println!(
+        "browser (port {}): {}",
+        config.browser.port,
+        if markupr_browser::debug_endpoint(config.browser.port).is_some() {
+            "answers"
+        } else {
+            "unavailable"
+        }
+    );
+    anyhow::ensure!(
+        permissions.screen && permissions.accessibility && permissions.microphone,
+        "required permissions missing"
+    );
+    Ok(())
 }
 fn record(mut opts: RecordOptions) -> Result<()> {
     let config = Config::load()?;
@@ -127,7 +248,7 @@ fn record(mut opts: RecordOptions) -> Result<()> {
                     .duration
                     .map(|s| Instant::now() + Duration::from_secs_f64(s));
                 let clock = Clock::start();
-                let recorder = Recorder::start(opts, clock, pack)?;
+                let recorder = Recorder::start(opts, clock, pack, config)?;
                 eprintln!("recording {}", root.display());
                 loop {
                     let command = match deadline {

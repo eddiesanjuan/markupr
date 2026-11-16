@@ -262,7 +262,28 @@ pub fn render(
             item.t1
         )
         .unwrap();
-        writeln!(out, "- Why flagged: {}", item.reasons.join("; ")).unwrap();
+        let mut reasons = vec![];
+        let mut phrases = vec![];
+        for reason in &item.reasons {
+            if let Some(phrase) = reason.strip_prefix("pointing words ") {
+                let phrase = phrase.rsplit_once(" at ").map_or(phrase, |(p, _)| p);
+                if !phrases.contains(&phrase) {
+                    phrases.push(phrase);
+                }
+            } else if reason.starts_with("mark ") || reason.starts_with("click at ") {
+                reasons.push(reason.as_str());
+            } else if reason.starts_with("error at ") {
+                reasons.push(reason.split_once(": ").map_or(reason.as_str(), |(r, _)| r));
+            }
+        }
+        let mut why = reasons.join("; ");
+        if !phrases.is_empty() {
+            if !why.is_empty() {
+                why.push_str("; ");
+            }
+            why.push_str(&format!("pointing phrases: {}", phrases.join(", ")));
+        }
+        writeln!(out, "- Why flagged: {why}").unwrap();
         writeln!(
             out,
             "- He said: {}",

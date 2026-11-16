@@ -22,20 +22,20 @@ pub fn cursor_at(time: f64, cursor: &[Value], events: &[Value]) -> Option<(f64, 
         .max_by(|a, b| t(a).total_cmp(&t(b)))
         .map(|v| (v["x"].as_f64().unwrap(), v["y"].as_f64().unwrap()))
 }
-fn ring(image: &mut RgbImage, x: f64, y: f64, scale: f64) {
-    let radius = 28.0 * scale;
-    let half_stroke = 3.0 * scale;
-    let outer = radius + half_stroke + 2.0 * scale;
-    let x0 = (x - outer).max(0.0) as u32;
-    let y0 = (y - outer).max(0.0) as u32;
-    let x1 = ((x + outer).ceil().max(0.0) as u32).min(image.width());
-    let y1 = ((y + outer).ceil().max(0.0) as u32).min(image.height());
+fn ring(image: &mut RgbImage, x: f64, y: f64, sx: f64, sy: f64) {
+    let radius = 28.0;
+    let half_stroke = 3.0;
+    let outer = radius + half_stroke + 2.0;
+    let x0 = (x - outer * sx).max(0.0) as u32;
+    let y0 = (y - outer * sy).max(0.0) as u32;
+    let x1 = ((x + outer * sx).ceil().max(0.0) as u32).min(image.width());
+    let y1 = ((y + outer * sy).ceil().max(0.0) as u32).min(image.height());
     for py in y0..y1 {
         for px in x0..x1 {
-            let delta = ((px as f64 - x).hypot(py as f64 - y) - radius).abs();
+            let delta = (((px as f64 - x) / sx).hypot((py as f64 - y) / sy) - radius).abs();
             if delta <= half_stroke {
                 image.put_pixel(px, py, Rgb([255, 20, 120]));
-            } else if delta <= half_stroke + 2.0 * scale {
+            } else if delta <= half_stroke + 2.0 {
                 image.put_pixel(px, py, Rgb([255, 255, 255]));
             }
         }
@@ -79,14 +79,18 @@ fn extract(
             {
                 return None;
             }
-            let (px, py) = ((x - d.x as f64) * d.scale, (y - d.y as f64) * d.scale);
+            let (sx, sy) = (
+                video.width as f64 / d.w as f64,
+                video.height as f64 / d.h as f64,
+            );
+            let (px, py) = ((x - d.x as f64) * sx, (y - d.y as f64) * sy);
             (px >= 0.0 && py >= 0.0 && px < image.width() as f64 && py < image.height() as f64)
-                .then_some((px, py, d.scale))
+                .then_some((px, py, sx, sy))
         })
     });
     let (mut zoom, mut note) = (None, None);
-    if let Some((x, y, scale)) = pixel {
-        ring(&mut image, x, y, scale);
+    if let Some((x, y, sx, sy)) = pixel {
+        ring(&mut image, x, y, sx, sy);
         let (w, h) = (900.min(image.width()), 600.min(image.height()));
         let left = (x - w as f64 / 2.0)
             .round()

@@ -190,12 +190,8 @@ fn redact_url(raw: &str) -> String {
     let Ok(mut url) = url::Url::parse(raw) else {
         return raw.to_owned();
     };
-    if url.query().is_none() {
-        return raw.to_owned();
-    }
-    let pairs: Vec<_> = url
-        .query_pairs()
-        .map(|(key, value)| {
+    fn redact_pairs(raw: &str) -> String {
+        let pairs = url::form_urlencoded::parse(raw.as_bytes()).map(|(key, value)| {
             let lower = key.to_ascii_lowercase();
             let secret = [
                 "token", "key", "secret", "password", "auth", "session", "sig", "code",
@@ -205,14 +201,24 @@ fn redact_url(raw: &str) -> String {
             (
                 key.into_owned(),
                 if secret {
-                    "REDACTED".into()
+                    "REDACTED".to_owned()
                 } else {
                     value.into_owned()
                 },
             )
-        })
-        .collect();
-    url.query_pairs_mut().clear().extend_pairs(pairs);
+        });
+        url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(pairs)
+            .finish()
+    }
+    if let Some(query) = url.query() {
+        let redacted = redact_pairs(query);
+        url.set_query(Some(&redacted));
+    }
+    if let Some(fragment) = url.fragment().filter(|f| f.contains('=')) {
+        let redacted = redact_pairs(fragment);
+        url.set_fragment(Some(&redacted));
+    }
     url.into()
 }
 fn cap(text: &str, n: usize) -> String {
@@ -626,6 +632,18 @@ mod tests {
         assert_eq!(
             output,
             "http://localhost/?token=REDACTED&code=REDACTED&q=shoes"
+        );
+        assert_eq!(
+            redact_url("http://localhost/#access_token=abc&state=ok"),
+            "http://localhost/#access_token=REDACTED&state=ok"
+        );
+        assert_eq!(
+            redact_url("http://localhost/?q=ok#auth=secret&code=123"),
+            "http://localhost/?q=ok#auth=REDACTED&code=REDACTED"
+        );
+        assert_eq!(
+            redact_url("http://localhost/#section"),
+            "http://localhost/#section"
         );
     }
 }

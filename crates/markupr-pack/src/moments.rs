@@ -200,14 +200,23 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
             None => other_errors.push(error.clone()),
         }
     }
-    let mut mark_used = vec![false; marks.len()];
+    let mark_owners: Vec<_> = marks
+        .iter()
+        .map(|mark| {
+            utterances
+                .iter()
+                .enumerate()
+                .min_by(|a, b| distance(t(mark), a.1).total_cmp(&distance(t(mark), b.1)))
+                .filter(|(_, u)| round_t(distance(t(mark), u)) <= 3.0)
+                .map(|(i, _)| i)
+        })
+        .collect();
     let mut candidates = vec![];
     for (i, u) in utterances.iter().enumerate() {
         let mut item = new_item(u.t0, u.t1, u.text.clone());
         let mut score = 0;
         for (m, mark) in marks.iter().enumerate() {
-            if round_t(distance(t(mark), u)) <= 3.0 {
-                mark_used[m] = true;
+            if mark_owners[m] == Some(i) {
                 item.reasons.push(format!(
                     "mark {} at {:.3}",
                     mark["n"].as_u64().unwrap_or(m as u64 + 1),
@@ -282,7 +291,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
             kind: "mark".into(),
             detail: detail.clone(),
         });
-        if !mark_used[i] {
+        if mark_owners[i].is_none() {
             let mut item = new_item(t(mark), t(mark), String::new());
             item.title = mark["note"]
                 .as_str()
@@ -449,6 +458,23 @@ mod tests {
         let result = detect(&[], &[json!({"type":"mark","t":4.2,"n":1})], &[]);
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].anchor_t, 4.2);
+    }
+    #[test]
+    fn ordinary_talk_two_and_a_half_seconds_after_a_mark_is_not_a_spurious_item() {
+        let result = detect(
+            &[speech(10.0, "chosen"), speech(12.6, "coffee")],
+            &[json!({"type":"mark","t":10.1,"n":1})],
+            &[],
+        );
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].said, "chosen");
+        let nearest = detect(
+            &[speech(8.0, "earlier"), speech(11.0, "nearer")],
+            &[json!({"type":"mark","t":10.0,"n":1})],
+            &[],
+        );
+        assert_eq!(nearest.items.len(), 1);
+        assert_eq!(nearest.items[0].said, "nearer");
     }
     #[test]
     fn pauses_and_twelve_second_spans_do_not_become_one_utterance() {
