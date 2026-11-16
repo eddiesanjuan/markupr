@@ -1,5 +1,5 @@
 use crate::{
-    moments::{utterances, Utterance, Word},
+    moments::{Utterance, Word},
     run, run_timed, CommandTimeout, PackError,
 };
 use crate::{AudioSource, PackOptions};
@@ -61,6 +61,7 @@ pub fn transcribe(
         return transcript;
     };
     transcript.model = model.file_stem().map(|s| s.to_string_lossy().into_owned());
+    let mut ignored = 0;
     let result = (|| -> Result<Vec<Utterance>, PackError> {
         let temp = tempfile::tempdir()?;
         let wav = temp.path().join("speech.wav");
@@ -75,29 +76,63 @@ pub fn transcribe(
             .args(["-vn", "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le"])
             .arg(&wav);
         run(&mut ffmpeg)?;
-        match aligned_stretches(&wav, start_t, temp.path(), cfg, model) {
-            Ok(segments) => Ok(segments),
-            Err(error) if error.downcast_ref::<CommandTimeout>().is_some() => Err(error),
+        let samples = read_pcm(&wav, cfg)?;
+        let found = crate::speech_stretches::detect(&samples);
+        let stretches: Vec<_> = found
+            .iter()
+            .filter_map(|stretch| {
+                crate::speech_stretches::speech_bounds(&samples[stretch.start..stretch.end]).map(
+                    |voice| crate::speech_stretches::Stretch {
+                        start: stretch.start + voice.start,
+                        end: stretch.start + voice.end,
+                    },
+                )
+            })
+            .collect();
+        ignored = found.len() - stretches.len();
+        if stretches.is_empty() {
+            return Ok(vec![]);
+        }
+        let segments = match transcribe_stretches(
+            &samples,
+            &stretches,
+            start_t,
+            temp.path(),
+            cfg,
+            model,
+            true,
+        ) {
+            Ok(segments) => segments,
+            Err(error) if error.downcast_ref::<CommandTimeout>().is_some() => return Err(error),
             Err(error) => {
                 warnings.push(format!(
                     "Speech timing alignment failed: {error}; using single-pass Whisper timing."
                 ));
-                let prefix = temp.path().join("words");
-                let mut command = whisper(cfg, model);
-                run_timed(
-                    command.arg("-f").arg(&wav).arg("-of").arg(&prefix),
-                    Duration::from_secs_f64(60.0 + 2.0 * session.duration.unwrap_or(60.0).max(0.0)),
-                )?;
-                let output: Value =
-                    serde_json::from_slice(&fs::read(prefix.with_extension("json"))?)?;
-                Ok(utterances(read_words(&output, start_t)))
+                // The fallback also sees only accepted stretches, so it cannot
+                // turn the rejected clicks or fan noise into an utterance.
+                transcribe_stretches(
+                    &samples,
+                    &stretches,
+                    start_t,
+                    temp.path(),
+                    cfg,
+                    model,
+                    false,
+                )?
             }
-        }
+        };
+        ignored += stretches.len() - segments.len();
+        Ok(segments)
     })();
+    if ignored > 0 {
+        warnings.push(format!(
+            "{ignored} stretches of non-speech sound were ignored"
+        ));
+    }
     match result {
         Ok(segments) => {
             transcript.segments = segments;
-            if transcript.segments.is_empty() {
+            if transcript.segments.is_empty() && ignored == 0 {
                 warnings.push(format!(
                     "No speech was detected in the {} audio.",
                     transcript.source
@@ -124,26 +159,26 @@ fn whisper(cfg: &Config, model: &std::path::Path) -> Command {
     command
 }
 
-fn aligned_stretches(
-    wav: &std::path::Path,
-    start_t: f64,
-    temp: &std::path::Path,
-    cfg: &Config,
-    model: &std::path::Path,
-) -> Result<Vec<Utterance>, PackError> {
-    use crate::speech_stretches::{detect, RATE};
+fn read_pcm(wav: &std::path::Path, cfg: &Config) -> Result<Vec<i16>, PackError> {
     let pcm = run(Command::new(&cfg.ffmpeg_bin)
         .args(["-hide_banner", "-loglevel", "error", "-i"])
         .arg(wav)
         .args(["-f", "s16le", "-c:a", "pcm_s16le", "-"]))?;
-    let samples: Vec<i16> = pcm
+    Ok(pcm
         .chunks_exact(2)
         .map(|s| i16::from_le_bytes([s[0], s[1]]))
-        .collect();
-    let stretches = detect(&samples);
-    if stretches.is_empty() {
-        return Ok(vec![]);
-    }
+        .collect())
+}
+fn transcribe_stretches(
+    samples: &[i16],
+    stretches: &[crate::speech_stretches::Stretch],
+    start_t: f64,
+    temp: &std::path::Path,
+    cfg: &Config,
+    model: &std::path::Path,
+    dtw: bool,
+) -> Result<Vec<Utterance>, PackError> {
+    use crate::speech_stretches::{plausible_word_rate, RATE};
     let mut command = whisper(cfg, model);
     let mut files = vec![];
     let mut offsets = vec![];
@@ -162,20 +197,22 @@ fn aligned_stretches(
             (stretch.end + RATE * 12 / 100).min(samples.len())
         };
         let file = temp.join(format!("stretch-{i}.wav"));
-        write_wav(&file, &pcm[lo * 2..hi * 2])?;
+        write_wav(&file, &samples[lo..hi])?;
         command.arg("-of").arg(temp.join(format!("stretch-{i}")));
         files.push(file);
         offsets.push(lo as f64 / RATE as f64);
     }
     // DTW needs cross-attention, so flash attention must be disabled. Keep
     // Whisper's normal encoder context: shortened contexts repeated phrases.
-    let preset = model
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or("model has no filename")?
-        .trim_start_matches("ggml-")
-        .replace('-', ".");
-    command.args(["-dtw", &preset, "-nfa"]);
+    if dtw {
+        let preset = model
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or("model has no filename")?
+            .trim_start_matches("ggml-")
+            .replace('-', ".");
+        command.args(["-dtw", &preset, "-nfa"]);
+    }
     // Several files in one invocation: load the configured model only once.
     run_timed(
         command.args(&files),
@@ -186,8 +223,17 @@ fn aligned_stretches(
         let output: Value = serde_json::from_slice(&fs::read(files[i].with_extension("json"))?)?;
         let t0 = round_t(start_t + stretch.start as f64 / RATE as f64);
         let t1 = round_t(start_t + stretch.end as f64 / RATE as f64);
-        let words = aligned_words(&output, start_t + offsets[i], t0, t1)?;
-        if !words.is_empty() {
+        let mut words = if dtw {
+            aligned_words(&output, start_t + offsets[i], t0, t1)?
+        } else {
+            read_words(&output, start_t + offsets[i])
+        };
+        words.retain(|word| word.t0 <= t1 && word.t1 >= t0);
+        for word in &mut words {
+            word.t0 = word.t0.clamp(t0, t1);
+            word.t1 = word.t1.clamp(word.t0, t1);
+        }
+        if plausible_word_rate(words.len(), t1 - t0) {
             result.push(Utterance {
                 t0,
                 t1,
@@ -204,7 +250,11 @@ fn aligned_stretches(
 }
 
 // The only generated WAV format: 16 kHz, mono, little-endian signed PCM16.
-fn write_wav(path: &std::path::Path, pcm: &[u8]) -> Result<(), PackError> {
+fn write_wav(path: &std::path::Path, samples: &[i16]) -> Result<(), PackError> {
+    let pcm: Vec<u8> = samples
+        .iter()
+        .flat_map(|sample| sample.to_le_bytes())
+        .collect();
     use std::io::Write;
     let mut file = fs::File::create(path)?;
     file.write_all(b"RIFF")?;
@@ -219,7 +269,7 @@ fn write_wav(path: &std::path::Path, pcm: &[u8]) -> Result<(), PackError> {
     file.write_all(&16u16.to_le_bytes())?; // bits per sample
     file.write_all(b"data")?;
     file.write_all(&(pcm.len() as u32).to_le_bytes())?;
-    file.write_all(pcm)?;
+    file.write_all(&pcm)?;
     Ok(())
 }
 

@@ -91,6 +91,7 @@ pub fn t(v: &Value) -> f64 {
 pub fn kind(v: &Value) -> &str {
     v["type"].as_str().unwrap_or("")
 }
+#[cfg(test)]
 pub fn utterances(mut words: Vec<Word>) -> Vec<Utterance> {
     words.sort_by(|a, b| a.t0.total_cmp(&b.t0));
     let mut result: Vec<Utterance> = Vec::new();
