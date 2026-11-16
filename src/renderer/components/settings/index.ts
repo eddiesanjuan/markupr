@@ -1,9 +1,0 @@
-export { GeneralTab } from './GeneralTab';
-export { RecordingTab } from './RecordingTab';
-export { AppearanceTab } from './AppearanceTab';
-export { HotkeysTab } from './HotkeysTab';
-export { AdvancedTab } from './AdvancedTab';
-export { TABS } from './tabConfig';
-export type { SettingsTab } from './tabConfig';
-export { styles as settingsStyles } from './settingsStyles';
-export { useSettingsPanel } from './useSettingsPanel';
