@@ -1,0 +1,16 @@
+[package]
+name = "markupr-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Input events, focus, element under cursor, marks, unified log and permission checks (macOS)"
+
+[dependencies]
+markupr-core = { path = "../markupr-core" }
+serde_json = "1"
+chrono = "0.4"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+block2 = "0.6"
