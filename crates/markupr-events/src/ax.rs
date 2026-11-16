@@ -18,13 +18,13 @@ impl Drop for Cf {
 
 fn cfstr(s: &str) -> Retained<NSString> { NSString::from_str(s) }
 
-/// Copy a string attribute. `Err(())` means the app did not answer in time; stop asking it.
+/// Copy a string attribute. `Ok(None)` when absent; `Err(())` on any other error (timeout, cannot complete).
 fn attr_string(el: AXUIElementRef, name: &str) -> Result<Option<String>, ()> {
     let key = cfstr(name);
     let mut out: CFTypeRef = std::ptr::null();
     let err = unsafe { AXUIElementCopyAttributeValue(el, Retained::as_ptr(&key).cast(), &mut out) };
-    if err == AX_ERROR_CANNOT_COMPLETE { return Err(()); }
-    if err != 0 || out.is_null() { return Ok(None); }
+    if err == AX_ERROR_NO_VALUE || err == AX_ERROR_ATTRIBUTE_UNSUPPORTED || (err == 0 && out.is_null()) { return Ok(None); }
+    if err != 0 { return Err(()); }
     let out = Cf(out);
     if unsafe { CFGetTypeID(out.0) != CFStringGetTypeID() } { return Ok(None); }
     let s = unsafe { &*(out.0 as *const NSString) }.to_string();
@@ -39,7 +39,8 @@ fn attr_element(el: AXUIElementRef, name: &str) -> Option<Cf> {
 }
 
 /// Element under a global point: role, subrole, title, label (AXDescription), and value only for
-/// static text. Text-entry and secure fields never have their value read. None on any failure.
+/// static text. Inside a text-entry or secure field, or when that cannot be ruled out, only role
+/// and subrole. Text-entry and secure fields never have their value read. None on any failure.
 pub fn element_at(x: f64, y: f64) -> Option<Value> {
     objc2::rc::autoreleasepool(|_| {
         let sys = Cf(unsafe { AXUIElementCreateSystemWide() });
@@ -53,10 +54,12 @@ pub fn element_at(x: f64, y: f64) -> Option<Value> {
         let role = attr_string(el.0, "AXRole").ok()??;
         let mut m = Map::new();
         m.insert("role".into(), Value::String(cap(&role, EL_MAX_CHARS)));
-        let mut fields = vec![("subrole", "AXSubrole"), ("title", "AXTitle"), ("label", "AXDescription")];
-        // Allowlist: the only role whose value is read. Never AXTextField/AXTextArea/AXSecureTextField,
-        // and never static text that sits inside one (rich editors expose typed text that way).
-        if role == "AXStaticText" && !inside_text_entry(el.0) { fields.push(("value", "AXValue")); }
+        let mut fields = vec![("subrole", "AXSubrole")];
+        if !walk_says_inside(ancestors(el.0)) {
+            fields.extend([("title", "AXTitle"), ("label", "AXDescription")]);
+            // Allowlist: the only role whose value is read.
+            if role == "AXStaticText" { fields.push(("value", "AXValue")); }
+        }
         for (key, attr) in fields {
             match attr_string(el.0, attr) {
                 Ok(Some(v)) => { m.insert(key.into(), Value::String(cap(&v, EL_MAX_CHARS))); }
@@ -68,18 +71,65 @@ pub fn element_at(x: f64, y: f64) -> Option<Value> {
     })
 }
 
-/// True when an ancestor (up to 6 levels) is a text-entry or secure field, or the walk fails.
-fn inside_text_entry(el: AXUIElementRef) -> bool {
-    const ENTRY: [&str; 4] = ["AXTextField", "AXTextArea", "AXComboBox", "AXSecureTextField"];
-    let mut cur = attr_element(el, "AXParent");
-    for _ in 0..6 {
-        let Some(p) = cur else { return false };
-        unsafe { AXUIElementSetMessagingTimeout(p.0, EL_TIMEOUT_S) };
-        let (Ok(role), Ok(sub)) = (attr_string(p.0, "AXRole"), attr_string(p.0, "AXSubrole")) else { return true };
-        if [role, sub].iter().flatten().any(|r| ENTRY.contains(&r.as_str())) { return true; }
-        cur = attr_element(p.0, "AXParent");
+/// One step of the walk up AXParent.
+#[derive(Debug)]
+enum Ancestor {
+    /// A parent exists; its role and subrole (None when the attribute is absent).
+    Node { role: Option<String>, subrole: Option<String> },
+    /// AXParent is absent (no value / unsupported): the top of the tree.
+    Top,
+    /// The parent or its role could not be read (timeout, cannot complete, any other error).
+    Unknown,
+}
+
+const WALK_MAX_DEPTH: usize = 20;
+const TEXT_ENTRY: [&str; 4] = ["AXTextField", "AXTextArea", "AXComboBox", "AXSecureTextField"];
+const SAFE_BOUNDARY: [&str; 3] = ["AXWebArea", "AXWindow", "AXApplication"];
+
+/// Fail closed: "not inside" only on reaching the top or a web area / window / application
+/// boundary. A text-entry ancestor, an unreadable step, or running past the depth limit is inside.
+fn walk_says_inside(steps: impl IntoIterator<Item = Ancestor>) -> bool {
+    for step in steps.into_iter().take(WALK_MAX_DEPTH) {
+        match step {
+            Ancestor::Top => return false,
+            Ancestor::Unknown => return true,
+            Ancestor::Node { role, subrole } => {
+                let names = [role.as_deref(), subrole.as_deref()];
+                if names.iter().flatten().any(|n| TEXT_ENTRY.contains(n)) { return true; }
+                if role.as_deref().is_some_and(|r| SAFE_BOUNDARY.contains(&r)) { return false; }
+            }
+        }
     }
-    false
+    true
+}
+
+/// Lazily reads ancestors of `el`, stopping after Top or Unknown.
+fn ancestors(el: AXUIElementRef) -> impl Iterator<Item = Ancestor> {
+    let mut cur: Option<Cf> = None;
+    let mut done = false;
+    std::iter::from_fn(move || {
+        if done { return None; }
+        let from = cur.as_ref().map_or(el, |c| c.0);
+        let key = cfstr("AXParent");
+        let mut out: CFTypeRef = std::ptr::null();
+        let err = unsafe { AXUIElementCopyAttributeValue(from, Retained::as_ptr(&key).cast(), &mut out) };
+        let step = match (err, out.is_null()) {
+            (0, false) => {
+                let p = Cf(out);
+                unsafe { AXUIElementSetMessagingTimeout(p.0, EL_TIMEOUT_S) };
+                let step = match (attr_string(p.0, "AXRole"), attr_string(p.0, "AXSubrole")) {
+                    (Ok(role), Ok(subrole)) => Ancestor::Node { role, subrole },
+                    _ => Ancestor::Unknown,
+                };
+                cur = Some(p);
+                step
+            }
+            (AX_ERROR_NO_VALUE | AX_ERROR_ATTRIBUTE_UNSUPPORTED, _) | (0, true) => Ancestor::Top,
+            _ => Ancestor::Unknown,
+        };
+        done = !matches!(step, Ancestor::Node { .. });
+        Some(step)
+    })
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -137,3 +187,27 @@ fn app_names(pid: i32) -> (Option<String>, Option<String>) {
 
 #[link(name = "AppKit", kind = "framework")]
 extern "C" {}
+
+#[cfg(test)]
+mod tests {
+    use super::{walk_says_inside, Ancestor::{self, *}, WALK_MAX_DEPTH};
+    fn node(role: &str) -> Ancestor { Node { role: Some(role.into()), subrole: None } }
+
+    /// Bug guarded: static text inside a rich editor had its AXValue written because a failed
+    /// parent lookup, or a walk deeper than the limit, ended as "not inside a text field".
+    #[test]
+    fn failed_parent_lookup_lets_static_text_through() {
+        assert!(walk_says_inside([node("AXGroup"), Unknown]), "timeout / cannot complete");
+        assert!(walk_says_inside([Unknown]), "first parent lookup fails");
+        assert!(walk_says_inside([Node { role: None, subrole: None }, Unknown]), "role unreadable then failure");
+        assert!(walk_says_inside((0..WALK_MAX_DEPTH + 5).map(|_| node("AXGroup"))), "deeper than the limit");
+        assert!(walk_says_inside([node("AXGroup"), node("AXTextArea"), node("AXWindow")]), "text area ancestor");
+        assert!(walk_says_inside([Node { role: Some("AXTextField".into()), subrole: Some("AXSecureTextField".into()) }]), "secure field");
+        assert!(walk_says_inside([Node { role: Some("AXGroup".into()), subrole: Some("AXSecureTextField".into()) }]), "secure by subrole");
+        assert!(walk_says_inside(Vec::<Ancestor>::new()), "no steps at all");
+        assert!(!walk_says_inside([node("AXGroup"), node("AXWebArea"), node("AXTextArea")]), "web area boundary first");
+        assert!(!walk_says_inside([node("AXGroup"), node("AXWindow")]), "window boundary");
+        assert!(!walk_says_inside([node("AXApplication")]), "application boundary");
+        assert!(!walk_says_inside([node("AXGroup"), Top]), "reached the top");
+    }
+}

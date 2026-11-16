@@ -178,26 +178,21 @@ impl Drop for EventRecorder {
 fn poll_focus(events: &JsonlWriter, clock: &Clock, stop: &AtomicBool, warnings: &Mutex<Vec<String>>, mut syslog: Option<&mut syslog::SysLog>) {
     let mut last: Option<ax::Focus> = None;
     let mut secure = false;
-    // An AX failure while trusted keeps the last focus; only a streak of them switches to the
-    // window list, whose answer can differ (floating panels, other layers).
-    let (mut ax_streak, mut ax_fail_t, mut window_list_polls) = (0u32, Vec::<f64>::new(), 0u32);
+    // Every poll yields a focus when a front window exists: Accessibility first, the window list
+    // in the same poll when it misses.
+    let (mut polls, mut ax_failed) = (0u32, 0u32);
     while !stop.load(Ordering::SeqCst) {
         let now_secure = unsafe { IsSecureEventInputEnabled() } != 0;
         if now_secure != secure {
             secure = now_secure;
             let _ = events.write(&json!({ "t": round_t(clock.now()), "type": "secure_input", "on": secure }));
         }
+        polls += 1;
         let trusted = unsafe { AXIsProcessTrusted() };
         let mut found = if trusted { ax::focus(true) } else { None };
-        if trusted && found.is_none() {
-            ax_streak += 1;
-            if ax_fail_t.len() < 5 { ax_fail_t.push(round_t(clock.now())); }
-        } else if trusted {
-            ax_streak = 0;
-        }
-        if !trusted || ax_streak >= 3 {
+        if found.is_none() {
+            if trusted { ax_failed += 1; }
             found = ax::focus(false);
-            window_list_polls += 1;
         }
         if let Some(f) = found {
             if last.as_ref() != Some(&f) {
@@ -211,8 +206,8 @@ fn poll_focus(events: &JsonlWriter, clock: &Clock, stop: &AtomicBool, warnings: 
         thread::sleep(FOCUS_POLL);
     }
     let mut w = warnings.lock().unwrap();
-    if !ax_fail_t.is_empty() {
-        w.push(format!("focus: Accessibility query failed at t={ax_fail_t:?} (first 5 shown); window list used on {window_list_polls} polls"));
+    if ax_failed > 0 {
+        w.push(format!("focus: Accessibility query failed on {ax_failed} of {polls} polls; window list used"));
     }
 }
 

@@ -88,3 +88,5 @@ extern "C" {
 }
 
 pub const AX_ERROR_CANNOT_COMPLETE: i32 = -25204;
+pub const AX_ERROR_ATTRIBUTE_UNSUPPORTED: i32 = -25205;
+pub const AX_ERROR_NO_VALUE: i32 = -25212;
