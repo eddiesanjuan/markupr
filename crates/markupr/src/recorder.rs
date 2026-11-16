@@ -252,7 +252,7 @@ impl Recorder {
             match screen.stop() {
                 Ok(report) => {
                     for warning in report.warnings {
-                        capture_warning(&mut self.session, self.clock, warning);
+                        report_warning(&mut self.session, warning);
                     }
                     let d = report.display;
                     self.session.display = Some(markupr_core::session::Display {
@@ -295,12 +295,11 @@ impl Recorder {
                             });
                     if let Some(stopped) = report.capture_stopped {
                         let t = round_t(self.clock.t_from_host_ns(stopped.host_ns));
-                        capture_warning(&mut self.session, self.clock, format!("Screen capture stopped at t {t}: {}; later moments show the last frame before that.", stopped.reason));
+                        report_warning(&mut self.session, format!("Screen capture stopped at t {t}: {}; later moments show the last frame before that.", stopped.reason));
                     }
                 }
-                Err(error) => capture_warning(
+                Err(error) => report_warning(
                     &mut self.session,
-                    self.clock,
                     format!("Screen finalization failed: {error}"),
                 ),
             }
@@ -312,16 +311,11 @@ impl Recorder {
                     self.session.sources.system_log =
                         self.system_log && self.pack.system_log().is_file();
                     for warning in report.warnings {
-                        capture_warning(
-                            &mut self.session,
-                            self.clock,
-                            format!("Input capture: {warning}"),
-                        );
+                        report_warning(&mut self.session, format!("Input capture: {warning}"));
                     }
                 }
-                Err(error) => capture_warning(
+                Err(error) => report_warning(
                     &mut self.session,
-                    self.clock,
                     format!("Input finalization failed: {error}"),
                 ),
             }
@@ -333,12 +327,11 @@ impl Recorder {
                 port: report.port,
             });
             for warning in report.warnings {
-                capture_warning(&mut self.session, self.clock, format!("Browser: {warning}"));
+                report_warning(&mut self.session, format!("Browser: {warning}"));
             }
             if !report.attached {
-                capture_warning(
+                report_warning(
                     &mut self.session,
-                    self.clock,
                     format!("Browser logs were not attached on port {}.", report.port),
                 );
             }
@@ -380,6 +373,10 @@ fn unix_ms() -> Result<u64> {
 
 fn capture_warning(session: &mut Session, clock: Clock, message: String) {
     let message = format!("t {:.3}: {message}", round_t(clock.now()));
+    report_warning(session, message);
+}
+
+fn report_warning(session: &mut Session, message: String) {
     eprintln!("warning: {message}");
     session.warnings.push(message);
 }

@@ -32,6 +32,7 @@ use tray_icon::{
 };
 
 enum RecorderCommand {
+    Begin,
     Stop,
     Mark {
         source: &'static str,
@@ -58,8 +59,10 @@ fn start(opts: RecordOptions, proxy: EventLoopProxy<UserEvent>) -> Result<Active
                 let recorder = Recorder::start(opts, Clock::start(), pack, config)?;
                 let _ = proxy.send_event(UserEvent::Started(root.as_ref().unwrap().clone()));
                 eprintln!("recording {}", root.as_ref().unwrap().display());
+                let mut began = false;
                 loop {
-                    let command = match deadline {
+                    // Wait for the main loop to flush startup marks before the duration timer.
+                    let command = match deadline.filter(|_| began) {
                         Some(deadline) => receiver
                             .recv_timeout(deadline.saturating_duration_since(Instant::now())),
                         None => receiver
@@ -67,6 +70,7 @@ fn start(opts: RecordOptions, proxy: EventLoopProxy<UserEvent>) -> Result<Active
                             .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
                     };
                     match command {
+                        Ok(RecorderCommand::Begin) => began = true,
                         Ok(RecorderCommand::Mark { source, note }) => recorder.mark(source, note),
                         Ok(RecorderCommand::Stop) | Err(_) => break,
                     }
@@ -79,6 +83,21 @@ fn start(opts: RecordOptions, proxy: EventLoopProxy<UserEvent>) -> Result<Active
         })?;
     Ok(Active { commands, worker })
 }
+fn finish_start(
+    commands: &mpsc::Sender<RecorderCommand>,
+    pending_marks: &mut Vec<RecorderCommand>,
+    stop_requested: bool,
+) {
+    for mark in pending_marks.drain(..) {
+        let _ = commands.send(mark);
+    }
+    let _ = commands.send(if stop_requested {
+        RecorderCommand::Stop
+    } else {
+        RecorderCommand::Begin
+    });
+}
+
 struct Tray {
     icon: TrayIcon,
     toggle: MenuItem,
@@ -163,7 +182,8 @@ impl Tray {
             self.toggle_key
         ));
         self.toggle.set_enabled(state != State::Processing);
-        self.mark.set_enabled(state == State::Recording);
+        self.mark
+            .set_enabled(matches!(state, State::Starting | State::Recording));
         self.copy.set_enabled(copyable);
         self.finder.set_enabled(has_last);
     }
@@ -237,6 +257,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
     let mut tray = None;
     let mut state = State::Idle;
     let mut stop_requested = false;
+    let mut pending_marks = Vec::new();
     let mut current_root = None;
     let mut active: Option<Active> = None;
     let mut stop_waiters = Vec::new();
@@ -387,6 +408,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                         active = Some(worker);
                         state = State::Starting;
                         stop_requested = false;
+                        pending_marks.clear();
                     }
                     Err(e) => {
                         ack_ok = false;
@@ -401,17 +423,25 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
             UserEvent::Stop if matches!(state, State::Starting | State::Recording) => {
                 stop_requested = true;
                 if state == State::Recording { state = State::Processing; }
-                if let Some(active) = &active {
-                    let _ = active.commands.send(RecorderCommand::Stop);
+                if state == State::Processing {
+                    if let Some(active) = &active {
+                        let _ = active.commands.send(RecorderCommand::Stop);
+                    }
                 }
             }
             UserEvent::Started(root) => {
                 current_root = Some(root);
+                if let Some(active) = &active {
+                    finish_start(&active.commands, &mut pending_marks, stop_requested);
+                }
                 state = State::started(stop_requested);
             }
-            UserEvent::Mark { source, note } if state == State::Recording => {
-                if let Some(active) = &active {
-                    let _ = active.commands.send(RecorderCommand::Mark { source, note });
+            UserEvent::Mark { source, note } if matches!(state, State::Starting | State::Recording) => {
+                let command = RecorderCommand::Mark { source, note };
+                if state == State::Starting {
+                    pending_marks.push(command);
+                } else if let Some(active) = &active {
+                    let _ = active.commands.send(command);
                 }
             }
             UserEvent::Processing => state = State::Processing,
@@ -493,8 +523,10 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                 }
                 if let Some(active) = &active {
                     stop_requested = true;
-                    if state != State::Starting { state = State::Processing; }
-                    let _ = active.commands.send(RecorderCommand::Stop);
+                    if state != State::Starting {
+                        state = State::Processing;
+                        let _ = active.commands.send(RecorderCommand::Stop);
+                    }
                 } else {
                     *flow = ControlFlow::Exit;
                 }
@@ -524,4 +556,45 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
         }
     }
     outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn startup_marks_are_applied_in_order_before_an_early_stop_or_duration_timeout() {
+        for stop_requested in [false, true] {
+            let (sender, receiver) = mpsc::channel();
+            let mut marks = vec![
+                RecorderCommand::Mark {
+                    source: "hotkey",
+                    note: Some("first".into()),
+                },
+                RecorderCommand::Mark {
+                    source: "cli",
+                    note: Some("second".into()),
+                },
+            ];
+            finish_start(&sender, &mut marks, stop_requested);
+            for (source, note) in [("hotkey", "first"), ("cli", "second")] {
+                let RecorderCommand::Mark {
+                    source: actual_source,
+                    note: actual_note,
+                } = receiver.try_recv().unwrap()
+                else {
+                    panic!("startup mark lost or reordered")
+                };
+                assert_eq!(
+                    (actual_source, actual_note.as_deref()),
+                    (source, Some(note))
+                );
+            }
+            assert!(matches!(
+                (receiver.try_recv().unwrap(), stop_requested),
+                (RecorderCommand::Stop, true) | (RecorderCommand::Begin, false)
+            ));
+            assert!(receiver.try_recv().is_err());
+        }
+    }
 }

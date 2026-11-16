@@ -156,7 +156,7 @@ impl State {
     pub fn accepts(self, command: &Command) -> bool {
         match command {
             Command::Start => self == Self::Idle,
-            Command::Mark { .. } => self == Self::Recording,
+            Command::Mark { .. } => matches!(self, Self::Starting | Self::Recording),
             Command::Stop { wait } => {
                 matches!(self, Self::Starting | Self::Recording)
                     || (*wait && self == Self::Processing)
@@ -310,7 +310,7 @@ mod tests {
             assert_eq!(state.accepts(&Command::Start), state == State::Idle);
             assert_eq!(
                 state.accepts(&Command::Mark { note: None }),
-                state == State::Recording
+                matches!(state, State::Starting | State::Recording)
             );
             assert_eq!(
                 state.accepts(&Command::Stop { wait: false }),
