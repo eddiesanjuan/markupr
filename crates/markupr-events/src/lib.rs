@@ -178,6 +178,30 @@ impl Drop for EventRecorder {
 
 // ---------- focus, secure input, system log ----------
 
+const SECURE_HOLD_S: f64 = 1.0;
+
+/// Debounces secure-input state samples: a change is reported only once it has held for
+/// `SECURE_HOLD_S`, stamped with when it began. Shorter flaps report nothing; a change still
+/// pending when sampling stops is dropped.
+#[derive(Default)]
+struct SecureDebounce { stable: bool, pending: Option<(f64, bool)> }
+
+impl SecureDebounce {
+    fn sample(&mut self, t: f64, on: bool) -> Option<(f64, bool)> {
+        if on == self.stable {
+            self.pending = None;
+            return None;
+        }
+        let (start, _) = *self.pending.get_or_insert((t, on));
+        if t - start >= SECURE_HOLD_S {
+            self.stable = on;
+            self.pending = None;
+            return Some((start, on));
+        }
+        None
+    }
+}
+
 /// Process-wide count of focus polls whose window title came from [app element, window list].
 static TITLE_SOURCES: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
 
@@ -189,13 +213,14 @@ pub fn focus_title_sources() -> (u64, u64) {
 
 fn poll_focus(events: &JsonlWriter, clock: &Clock, stop: &AtomicBool, warnings: &Mutex<Vec<String>>, mut syslog: Option<&mut syslog::SysLog>) {
     let mut last: Option<ax::Focus> = None;
-    let mut secure = false;
+    let mut secure = SecureDebounce::default();
     let (mut polls, mut no_focus) = (0u32, 0u32);
     while !stop.load(Ordering::SeqCst) {
+        // Informational line only, debounced. Key privacy does not depend on it: the tap reads
+        // the live state on every key event.
         let now_secure = unsafe { IsSecureEventInputEnabled() } != 0;
-        if now_secure != secure {
-            secure = now_secure;
-            let _ = events.write(&json!({ "t": round_t(clock.now()), "type": "secure_input", "on": secure }));
+        if let Some((t, on)) = secure.sample(clock.now(), now_secure) {
+            let _ = events.write(&json!({ "t": round_t(t), "type": "secure_input", "on": on }));
         }
         polls += 1;
         let found = ax::focus(unsafe { AXIsProcessTrusted() });
@@ -304,6 +329,28 @@ unsafe fn handle_event(ty: u32, event: CGEventRef, tx: &mpsc::Sender<Raw>, fallb
 
 /// Offline harness for checks without touching the live input stream: feed constructed CGEvents
 /// through the same handler and worker the tap uses. Nothing is posted to the system.
+#[cfg(test)]
+mod tests {
+    use super::SecureDebounce;
+
+    /// Bug guarded: secure input flapping once a second filled events.jsonl with a line per flip.
+    #[test]
+    fn secure_input_flapping_once_a_second_fills_the_event_log() {
+        let run = |samples: &[(f64, bool)]| {
+            let mut d = SecureDebounce::default();
+            samples.iter().filter_map(|&(t, on)| d.sample(t, on)).collect::<Vec<_>>()
+        };
+        // 4 Hz polling; on for 0.5 s, off for 0.5 s, for 10 s: nothing written.
+        let flap: Vec<_> = (0..40).map(|i| (i as f64 * 0.25, (i / 2) % 2 == 0)).collect();
+        assert!(run(&flap).is_empty());
+        // On from t=2.0, held: one line at 2.0, written once it has held 1 s. Off from 6.0: one line at 6.0.
+        let held: Vec<_> = (0..40).map(|i| { let t = i as f64 * 0.25; (t, (2.0..6.0).contains(&t)) }).collect();
+        assert_eq!(run(&held), vec![(2.0, true), (6.0, false)]);
+        // Turns on 0.5 s before stop: dropped.
+        assert!(run(&[(0.0, false), (9.5, true), (9.75, true)]).is_empty());
+    }
+}
+
 #[doc(hidden)]
 pub mod replay {
     use super::*;
