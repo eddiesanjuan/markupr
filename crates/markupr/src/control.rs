@@ -1,6 +1,6 @@
 use crate::UserEvent;
 use anyhow::{bail, Context, Result};
-use markupr_core::{config::app_support_dir, Config};
+use markupr_core::{config::app_support_dir, session::Status, Config, PackDir, Session};
 use serde_json::{json, Value};
 use std::{
     fs::{self, File, OpenOptions},
@@ -98,36 +98,92 @@ fn handle_request(
     let mut line = String::new();
     BufReader::new(&mut *stream).read_line(&mut line)?;
     let value: Value = serde_json::from_str(&line)?;
-    let event = match value["cmd"].as_str() {
-        Some("start") => UserEvent::Start,
-        Some("stop") if value["wait"] != false => UserEvent::WaitStop(stream.try_clone()?),
-        Some("stop") => UserEvent::Stop,
-        Some("status") => UserEvent::Status(stream.try_clone()?),
-        Some("mark") => {
-            let note = match &value["note"] {
+    let command = match value["cmd"].as_str() {
+        Some("start") => Command::Start,
+        Some("stop") => Command::Stop {
+            wait: value["wait"] != false,
+        },
+        Some("status") => Command::Status,
+        Some("mark") => Command::Mark {
+            note: match &value["note"] {
                 Value::Null => None,
-                Value::String(s) => Some(s.clone()),
+                Value::String(note) => Some(note.clone()),
                 _ => bail!("note must be a string or null"),
-            };
-            UserEvent::Mark {
-                source: "cli",
-                note,
-            }
-        }
+            },
+        },
         _ => bail!("unknown command"),
     };
-    let deferred = matches!(event, UserEvent::WaitStop(_) | UserEvent::Status(_));
-    dispatch(event)?;
-    Ok((!deferred).then(|| json!({"ok":true})))
+    dispatch(UserEvent::Control {
+        command,
+        stream: stream.try_clone()?,
+    })?;
+    Ok(None)
 }
+
+#[derive(Debug)]
+pub enum Command {
+    Start,
+    Stop { wait: bool },
+    Mark { note: Option<String> },
+    Status,
+}
+impl Command {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Stop { .. } => "stop",
+            Self::Mark { .. } => "mark",
+            Self::Status => "status",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum State {
+    Idle,
+    Starting,
+    Recording,
+    Processing,
+}
+impl State {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Starting => "starting",
+            Self::Recording => "recording",
+            Self::Processing => "processing",
+        }
+    }
+    pub fn accepts(self, command: &Command) -> bool {
+        match command {
+            Command::Start => self == Self::Idle,
+            Command::Mark { .. } => self == Self::Recording,
+            Command::Stop { wait } => {
+                matches!(self, Self::Starting | Self::Recording)
+                    || (*wait && self == Self::Processing)
+            }
+            Command::Status => true,
+        }
+    }
+    pub fn started(stop_requested: bool) -> Self {
+        if stop_requested {
+            Self::Processing
+        } else {
+            Self::Recording
+        }
+    }
+    pub fn reply(self, ok: bool) -> Value {
+        json!({"ok":ok,"state":self.name()})
+    }
+}
+
 pub fn reply_to(stream: &mut UnixStream, value: &Value) {
     let _ = writeln!(stream, "{value}");
 }
 pub fn stop_reply(pack: Option<&Path>, error: Option<&str>) -> Value {
     match (pack, error) {
-        (Some(pack), None) => json!({"ok":true,"pack":pack,"status":"ready"}),
+        (Some(pack), None) => json!({"ok":true,"state":"idle","pack":pack,"status":"ready"}),
         (Some(pack), Some(error)) => {
-            json!({"ok":false,"pack":pack,"status":"failed","error":error})
+            json!({"ok":false,"state":"idle","pack":pack,"status":"failed","error":error})
         }
         (None, _) => json!({"ok":false,"error":error.unwrap_or("no pack was created")}),
     }
@@ -154,7 +210,7 @@ fn request(request: &Value) -> Result<Value> {
     Ok(value)
 }
 pub fn send(value: Value) -> Result<()> {
-    let value = request(&value)?;
+    let value = request(&value).map_err(|error| anyhow::anyhow!("{error}"))?;
     write_reply(&value, &mut std::io::stdout().lock())
 }
 fn write_reply(value: &Value, output: &mut impl Write) -> Result<()> {
@@ -176,15 +232,25 @@ pub fn last_pack(config: &Config) -> Option<PathBuf> {
         .ok()?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
-        .filter(|path| path.join("session.json").is_file())
+        .filter(|path| ready_pack(path).is_ok())
         .max()?
         .canonicalize()
         .ok()
 }
 
+pub fn ready_pack(dir: &Path) -> Result<PackDir> {
+    let pack = PackDir::open(dir)?;
+    anyhow::ensure!(
+        Session::load(&pack)?.status == Status::Ready,
+        "pack is not ready: {}",
+        pack.root().display()
+    );
+    Ok(pack)
+}
+
 pub fn status() {
     let value = request(&json!({"cmd":"status"})).ok().filter(|value| {
-        matches!(value["state"].as_str(), Some("idle" | "recording" | "processing"))
+        matches!(value["state"].as_str(), Some("idle" | "starting" | "recording" | "processing"))
     }).unwrap_or_else(|| {
         json!({"state":"not_running", "last_pack":Config::load().ok().and_then(|config| last_pack(&config))})
     });
@@ -197,109 +263,118 @@ mod tests {
     use std::{io::Read, sync::mpsc};
 
     #[test]
-    fn waited_stop_has_no_early_ack_and_does_not_block_status_requests() -> Result<()> {
+    fn control_requests_wait_for_the_main_loop_to_decide_their_state() -> Result<()> {
         let (dispatch, events) = mpsc::channel();
-        let dispatch = |event| dispatch.send(event).map_err(Into::into);
-        let (mut client, mut server) = UnixStream::pair()?;
-        writeln!(client, "{{\"cmd\":\"stop\"}}")?;
-        assert!(handle_request(&mut server, &dispatch)?.is_none());
-        let UserEvent::WaitStop(mut completion) = events.recv_timeout(Duration::from_secs(1))?
-        else {
-            panic!("stop must wait")
-        };
-        client.set_nonblocking(true)?;
-        assert_eq!(
-            client.read(&mut [0]).unwrap_err().kind(),
-            std::io::ErrorKind::WouldBlock
-        );
-        client.set_nonblocking(false)?;
-        client.set_read_timeout(Some(Duration::from_secs(1)))?;
-
-        // A pending stop must leave the accept loop free to route status requests.
-        let (mut status_client, mut status_server) = UnixStream::pair()?;
-        status_client.set_read_timeout(Some(Duration::from_secs(1)))?;
-        writeln!(status_client, "{{\"cmd\":\"status\"}}")?;
-        assert!(handle_request(&mut status_server, &dispatch)?.is_none());
-        let UserEvent::Status(mut status) = events.recv_timeout(Duration::from_secs(1))? else {
-            panic!("status was blocked")
-        };
-        reply_to(&mut status, &json!({"state":"processing","last_pack":null}));
-        let mut line = String::new();
-        BufReader::new(status_client).read_line(&mut line)?;
-        assert_eq!(serde_json::from_str::<Value>(&line)?["state"], "processing");
-
+        for command in ["start", "mark", "stop", "status"] {
+            let (mut client, mut server) = UnixStream::pair()?;
+            writeln!(client, "{}", json!({"cmd":command}))?;
+            assert!(handle_request(&mut server, &|event| dispatch
+                .send(event)
+                .map_err(Into::into))?
+            .is_none());
+            let UserEvent::Control {
+                command: parsed,
+                mut stream,
+            } = events.recv_timeout(Duration::from_secs(1))?
+            else {
+                panic!("missing control event")
+            };
+            assert_eq!(parsed.name(), command);
+            client.set_nonblocking(true)?;
+            assert_eq!(
+                client.read(&mut [0]).unwrap_err().kind(),
+                std::io::ErrorKind::WouldBlock
+            );
+            client.set_nonblocking(false)?;
+            client.set_read_timeout(Some(Duration::from_secs(1)))?;
+            reply_to(&mut stream, &State::Starting.reply(true));
+            let mut line = String::new();
+            BufReader::new(client).read_line(&mut line)?;
+            assert_eq!(
+                serde_json::from_str::<Value>(&line)?,
+                json!({"ok":true,"state":"starting"})
+            );
+        }
+        Ok(())
+    }
+    #[test]
+    fn early_stop_is_honored_after_start_and_invalid_commands_are_rejected() {
+        assert_eq!(State::started(false), State::Recording);
+        assert_eq!(State::started(true), State::Processing);
+        for state in [
+            State::Idle,
+            State::Starting,
+            State::Recording,
+            State::Processing,
+        ] {
+            assert_eq!(state.accepts(&Command::Start), state == State::Idle);
+            assert_eq!(
+                state.accepts(&Command::Mark { note: None }),
+                state == State::Recording
+            );
+            assert_eq!(
+                state.accepts(&Command::Stop { wait: false }),
+                matches!(state, State::Starting | State::Recording)
+            );
+            assert_eq!(
+                state.accepts(&Command::Stop { wait: true }),
+                state != State::Idle
+            );
+        }
+    }
+    #[test]
+    fn ready_and_failed_stop_replies_put_the_absolute_pack_path_last() -> Result<()> {
         let pack = Path::new("/tmp/markupr-unit-pack");
-        reply_to(&mut completion, &stop_reply(Some(pack), None));
-        line.clear();
-        BufReader::new(client).read_line(&mut line)?;
-        assert_eq!(
-            serde_json::from_str::<Value>(&line)?,
-            json!({"ok":true,"pack":pack,"status":"ready"})
-        );
-        let mut stdout = Vec::new();
-        write_reply(&serde_json::from_str(&line)?, &mut stdout)?;
-        assert_eq!(
-            String::from_utf8(stdout)?.lines().last(),
-            Some("/tmp/markupr-unit-pack")
-        );
+        for error in [None, Some("pack failed")] {
+            let reply = stop_reply(Some(pack), error);
+            let mut output = Vec::new();
+            assert_eq!(write_reply(&reply, &mut output).is_ok(), error.is_none());
+            assert_eq!(
+                reply["status"],
+                if error.is_none() { "ready" } else { "failed" }
+            );
+            assert_eq!(
+                String::from_utf8(output)?.lines().last(),
+                Some("/tmp/markupr-unit-pack")
+            );
+        }
         Ok(())
     }
-
     #[test]
-    fn no_wait_stop_acknowledges_immediately_and_failed_completion_keeps_the_pack_path(
-    ) -> Result<()> {
-        let (dispatch, events) = mpsc::channel();
-        let (mut client, mut server) = UnixStream::pair()?;
-        writeln!(client, "{{\"cmd\":\"stop\",\"wait\":false}}")?;
-        let reply = handle_request(&mut server, &|event| {
-            dispatch.send(event).map_err(Into::into)
-        })?;
-        assert!(matches!(
-            events.recv_timeout(Duration::from_secs(1))?,
-            UserEvent::Stop
-        ));
-        assert_eq!(reply, Some(json!({"ok":true})));
-        let failed = stop_reply(
-            Some(Path::new("/tmp/markupr-failed-pack")),
-            Some("pack write failed"),
-        );
-        assert_eq!(
-            failed,
-            json!({"ok":false,"pack":"/tmp/markupr-failed-pack","status":"failed","error":"pack write failed"})
-        );
-        let mut stdout = Vec::new();
-        assert!(write_reply(&failed, &mut stdout).is_err());
-        assert_eq!(
-            String::from_utf8(stdout)?.lines().last(),
-            Some("/tmp/markupr-failed-pack")
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn status_does_not_hide_the_newest_pack_when_prompt_was_not_written() -> Result<()> {
+    fn unfinished_or_failed_packs_cannot_be_selected_or_copied() -> Result<()> {
         let root = std::env::temp_dir().join(format!(
-            "markupr-l9-status-{}-{}",
+            "markupr-l9-ready-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)?
                 .as_nanos()
         ));
-        let older = root.join("2026-11-16_14-00-00");
-        let newest = root.join("2026-11-16_14-01-00");
-        fs::create_dir_all(&older)?;
-        fs::create_dir(&newest)?;
-        fs::write(older.join("session.json"), "{}")?;
-        fs::write(older.join("PROMPT.md"), "ready")?;
-        fs::write(newest.join("session.json"), "{}")?;
         let config = Config {
             packs_dir: root.clone(),
             ..Config::default()
         };
+        let mut ready = None;
+        for (n, status) in ["ready", "recording", "processing", "failed"]
+            .into_iter()
+            .enumerate()
+        {
+            let dir = root.join(format!("2026-11-16_14-0{n}-00"));
+            fs::create_dir_all(&dir)?;
+            fs::write(
+                dir.join("session.json"),
+                serde_json::to_vec(
+                    &json!({"schema":"markupr.pack/1","id":"fixture","status":status,"app_version":"test","clock":{"t0_host_ns":0,"t0_unix_ms":0},"sources":{"events":false,"system_log":false},"permissions":{},"timing":{}}),
+                )?,
+            )?;
+            if n == 0 {
+                ready = Some(dir.canonicalize()?);
+            } else {
+                assert!(ready_pack(&dir).is_err());
+            }
+        }
         let actual = last_pack(&config);
-        let expected = newest.canonicalize()?;
         fs::remove_dir_all(&root)?;
-        assert_eq!(actual, Some(expected));
+        assert_eq!(actual, ready);
         Ok(())
     }
 }

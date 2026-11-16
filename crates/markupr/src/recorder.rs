@@ -12,24 +12,34 @@ use std::{
 
 #[derive(Args, Clone, Debug)]
 pub struct RecordOptions {
+    /// Show the native ready panel before exiting.
     #[arg(long)]
     pub popup: bool,
+    /// Parent directory for new packs (defaults to the configured packs directory).
     #[arg(long)]
     pub out: Option<PathBuf>,
+    /// Stop automatically after this many seconds.
     #[arg(long, value_parser = positive_seconds)]
     pub duration: Option<f64>,
+    /// Capture this display ID instead of the display under the cursor.
     #[arg(long)]
     pub display: Option<u32>,
+    /// Disable microphone capture.
     #[arg(long)]
     pub no_mic: bool,
+    /// Disable system audio capture.
     #[arg(long)]
     pub no_system_audio: bool,
+    /// Disable browser log capture.
     #[arg(long)]
     pub no_browser: bool,
+    /// Browser debugging port (defaults to the configured port).
     #[arg(long)]
     pub browser_port: Option<u16>,
+    /// Disable unified system logs.
     #[arg(long)]
     pub no_syslog: bool,
+    /// Save raw capture without post-processing.
     #[arg(long)]
     pub no_pack: bool,
     #[command(flatten)]
@@ -38,14 +48,18 @@ pub struct RecordOptions {
 
 #[derive(Args, Clone, Debug)]
 pub struct ProcessingOptions {
+    /// Use the configured fast speech model.
     #[arg(long)]
     pub fast: bool,
+    /// Audio track to transcribe.
     #[arg(long, value_enum, default_value = "mic")]
     pub audio_source: AudioChoice,
 }
 #[derive(Clone, Copy, Debug, ValueEnum)]
 pub enum AudioChoice {
+    /// Narration recorded by the microphone.
     Mic,
+    /// Sound recorded from the system output.
     System,
 }
 impl ProcessingOptions {
@@ -102,10 +116,7 @@ pub struct Recorder {
 impl Recorder {
     pub fn start(opts: RecordOptions, clock: Clock, pack: PackDir, config: Config) -> Result<Self> {
         let permissions = markupr_events::permissions::check();
-        if !opts.no_mic && !permissions.microphone {
-            eprintln!("warning: microphone permission missing; microphone capture disabled");
-        }
-        let session = Session {
+        let mut session = Session {
             schema: "markupr.pack/1".into(),
             id: pack
                 .root()
@@ -133,6 +144,30 @@ impl Recorder {
             timing: Timing::default(),
             warnings: vec![],
         };
+        for (name, granted) in [
+            ("Screen recording", permissions.screen),
+            ("Accessibility", permissions.accessibility),
+            ("Input monitoring", permissions.input_monitoring),
+            ("Microphone", permissions.microphone),
+        ] {
+            if !granted {
+                capture_warning(
+                    &mut session,
+                    clock,
+                    format!("{name} permission is missing."),
+                );
+            }
+        }
+        for (disabled, name) in [
+            (opts.no_mic, "Microphone capture"),
+            (opts.no_system_audio, "System audio capture"),
+            (opts.no_browser, "Browser logging"),
+            (opts.no_syslog, "System logging"),
+        ] {
+            if disabled {
+                capture_warning(&mut session, clock, format!("{name} was switched off."));
+            }
+        }
         session.save(&pack)?;
         let events = match markupr_events::EventRecorder::start(
             markupr_events::EventsConfig {
@@ -144,7 +179,11 @@ impl Recorder {
         ) {
             Ok(events) => Some(events),
             Err(error) => {
-                eprintln!("warning: events unavailable: {error}");
+                capture_warning(
+                    &mut session,
+                    clock,
+                    format!("Input capture could not start: {error}"),
+                );
                 None
             }
         };
@@ -169,10 +208,15 @@ impl Recorder {
         }) {
             Ok(screen) => Some(screen),
             Err(error) => {
-                eprintln!("warning: screen capture unavailable: {error}");
+                capture_warning(
+                    &mut session,
+                    clock,
+                    format!("Screen capture could not start: {error}"),
+                );
                 None
             }
         };
+        session.save(&pack)?;
         Ok(Self {
             clock,
             pack,
@@ -208,7 +252,7 @@ impl Recorder {
             match screen.stop() {
                 Ok(report) => {
                     for warning in report.warnings {
-                        eprintln!("warning: {warning}");
+                        capture_warning(&mut self.session, self.clock, warning);
                     }
                     let d = report.display;
                     self.session.display = Some(markupr_core::session::Display {
@@ -219,8 +263,7 @@ impl Recorder {
                         h: d.h.round() as u32,
                         scale: d.scale,
                     });
-                    let video = report.video;
-                    self.session.video = Some(markupr_core::session::Video {
+                    self.session.video = report.video.map(|video| markupr_core::session::Video {
                         file: "video.mp4".into(),
                         start_t: round_t(self.clock.t_from_host_ns(video.start_host_ns)),
                         width: video.width,
@@ -228,7 +271,12 @@ impl Recorder {
                         fps: video.fps,
                     });
                     self.session.mic = report.mic.map(|mic| markupr_core::session::Mic {
-                        file: "audio/mic.wav".into(),
+                        file: mic
+                            .path
+                            .strip_prefix(self.pack.root())
+                            .unwrap_or(&mic.path)
+                            .to_string_lossy()
+                            .into_owned(),
                         start_t: round_t(self.clock.t_from_host_ns(mic.start_host_ns)),
                         sample_rate: mic.sample_rate,
                     });
@@ -236,12 +284,25 @@ impl Recorder {
                         report
                             .system_audio
                             .map(|audio| markupr_core::session::SystemAudio {
-                                file: "video.mp4".into(),
+                                file: audio
+                                    .path
+                                    .strip_prefix(self.pack.root())
+                                    .unwrap_or(&audio.path)
+                                    .to_string_lossy()
+                                    .into_owned(),
                                 stream: audio.stream,
                                 start_t: round_t(self.clock.t_from_host_ns(audio.start_host_ns)),
                             });
+                    if let Some(stopped) = report.capture_stopped {
+                        let t = round_t(self.clock.t_from_host_ns(stopped.host_ns));
+                        capture_warning(&mut self.session, self.clock, format!("Screen capture stopped at t {t}: {}; later moments show the last frame before that.", stopped.reason));
+                    }
                 }
-                Err(error) => eprintln!("warning: screen finalization failed: {error}"),
+                Err(error) => capture_warning(
+                    &mut self.session,
+                    self.clock,
+                    format!("Screen finalization failed: {error}"),
+                ),
             }
         }
         if let Some(events) = self.events.take() {
@@ -251,10 +312,18 @@ impl Recorder {
                     self.session.sources.system_log =
                         self.system_log && self.pack.system_log().is_file();
                     for warning in report.warnings {
-                        eprintln!("warning: events: {warning}");
+                        capture_warning(
+                            &mut self.session,
+                            self.clock,
+                            format!("Input capture: {warning}"),
+                        );
                     }
                 }
-                Err(error) => eprintln!("warning: events finalization failed: {error}"),
+                Err(error) => capture_warning(
+                    &mut self.session,
+                    self.clock,
+                    format!("Input finalization failed: {error}"),
+                ),
             }
         }
         if let Some(browser) = self.browser.take() {
@@ -264,12 +333,13 @@ impl Recorder {
                 port: report.port,
             });
             for warning in report.warnings {
-                eprintln!("warning: browser: {warning}");
+                capture_warning(&mut self.session, self.clock, format!("Browser: {warning}"));
             }
             if !report.attached {
-                eprintln!(
-                    "warning: browser debug endpoint unavailable on port {}",
-                    report.port
+                capture_warning(
+                    &mut self.session,
+                    self.clock,
+                    format!("Browser logs were not attached on port {}.", report.port),
                 );
             }
         }
@@ -306,4 +376,10 @@ impl Recorder {
 }
 fn unix_ms() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64)
+}
+
+fn capture_warning(session: &mut Session, clock: Clock, message: String) {
+    let message = format!("t {:.3}: {message}", round_t(clock.now()));
+    eprintln!("warning: {message}");
+    session.warnings.push(message);
 }

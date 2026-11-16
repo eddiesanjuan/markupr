@@ -8,7 +8,6 @@ use clap::{Parser, Subcommand};
 use markupr_core::{Config, PackDir};
 use recorder::{ProcessingOptions, RecordOptions};
 use std::{
-    fs,
     io::Write,
     path::{Path, PathBuf},
     process::{Command as ProcessCommand, Stdio},
@@ -22,40 +21,74 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Run the menu bar app (also the default command).
     App(RecordOptions),
+    /// Record once, then build a context pack.
     Record(RecordOptions),
+    /// Start recording in the running app.
     Start,
+    /// Stop recording and wait for the finished pack.
     Stop {
         #[arg(long)]
+        /// Return immediately after requesting stop.
         no_wait: bool,
     },
+    /// Print the running state and newest ready pack as JSON.
     Status,
+    /// Mark this moment in the running recording.
     Mark {
+        /// Add a short note to the mark.
         #[arg(long)]
         note: Option<String>,
     },
+    /// Show the native ready panel for an existing pack.
     Popup {
+        /// Context pack directory.
         dir: PathBuf,
     },
+    /// Check permissions, tools, models, and browser access.
     Doctor {
+        /// Ask macOS for missing permissions.
         #[arg(long)]
         request: bool,
     },
+    /// Rebuild the derived files in an existing pack.
     Pack {
+        /// Context pack directory.
         dir: PathBuf,
         #[command(flatten)]
         processing: ProcessingOptions,
     },
+    /// List available displays as JSON.
     Displays,
+    /// Open Chrome with a dedicated debug profile.
     Browser {
+        /// Debugging port (defaults to the configured port).
         #[arg(long)]
         port: Option<u16>,
         #[arg(long)]
+        /// Page to open in the debug browser.
         url: Option<String>,
     },
+    /// Extract a screen frame at a session time.
+    Frame {
+        /// Context pack directory.
+        dir: PathBuf,
+        /// Time in seconds from the start of the session.
+        t: f64,
+        /// Output image (defaults to frames/at-T.jpg in the pack).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Omit the cursor ring.
+        #[arg(long)]
+        no_ring: bool,
+    },
+    /// Print the prompt for a ready pack.
     Prompt {
+        /// Pack directory (defaults to the newest ready pack).
         dir: Option<PathBuf>,
         #[arg(long)]
+        /// Also copy the prompt to the general pasteboard.
         copy: bool,
     },
 }
@@ -64,8 +97,13 @@ enum UserEvent {
     Start,
     Toggle,
     Stop,
-    WaitStop(std::os::unix::net::UnixStream),
-    Status(std::os::unix::net::UnixStream),
+    Control {
+        command: control::Command,
+        stream: std::os::unix::net::UnixStream,
+    },
+    Started(PathBuf),
+    Signal,
+    SelfClick,
     Mark {
         source: &'static str,
         note: Option<String>,
@@ -128,6 +166,25 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string(&info)?);
             Ok(())
         }
+        Some(Command::Frame {
+            dir,
+            t,
+            output,
+            no_ring,
+        }) => {
+            let pack = PackDir::open(dir)?;
+            let output = match output {
+                Some(output) => output,
+                None => {
+                    std::fs::create_dir_all(pack.frames_dir())?;
+                    pack.frames_dir().join(format!("at-{t}.jpg"))
+                }
+            };
+            let frame = markupr_pack::frame_at(&pack, &Config::load()?, t, &output, !no_ring)
+                .map_err(|error| anyhow!("{error}"))?;
+            println!("{}", serde_json::to_string(&frame)?);
+            Ok(())
+        }
         Some(Command::Prompt { dir, copy }) => prompt(dir, copy),
     }
 }
@@ -135,15 +192,11 @@ fn main() -> Result<()> {
 fn prompt(dir: Option<PathBuf>, copy: bool) -> Result<()> {
     let dir = match dir {
         Some(dir) => dir,
-        None => fs::read_dir(Config::load()?.packs_dir)?
-            .collect::<std::io::Result<Vec<_>>>()?
-            .into_iter()
-            .filter(|entry| entry.path().join("session.json").is_file())
-            .max_by_key(|entry| entry.file_name())
-            .ok_or_else(|| anyhow!("no packs found"))?
-            .path(),
+        None => {
+            control::last_pack(&Config::load()?).ok_or_else(|| anyhow!("no ready packs found"))?
+        }
     };
-    let text = markupr_pack::prompt_text(&PackDir::open(&dir)?);
+    let text = markupr_pack::prompt_text(&control::ready_pack(&dir)?);
     print!("{text}");
     if copy {
         copy_prompt(&dir)?;
@@ -154,7 +207,7 @@ fn prompt(dir: Option<PathBuf>, copy: bool) -> Result<()> {
 
 // CLI and panel deliberately share this exact clipboard path.
 fn copy_prompt(dir: &Path) -> Result<()> {
-    let text = markupr_pack::prompt_text(&PackDir::open(dir)?);
+    let text = markupr_pack::prompt_text(&control::ready_pack(dir)?);
     let mut child = ProcessCommand::new("/usr/bin/pbcopy")
         .stdin(Stdio::piped())
         .spawn()?;

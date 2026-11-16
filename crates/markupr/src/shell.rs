@@ -1,5 +1,6 @@
 use crate::{
-    control, copy_prompt,
+    control::{self, Command, State},
+    copy_prompt,
     popup::{Action, Popup},
     recorder::{RecordOptions, Recorder},
     reveal, ui_debug, UserEvent,
@@ -30,21 +31,6 @@ use tray_icon::{
     Icon, TrayIcon, TrayIconBuilder,
 };
 
-#[derive(Clone, Copy, PartialEq)]
-enum State {
-    Idle,
-    Recording,
-    Processing,
-}
-impl State {
-    fn name(self) -> &'static str {
-        match self {
-            Self::Idle => "idle",
-            Self::Recording => "recording",
-            Self::Processing => "processing",
-        }
-    }
-}
 enum RecorderCommand {
     Stop,
     Mark {
@@ -70,6 +56,7 @@ fn start(opts: RecordOptions, proxy: EventLoopProxy<UserEvent>) -> Result<Active
                     .duration
                     .map(|s| Instant::now() + Duration::from_secs_f64(s));
                 let recorder = Recorder::start(opts, Clock::start(), pack, config)?;
+                let _ = proxy.send_event(UserEvent::Started(root.as_ref().unwrap().clone()));
                 eprintln!("recording {}", root.as_ref().unwrap().display());
                 loop {
                     let command = match deadline {
@@ -156,6 +143,7 @@ impl Tray {
             "markupR {} {}",
             match state {
                 State::Idle => "·",
+                State::Starting => "◌",
                 State::Recording => "●",
                 State::Processing => "◌",
             },
@@ -168,6 +156,7 @@ impl Tray {
             "{} ({})",
             match state {
                 State::Idle => "Start recording",
+                State::Starting => "Stop recording",
                 State::Recording => "Stop recording",
                 State::Processing => "Processing…",
             },
@@ -190,14 +179,6 @@ fn icon() -> Result<Icon> {
         }
     }
     Ok(Icon::from_rgba(rgba, 18, 18)?)
-}
-fn latest(config: &Config) -> Option<PathBuf> {
-    std::fs::read_dir(&config.packs_dir)
-        .ok()?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.join("PROMPT.md").is_file())
-        .max()
 }
 
 pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) -> Result<()> {
@@ -247,18 +228,23 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
     let signal_worker = thread::Builder::new()
         .name("signals".into())
         .spawn(move || {
-            if signals.forever().next().is_some() {
-                let _ = signal_proxy.send_event(UserEvent::Quit);
+            for _ in signals.forever() {
+                if signal_proxy.send_event(UserEvent::Signal).is_err() {
+                    break;
+                }
             }
         })?;
     let mut tray = None;
     let mut state = State::Idle;
+    let mut stop_requested = false;
+    let mut current_root = None;
     let mut active: Option<Active> = None;
     let mut stop_waiters = Vec::new();
     let mut panel: Option<Popup> = None;
-    let mut last = latest(&config);
+    let mut last = control::last_pack(&config);
     let mut copyable = last.is_some();
     let mut quitting = false;
+    let mut signal_received = false;
     let mut outcome: Result<()> = Ok(());
     let mut printed_root = None;
     event_loop.run_return(|event, _, flow| {
@@ -293,6 +279,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     match Popup::show(dir.clone(), None, proxy.clone()) {
                         Ok(p) => {
                             *flow = ControlFlow::WaitUntil(p.deadline);
+                            let _ = proxy.send_event(UserEvent::SelfClick);
                             panel = Some(p);
                         }
                         Err(error) => {
@@ -348,9 +335,45 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
             },
             UserEvent::Toggle => match state {
                 State::Idle if app => UserEvent::Start,
-                State::Recording => UserEvent::Stop,
+                State::Starting | State::Recording => UserEvent::Stop,
                 _ => return,
             },
+            UserEvent::Signal if signal_received && state == State::Processing => {
+                if let Some(root) = &current_root {
+                    if let Ok(pack) = PackDir::open(root) {
+                        if let Ok(mut session) = markupr_core::Session::load(&pack) {
+                            session.status = markupr_core::session::Status::Failed;
+                            session.warnings.push("Processing interrupted by a second signal.".into());
+                            let _ = session.save(&pack);
+                        }
+                    }
+                }
+                std::process::exit(130);
+            }
+            UserEvent::Signal => { signal_received = true; UserEvent::Quit },
+            event => event,
+        };
+        let mut ack = None;
+        let mut ack_ok = true;
+        let event = match event {
+            UserEvent::Control { command, mut stream } => {
+                if !state.accepts(&command) || quitting && !matches!(command, Command::Status) {
+                    let mut reply = state.reply(false);
+                    reply["error"] = format!("cannot {} while {}", command.name(), state.name()).into();
+                    control::reply_to(&mut stream, &reply);
+                    return;
+                }
+                match command {
+                    Command::Status => {
+                        control::reply_to(&mut stream, &serde_json::json!({"state":state.name(),"last_pack":control::last_pack(&config)}));
+                        return;
+                    }
+                    Command::Stop { wait: true } => { stop_waiters.push(stream); UserEvent::Stop }
+                    Command::Stop { wait: false } => { ack = Some(stream); UserEvent::Stop }
+                    Command::Start => { ack = Some(stream); UserEvent::Start }
+                    Command::Mark { note } => { ack = Some(stream); UserEvent::Mark { source: "cli", note } }
+                }
+            }
             event => event,
         };
         let previous = state;
@@ -362,9 +385,11 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                 match start(opts.as_ref().unwrap().clone(), proxy.clone()) {
                     Ok(worker) => {
                         active = Some(worker);
-                        state = State::Recording;
+                        state = State::Starting;
+                        stop_requested = false;
                     }
                     Err(e) => {
+                        ack_ok = false;
                         eprintln!("recording: {e:#}");
                         if !app {
                             outcome = Err(e);
@@ -373,27 +398,16 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     }
                 }
             }
-            UserEvent::Stop if state == State::Recording => {
-                state = State::Processing;
+            UserEvent::Stop if matches!(state, State::Starting | State::Recording) => {
+                stop_requested = true;
+                if state == State::Recording { state = State::Processing; }
                 if let Some(active) = &active {
                     let _ = active.commands.send(RecorderCommand::Stop);
                 }
             }
-            UserEvent::WaitStop(mut stream) => {
-                if state == State::Idle {
-                    control::reply_to(&mut stream, &serde_json::json!({"ok":false,"error":"no recording in progress"}));
-                } else {
-                    stop_waiters.push(stream);
-                    if state == State::Recording {
-                        state = State::Processing;
-                        if let Some(active) = &active {
-                            let _ = active.commands.send(RecorderCommand::Stop);
-                        }
-                    }
-                }
-            }
-            UserEvent::Status(mut stream) => {
-                control::reply_to(&mut stream, &serde_json::json!({"state":state.name(),"last_pack":control::last_pack(&config)}));
+            UserEvent::Started(root) => {
+                current_root = Some(root);
+                state = State::started(stop_requested);
             }
             UserEvent::Mark { source, note } if state == State::Recording => {
                 if let Some(active) = &active {
@@ -422,7 +436,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     }
                 };
                 if let Some(root) = root {
-                    copyable = report.is_some();
+                    copyable = control::ready_pack(&root).is_ok();
                     last = Some(root.clone());
                     printed_root = Some(root.clone());
                     if app {
@@ -447,7 +461,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
             UserEvent::Popup(action) => {
                 if let Some(p) = &mut panel {
                     match action {
-                        Action::Copy if p.can_copy() => match copy_prompt(&p.dir) {
+                        Action::Copy if p.can_copy() => match if p.selftest_copy { Ok(()) } else { copy_prompt(&p.dir) } {
                             Ok(()) => p.copied(),
                             Err(e) => eprintln!("copy: {e:#}"),
                         },
@@ -469,13 +483,17 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     *flow = ControlFlow::Exit;
                 }
             }
+            UserEvent::SelfClick => {
+                if let Some(panel) = &panel { panel.self_click_copy(); }
+            }
             UserEvent::Quit => {
                 quitting = true;
                 if let Some(mut p) = panel.take() {
                     p.close("close");
                 }
                 if let Some(active) = &active {
-                    state = State::Processing;
+                    stop_requested = true;
+                    if state != State::Starting { state = State::Processing; }
                     let _ = active.commands.send(RecorderCommand::Stop);
                 } else {
                     *flow = ControlFlow::Exit;
@@ -483,6 +501,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
             }
             _ => {}
         }
+        if let Some(mut stream) = ack { control::reply_to(&mut stream, &state.reply(ack_ok)); }
         if previous != state && app {
             ui_debug(format!("tray: state={}", state.name()));
         }

@@ -3,13 +3,13 @@ use anyhow::{anyhow, Result};
 use markupr_core::{session::Status, PackDir, Session};
 use objc2::{define_class, msg_send, rc::Retained, sel, DefinedClass, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSBezelStyle, NSButton, NSColor, NSEvent, NSFont, NSPanel,
-    NSPopUpMenuWindowLevel, NSScreen, NSTextField, NSVisualEffectBlendingMode,
-    NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowCollectionBehavior,
-    NSWindowStyleMask,
+    NSApplication, NSBackingStoreType, NSBezelStyle, NSButton, NSColor, NSEvent,
+    NSEventModifierFlags, NSEventType, NSFont, NSPanel, NSPopUpMenuWindowLevel, NSScreen,
+    NSTextField, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
+    NSVisualEffectView, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{
-    MainThreadMarker, NSObject, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString,
+    MainThreadMarker, NSObject, NSObjectProtocol, NSPoint, NSProcessInfo, NSRect, NSSize, NSString,
 };
 use std::{
     fs,
@@ -42,14 +42,14 @@ define_class!(
     }
 );
 
-// The controls must never move keyboard focus away from the owner's work.
+// AppKit buttons decide whether they need a key panel; it never becomes main.
 define_class!(
     #[unsafe(super = NSPanel)]
     #[thread_kind = MainThreadOnly]
     struct PackPanel;
     impl PackPanel {
         #[unsafe(method(canBecomeKeyWindow))]
-        fn can_become_key_window(&self) -> bool { false }
+        fn can_become_key_window(&self) -> bool { true }
         #[unsafe(method(canBecomeMainWindow))]
         fn can_become_main_window(&self) -> bool { false }
     }
@@ -60,6 +60,7 @@ pub struct Popup {
     copy: Option<Retained<NSButton>>,
     _actions: Retained<Actions>,
     pub dir: PathBuf,
+    pub selftest_copy: bool,
     pub deadline: Instant,
     pub reason: &'static str,
 }
@@ -114,15 +115,29 @@ impl Popup {
                 missing.push("No microphone audio");
             }
             if words == 0 {
-                missing.push("No speech recognized");
+                let no_model = report
+                    .map(|report| {
+                        report
+                            .warnings
+                            .iter()
+                            .any(|warning| warning.contains("Whisper model configured"))
+                    })
+                    .unwrap_or_else(|| {
+                        fs::read_to_string(pack.summary())
+                            .is_ok_and(|summary| summary.contains("Whisper model configured"))
+                    });
+                missing.push(if no_model {
+                    "No speech model configured"
+                } else {
+                    "No speech recognized"
+                });
             }
-            if !session
-                .sources
-                .browser
-                .as_ref()
-                .is_some_and(|browser| browser.attached)
-            {
-                missing.push("No browser logs: use Open debug browser in the menu");
+            match session.sources.browser.as_ref() {
+                Some(browser) if !browser.attached => {
+                    missing.push("No browser logs: use Open debug browser in the menu")
+                }
+                None => missing.push("No browser logs"),
+                _ => {}
             }
             missing.truncate(2);
             (!missing.is_empty()).then(|| missing.join(" · "))
@@ -268,11 +283,40 @@ impl Popup {
             copy,
             _actions: actions,
             dir,
+            selftest_copy: std::env::var("MARKUPR_UI_SELFTEST").as_deref() == Ok("copy"),
             deadline: Instant::now() + Duration::from_secs(20),
             reason: "timeout",
         })
     }
+    // In-process only: these events never enter the system event tap or move the cursor.
+    pub fn self_click_copy(&self) {
+        if !self.selftest_copy || self.copy.is_none() {
+            return;
+        }
+        let app = NSApplication::sharedApplication(self.panel.mtm());
+        let timestamp = NSProcessInfo::processInfo().systemUptime();
+        let events: Vec<_> = [
+            (NSEventType::LeftMouseDown, 1.0),
+            (NSEventType::LeftMouseUp, 0.0),
+        ].into_iter().map(|(kind, pressure)| {
+            NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                kind, NSPoint::new(79.0, 31.0), NSEventModifierFlags::empty(), timestamp,
+                self.panel.windowNumber(), None, 1, 1, pressure).expect("create panel self-test event")
+        }).collect();
+        // NSButton tracks mouse-up inside sendEvent(mouse-down:), so queue it first.
+        app.postEvent_atStart(&events[1], true);
+        app.sendEvent(&events[0]);
+    }
     pub fn copied(&mut self) {
+        if self.selftest_copy {
+            let app = NSApplication::sharedApplication(self.panel.mtm());
+            ui_debug(format!(
+                "popup: selftest action=copy active={} key={} main={} clipboard=untouched",
+                app.isActive(),
+                self.panel.isKeyWindow(),
+                self.panel.isMainWindow()
+            ));
+        }
         if let Some(button) = &self.copy {
             button.setTitle(&NSString::from_str("Copied"));
             button.setEnabled(false);
