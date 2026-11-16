@@ -131,50 +131,153 @@ def headless(temp):
         driver.stop_owned(server)
 
 
+def render_frame(pack, number, ring_point, color):
+    width, height = 400, 200
+    raw = bytearray(bytes(color) * (width * height))
+    # Display [-100,-50,800,400], video 1600x800, JPEG 400x200.
+    # The checker must undo both Retina capture and JPEG downscaling.
+    if ring_point is not None:
+        cx, cy = (ring_point[0] + 100) / 2, (ring_point[1] + 50) / 2
+        for y in range(height):
+            for x in range(width):
+                if abs(((x - cx) ** 2 + (y - cy) ** 2) ** .5 - 14) <= 1.5:
+                    offset = (y * width + x) * 3
+                    raw[offset:offset + 3] = bytes([255, 20, 120])
+    path = pack / f'frames/item-{number:02}.jpg'
+    sp.run([driver.FFMPEG, '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24',
+            '-video_size', f'{width}x{height}', '-i', '-', '-frames:v', '1', '-q:v', '2', str(path)],
+           input=raw, check=True, timeout=30)
+    for suffix in ('-zoom', '-click'):
+        (pack / f'frames/item-{number:02}{suffix}.jpg').write_bytes(path.read_bytes())
+
+
+def popup_fixture(pack, results, wrong_clipboard=False):
+    stub = pack / 'stub.py'
+    stub.write_text("""import sys
+print('popup: frame=80,100,400,200 copy=100,200,130,32 finder=240,200,140,32', file=sys.stderr, flush=True)
+sys.stdin.readline()
+print('popup: closed reason=copy', file=sys.stderr, flush=True)
+print(sys.argv[1], flush=True)
+""")
+    stdout, log = pack / 'stub.stdout', pack / 'stub.stderr'
+    clipboard = ['prior clipboard\n\n']
+    writes, clicks, budgets = [], [], []
+    with stdout.open('w') as out, log.open('w') as err:
+        process = sp.Popen([sys.executable, str(stub), str(pack)], stdin=sp.PIPE,
+                           stdout=out, stderr=err, text=True)
+    try:
+        driver.until(lambda: 'popup: frame=' in log.read_text(), 3, 'fixture popup')
+        def fake_click(point):
+            clicks.append(point)
+            clipboard[0] = (pack / 'PROMPT.md').read_text() + ('different' if wrong_clipboard else '')
+            process.stdin.write('copy\n')
+            process.stdin.flush()
+        def fake_write(text):
+            writes.append(text)
+            clipboard[0] = text
+        def fake_stop(argv, timeout):
+            assert argv == ['stub-markupr', 'stop']
+            budgets.append(timeout)
+            assert not stdout.read_text(), "Recorder must not print its final path before the panel closes"
+            return str(pack)
+        actual = driver.finish_recording('stub-markupr', process, stdout, log, results,
+                    popup=True, stop_command=fake_stop, click_fn=fake_click,
+                    read_clipboard=lambda: clipboard[0], write_clipboard=fake_write)
+        assert actual == pack.resolve()
+        assert budgets == [180], budgets
+        assert clicks == [(165, 216)], clicks
+        assert clipboard[0] == 'prior clipboard\n\n' and writes == ['prior clipboard\n\n']
+        assert process.returncode == 0
+    finally:
+        driver.stop_owned(process)
+        process.stdin.close()
+
+
 def fixtures(temp):
+    import shutil
     pack = temp / 'fixture-pack'
     pack.mkdir()
-    rectangles = {'add': {'x': 100, 'y': 200, 'w': 200, 'h': 80},
-                  'save': {'x': 600, 'y': 200, 'w': 150, 'h': 80}}
-    session = {'status': 'ready', 'timing': {'stop_to_ready_ms': 123}}
-    (pack / 'session.json').write_text(json.dumps(session))
     (pack / 'frames').mkdir()
-    items = []
-    for number, (phrase, error) in enumerate([('add to cart', 'TypeError: reading total of undefined'), ('save', 'Save failed: 500')], 1):
+    (pack / 'logs').mkdir()
+    rectangles = {'add': {'x': 0, 'y': 100, 'w': 120, 'h': 60},
+                  'save': {'x': 450, 'y': 100, 'w': 120, 'h': 60}}
+    session = {'status': 'ready', 'timing': {'stop_to_ready_ms': 123},
+               'clock': {'t0_unix_ms': 100000},
+               'display': {'x': -100, 'y': -50, 'w': 800, 'h': 400},
+               'video': {'width': 1600, 'height': 800, 'start_t': 0}}
+    (pack / 'session.json').write_text(json.dumps(session))
+    items, events, state = [], [], []
+    for number, (name, phrase, error) in enumerate([('add', 'add to cart', 'TypeError: reading total of undefined'),
+                                                   ('save', 'save', 'Save failed: 500')], 1):
         frame = f'frames/item-{number:02}.jpg'
-        zoom = f'frames/item-{number:02}-zoom.jpg'
-        # Existence-only frame contract: these are named placeholders, not images.
-        (pack / frame).touch()
-        (pack / zoom).touch()
-        items.append({'said': phrase, 'anchor_t': number, 'frames': [{'file': frame, 'zoom': zoom}], 'logs': [{'text': error}]})
+        items.append({'said': phrase, 'anchor_t': number + .5,
+                      'frames': [{'file': frame, 'zoom': f'frames/item-{number:02}-zoom.jpg'},
+                                 {'file': f'frames/item-{number:02}-click.jpg'}], 'logs': [{'text': error}]})
+        x, y = driver.center(rectangles[name])
+        events += [{'type': 'mouse_down', 't': number, 'x': x, 'y': y},
+                   {'type': 'mark', 't': number + .5, 'x': x, 'y': y}]
+        state.append({'path': '/api/flip', 'data': {'target': name, 'flipped': number == 1,
+                                                   'unix_ms': 100000 + number * 1000}})
+        render_frame(pack, number, (x, y), (32, 80, 224) if number == 1 else (255, 240, 192))
+    browser = [{'type': 'dom_click', 't': 1.02, 'selector': 'button#add', 'text': 'Add to cart'},
+               {'type': 'exception', 't': 1.04, 'text': 'TypeError: reading total of undefined'},
+               {'type': 'dom_click', 't': 2.02, 'selector': 'button#save', 'text': 'Save'},
+               {'type': 'console', 't': 2.05, 'text': 'Save failed: 500'},
+               {'type': 'network', 't': 2.8, 'start_t': 2.03, 'url': 'http://127.0.0.1/api/save', 'status': 500}]
     (pack / 'moments.json').write_text(json.dumps({'items': items}))
-    (pack / 'cursor.jsonl').write_text('\n'.join(json.dumps({'t': i, 'x': x, 'y': 240}) for i, x in [(1, 200), (2, 675)]))
-    for name in ['SUMMARY.md', 'PROMPT.md']:
-        (pack / name).touch()
-    results = driver.Results()
-    driver.walkthrough_checks(pack, session, rectangles, results)
-    results.show()
-    assert all(r['status'] == 'PASS' for r in results.rows)
-    # The checker must reject a concrete failure, even when every file exists.
-    items[1]['logs'] = [{'text': 'unrelated message', 'line': 500, 't': 500}]
-    (pack / 'moments.json').write_text(json.dumps({'items': items}))
-    broken = driver.Results()
-    driver.walkthrough_checks(pack, session, rectangles, broken)
-    assert any(r['check'] == 'item 2 logs' and r['status'] == 'FAIL' for r in broken.rows)
-    print('PASS fixture rejects missing Save 500 evidence')
+    (pack / 'events.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in events))
+    (pack / 'logs/browser.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in browser))
+    (pack / 'SUMMARY.md').write_text('## Item 1\n- Said: add to cart\n## Item 2\n- Said: save\n')
+    (pack / 'PROMPT.md').write_text('Read SUMMARY.md first.\n\n')
+    def check(folder, wrong_clipboard=False):
+        results = driver.Results()
+        driver.walkthrough_checks(folder, driver.json_file(folder / 'session.json'), rectangles, results,
+                                  state, (-40, 300))
+        popup_fixture(folder, results, wrong_clipboard)
+        return results
+    passing = check(pack)
+    print('PASSING REAL-JPEG AND POPUP-STUB FIXTURE:')
+    passing.show()
+    assert all(row['status'] == 'PASS' for row in passing.rows)
+    print('PASS stop budget=180 s; stdout pack path used; injected click=(165, 216); clipboard restored exactly')
+    cases = [('wrong ring', 'item 1 ring'), ('zero ring', 'item 1 ring'),
+             ('pre-click picture', 'item 1 picture state'), ('late browser', 'item 1 browser timing'),
+             ('late network', 'item 2 browser timing'),
+             ('slow pack', 'stop_to_ready_ms'), ('different clipboard', 'clipboard equals PROMPT.md')]
+    for slug, expected in cases:
+        broken = temp / slug.replace(' ', '-')
+        shutil.copytree(pack, broken)
+        if slug == 'wrong ring':
+            render_frame(broken, 1, driver.center(rectangles['save']), (32, 80, 224))
+        elif slug == 'zero ring':
+            render_frame(broken, 1, None, (32, 80, 224))
+        elif slug == 'pre-click picture':
+            render_frame(broken, 1, driver.center(rectangles['add']), (255, 240, 192))
+        elif slug == 'late browser':
+            late = [dict(line) for line in browser]
+            late[1]['t'] = 1.3
+            (broken / 'logs/browser.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in late))
+        elif slug == 'late network':
+            late = [dict(line) for line in browser]
+            late[-1]['start_t'] = 2.3
+            (broken / 'logs/browser.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in late))
+        elif slug == 'slow pack':
+            slow = dict(session, timing={'stop_to_ready_ms': 25000})
+            (broken / 'session.json').write_text(json.dumps(slow))
+        results = check(broken, wrong_clipboard=slug == 'different clipboard')
+        failed = [r for r in results.rows if r['status'] == 'FAIL']
+        assert [r['check'] for r in failed] == [expected], (slug, failed)
+        print(f"SINGLE FAILURE ({slug}): {failed[0]['status']} | {expected} | {failed[0]['detail']}")
     empty = temp / 'missing-pack'
     empty.mkdir()
     missing = driver.Results()
     driver.walkthrough_checks(empty, {}, rectangles, missing)
-    print('MISSING-INPUT FIXTURE (not a real recorder pack):')
-    missing.show()
     assert all(r['status'] == 'FAIL' for r in missing.rows)
-    # Main display top-left conversion, including negative monitor coordinates.
     layout = {'screenX': -1800, 'screenY': 39, 'outerWidth': 1800, 'innerWidth': 1800,
               'outerHeight': 1130, 'innerHeight': 1043, 'buttons': {'add': {'x': 125, 'y': 475.71875, 'width': 196.9375, 'height': 77}}}
     assert driver.button_rect(layout, 'add') == {'x': -1675.0, 'y': 601.71875, 'w': 196.9375, 'h': 77}
     assert driver.coords(-1675, -100) == '=-1675,=-100'
-    print('PASS coordinate fixture: negative display origin and absolute cliclick coordinates')
+    print('PASS missing-input and negative-display coordinate fixtures')
 
 
 
@@ -201,6 +304,14 @@ def clock_fixture(temp):
     print('SYNTHETIC VIDEO CLOCK FIXTURE (not a live clock measurement):')
     results.show()
     assert all(r['status'] == 'PASS' for r in results.rows)
+    # Exactly one page-clock row fails; video timing and all other clicks pass.
+    shifted = json.loads(json.dumps(state))
+    shifted[0]['data']['unix_ms'] += 51
+    page_bad = driver.Results()
+    driver.clock_checks(pack, session, shifted, (20, 60), page_bad)
+    failed = [r for r in page_bad.rows if r['status'] == 'FAIL']
+    assert [r['check'] for r in failed] == ['click 1 page clock'], failed
+    print(f"SINGLE FAILURE (page clock): FAIL | {failed[0]['check']} | {failed[0]['detail']}")
     for event in events:
         event['t'] += .1
     (pack / 'events.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in events))

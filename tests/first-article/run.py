@@ -3,6 +3,7 @@
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 import re
 import signal
@@ -113,12 +114,182 @@ def app_names(pack, results):
     return {'focus': focus, 'system': system}
 
 
-def walkthrough_checks(pack, session, rectangles, results):
+def inside(point, rect, margin=30):
+    x, y = point
+    return rect['x'] - margin <= x <= rect['x'] + rect['w'] + margin and rect['y'] - margin <= y <= rect['y'] + rect['h'] + margin
+
+
+def decode_frame(path):
+    probe = json.loads(command([FFPROBE, '-v', 'error', '-select_streams', 'v:0',
+                               '-show_entries', 'stream=width,height', '-of', 'json', path]))
+    stream = probe['streams'][0]
+    raw = sp.check_output([FFMPEG, '-v', 'error', '-i', str(path), '-frames:v', '1',
+                           '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], timeout=30)
+    return raw, stream['width'], stream['height']
+
+
+def frame_checks(pack, session, number, rect, flip, background_point, results):
+    prefix = f'item {number}'
+    path = pack / f'frames/item-{number:02}.jpg'
+    display, video = session.get('display'), session.get('video')
+    if not path.is_file() or not display or not video:
+        for label in ('ring', 'picture state'):
+            results.add(prefix + ' ' + label, detail='missing input: anchor JPEG, display or video dimensions')
+        return
+    try:
+        raw, width, height = decode_frame(path)
+    except (sp.SubprocessError, KeyError, IndexError, ValueError) as error:
+        for label in ('ring', 'picture state'):
+            results.add(prefix + ' ' + label, False, 'anchor JPEG cannot be decoded: ' + str(error))
+        return
+    # JPEG and resizing alter the exact pink. A 70 RGB-unit radius excludes
+    # both page backgrounds, white controls, and the white ring outline.
+    count = sum_x = sum_y = 0
+    for offset in range(0, len(raw), 3):
+        r, g, b = raw[offset:offset + 3]
+        if (r - 255) ** 2 + (g - 20) ** 2 + (b - 120) ** 2 <= 70 ** 2:
+            pixel = offset // 3
+            count += 1
+            sum_x += pixel % width + .5
+            sum_y += pixel // width + .5
+    # Frame -> source video pixels -> global display points. This also handles
+    # downscaled frames, Retina video, and displays above/left of the main one.
+    sx = (video['width'] / width) * (display['w'] / video['width'])
+    sy = (video['height'] / height) * (display['h'] / video['height'])
+    if count:
+        centroid = (display['x'] + sum_x / count * sx, display['y'] + sum_y / count * sy)
+        distance = math.dist(centroid, center(rect))
+        results.add(prefix + ' ring', inside(centroid, rect),
+                    f'centroid=({centroid[0]:.1f}, {centroid[1]:.1f}) pt, distance={distance:.1f} pt, pixels={count}')
+    else:
+        results.add(prefix + ' ring', False, 'zero ring pixels')
+    if flip is None or background_point is None:
+        results.add(prefix + ' picture state', detail='missing input: page mousedown report or background sample point')
+        return
+    x = round((background_point[0] - display['x']) / sx)
+    y = round((background_point[1] - display['y']) / sy)
+    if not (4 <= x < width - 4 and 4 <= y < height - 4):
+        results.add(prefix + ' picture state', False, 'background sample is outside anchor JPEG')
+        return
+    pixels = [raw[(py * width + px) * 3:(py * width + px) * 3 + 3]
+              for py in range(y - 4, y + 4) for px in range(x - 4, x + 4)]
+    mean = tuple(sum(p[c] for p in pixels) / len(pixels) for c in range(3))
+    expected = (32, 80, 224) if flip['flipped'] else (255, 240, 192)
+    results.add(prefix + ' picture state', math.dist(mean, expected) <= 50,
+                f'background RGB={tuple(round(c, 1) for c in mean)}, expected={expected}')
+
+
+def browser_timing(pack, events, rectangles, results):
+    logs = json_lines(pack / 'logs/browser.jsonl')
+    for number, name in enumerate(('add', 'save'), 1):
+        clicks = [e for e in events if e.get('type') == 'mouse_down' and
+                  'x' in e and 'y' in e and inside((e['x'], e['y']), rectangles[name], 0)]
+        prefix = f'item {number} browser timing'
+        if not clicks or not logs:
+            results.add(prefix, detail='missing input: button mouse_down or logs/browser.jsonl')
+            continue
+        matching = []
+        for line in logs:
+            kind, text = line.get('type'), line.get('text', '')
+            if (kind == 'dom_click' and (f'#{name}' in line.get('selector', '') or
+                text.lower() == ('add to cart' if name == 'add' else 'save')) or
+                name == 'add' and kind == 'exception' and 'TypeError' in text and 'total' in text or
+                name == 'save' and kind == 'console' and 'Save failed: 500' in text or
+                name == 'save' and kind == 'network' and line.get('url', '').split('?')[0].endswith('/api/save')):
+                matching.append(line)
+        for index, event in enumerate(clicks):
+            # A button is clicked once in the walkthrough. With repeated clicks,
+            # assign each line to its nearest matching button click before testing.
+            def timestamp(line):
+                return line.get('start_t') if line.get('type') == 'network' else line.get('t')
+            owned = [line for line in matching if min(clicks, key=lambda e:
+                     abs(timestamp(line) - e['t']) if timestamp(line) is not None else math.inf) is event]
+            required = {'dom_click', 'exception'} if name == 'add' else {'dom_click', 'console', 'network'}
+            missing = required - {line['type'] for line in owned}
+            passed, details = not missing, []
+            for line in owned:
+                stamp = line.get('start_t') if line['type'] == 'network' else line.get('t')
+                if stamp is None:
+                    passed = False
+                    details.append(line['type'] + ': missing input timestamp')
+                else:
+                    delta = (stamp - event['t']) * 1000
+                    passed &= -1e-6 <= delta <= 100 + 1e-6
+                    details.append(f"{line['type']}={delta:.1f} ms")
+            if missing:
+                details.append('missing input: ' + ', '.join(sorted(missing)))
+            results.add(prefix + (f' click {index+1}' if len(clicks) > 1 else ''), passed, '; '.join(details))
+
+
+def clipboard_text():
+    return sp.check_output(['/usr/bin/pbpaste']).decode('utf-8')
+
+
+def set_clipboard(text):
+    sp.run(['/usr/bin/pbcopy'], input=text.encode('utf-8'), check=True)
+
+
+def wait_log(path, pattern, seconds=3):
+    deadline = time.monotonic() + seconds
+    while True:
+        match = re.search(pattern, path.read_text())
+        if match or time.monotonic() >= deadline:
+            return match
+        time.sleep(.05)
+
+
+def popup_checks(pack, recorder_log, results, click_fn=None, read_clipboard=None, write_clipboard=None):
+    click_fn = click if click_fn is None else click_fn
+    read_clipboard = clipboard_text if read_clipboard is None else read_clipboard
+    write_clipboard = set_clipboard if write_clipboard is None else write_clipboard
+    match = wait_log(recorder_log, r'popup: frame=[^\n]+ copy=([-\d.,]+) finder=')
+    copy_rect = [float(n) for n in match[1].split(',')] if match else []
+    appeared = len(copy_rect) == 4 and copy_rect[2] > 0 and copy_rect[3] > 0
+    results.add('popup appeared', appeared, f'copy={copy_rect}' if appeared else 'missing input: popup Copy rectangle')
+    if not appeared:
+        results.add('popup closed copy', False, 'popup did not appear')
+        results.add('clipboard equals PROMPT.md', False, 'popup did not appear')
+        return False
+    saved = read_clipboard()
+    try:
+        x, y, w, h = copy_rect
+        click_fn((x + w / 2, y + h / 2))
+        closed = wait_log(recorder_log, r'popup: closed reason=copy(?:\s|$)')
+        results.add('popup closed copy', bool(closed), 'reason=copy' if closed else 'no copy close within 3 s')
+        prompt = pack / 'PROMPT.md'
+        same = prompt.is_file() and read_clipboard() == prompt.read_bytes().decode('utf-8')
+        results.add('clipboard equals PROMPT.md', same, 'exact match' if same else 'clipboard differs or PROMPT.md missing')
+    finally:
+        write_clipboard(saved)
+    return bool(closed)
+
+
+def finish_recording(binary, recorder, stdout_path, recorder_log, results, popup=False,
+                     stop_command=None, **popup_io):
+    stop_command = command if stop_command is None else stop_command
+    stopped = stop_command([binary, 'stop'], timeout=180)
+    if popup:
+        # The stop reply includes the ready pack path. A non-app recorder prints
+        # its own final path only after the panel closes, so do not wait for it yet.
+        ready_pack = Path(stopped.splitlines()[-1]).expanduser().resolve()
+        if not popup_checks(ready_pack, recorder_log, results, **popup_io):
+            stop_owned(recorder)
+    recorder.wait(timeout=10 if popup else 180)
+    lines = stdout_path.read_text().splitlines()
+    if not lines:
+        raise RuntimeError('Recorder produced no pack path after exit')
+    pack = Path(lines[-1]).expanduser().resolve()
+    if popup and pack != ready_pack:
+        raise RuntimeError('Stop reply and recorder stdout disagree on the pack path')
+    return pack
+
+
+def walkthrough_checks(pack, session, rectangles, results, state=None, background_point=None):
     results.add('session status ready', session['status'] == 'ready' if 'status' in session else None,
                 'status=' + str(session['status']) if 'status' in session else 'missing input: session.json status')
     timing = session.get('timing') or {}
     latency = timing.get('stop_to_ready_ms')
-    results.add('stop_to_ready_ms', latency is not None if latency is not None else None,
+    results.add('stop_to_ready_ms', 0 <= latency <= 20000 if latency is not None else None,
                 str(latency) + ' ms' if latency is not None else 'missing input: timing.stop_to_ready_ms')
     moments = json_file(pack / 'moments.json')
     items = moments.get('items', []) if isinstance(moments, dict) else moments or []
@@ -167,6 +338,10 @@ def walkthrough_checks(pack, session, rectangles, results):
                     r = rectangles[name]
                     inside = r['x'] - 30 <= p['x'] <= r['x'] + r['w'] + 30 and r['y'] - 30 <= p['y'] <= r['y'] + r['h'] + 30
                     results.add(prefix + ' cursor', inside, f"anchor={anchor}, cursor=({p['x']}, {p['y']}), button={name}")
+    for number, name in enumerate(('add', 'save'), 1):
+        flips = [row['data'] for row in state or [] if row['path'] == '/api/flip' and row['data'].get('target') == name]
+        frame_checks(pack, session, number, rectangles[name], flips[0] if flips else None, background_point, results)
+    browser_timing(pack, events, rectangles, results)
     for name in ('SUMMARY.md', 'PROMPT.md'):
         results.add(name, True if (pack / name).is_file() else None,
                     'exists' if (pack / name).is_file() else 'missing input: ' + name)
@@ -198,7 +373,7 @@ def clock_checks(pack, session, state, point, results):
         if i < len(flips) and t0 is not None:
             delta = flips[i]['unix_ms'] - (t0 + t * 1000)
             print(f'PAGE CLOCK click={i+1} delta_ms={delta:.1f}')
-            results.add(f'click {i+1} page clock', True, f'{delta:.1f} ms (reported, no threshold)')
+            results.add(f'click {i+1} page clock', -50 <= delta <= 50, f'{delta:.1f} ms (limit ±50 ms)')
         else:
             results.add(f'click {i+1} page clock', detail='missing input: page flip or clock.t0_unix_ms')
         if not available:
@@ -310,14 +485,15 @@ def main():
             move(heading)
             record_args = [str(args.markupr_bin), 'record', '--display', str(display['id']), '--browser-port', str(port), '--out', str(args.packs_dir)]
             if args.mode == 'walkthrough':
-                record_args += ['--audio-source', args.audio_source]
+                record_args += ['--audio-source', args.audio_source, '--popup']
             if args.mode == 'clock-check':
                 if '--no-pack' in command([args.markupr_bin, 'record', '--help']):
                     record_args.append('--no-pack')
                 else:
                     print('Recorder has no --no-pack; clock checks will ignore derived pack output')
             with stdout_path.open('w') as out, recorder_log.open('w') as err:
-                recorder = sp.Popen(record_args, stdout=out, stderr=err)
+                recorder = sp.Popen(record_args, stdout=out, stderr=err,
+                                    env={**os.environ, 'MARKUPR_UI_DEBUG': '1'})
             def recording():
                 if recorder.poll() is not None:
                     raise RuntimeError('Recorder exited early: ' + recorder_log.read_text())
@@ -342,7 +518,7 @@ def main():
                     speech = None
                 time.sleep(max(0, start + duration - time.monotonic()))
             if args.mode == 'walkthrough':
-                sentence("Okay, I'm testing the shop demo page. Let me walk through what's wrong.", 10)
+                sentence("Okay, I'm testing this test page. Let me walk through what's wrong.", 10)
                 sentence("So when I click this add to cart button right here, nothing happens. Look at this, the cart total never updates. That's wrong, it should show the new total.", 18, 'add')
                 move(empty)
                 sentence('The rest of the page looks fine to me. The layout is okay and the spacing is okay.', 10)
@@ -355,13 +531,10 @@ def main():
                     click(empty)
                     time.sleep(1.5)
                 time.sleep(2)
-            command([args.markupr_bin, 'stop'], timeout=10)
-            recorder.wait(timeout=180)
+            results = Results()
+            pack = finish_recording(args.markupr_bin, recorder, stdout_path, recorder_log, results,
+                                    popup=args.mode == 'walkthrough')
             print('RECORDER STDERR:\n' + recorder_log.read_text(), flush=True)
-            lines = stdout_path.read_text().splitlines()
-            if not lines:
-                raise RuntimeError('Recorder produced no pack path')
-            pack = Path(lines[-1]).expanduser().resolve()
             if args.packs_dir not in pack.parents or not (pack / 'session.json').is_file():
                 raise RuntimeError('Recorder last stdout line is not a session path inside --packs-dir')
             print('PACK:', pack, flush=True)
@@ -372,9 +545,8 @@ def main():
                     print(json.dumps(row))
             print('SERVER REQUESTS:\n' + server_log.read_text())
             session = json_file(pack / 'session.json')
-            results = Results()
             if args.mode == 'walkthrough':
-                walkthrough_checks(pack, session, rectangles, results)
+                walkthrough_checks(pack, session, rectangles, results, state, empty)
             else:
                 clock_checks(pack, session, state, empty, results)
             apps = app_names(pack, results)
