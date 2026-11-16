@@ -1,6 +1,7 @@
 mod frames;
 mod moments;
 mod speech;
+mod speech_stretches;
 mod summary;
 
 use markupr_core::{
@@ -199,6 +200,9 @@ pub fn build_pack(
     let mut moments = moments::detect(&transcript.segments, &events, &logs);
     let browser: Vec<_> = browser.into_iter().map(|(_, v)| v).collect();
     summary::enrich(&mut moments.items, &session, &events, &cursor, &browser);
+    for item in &mut moments.items {
+        item.title = summary::short_title(&item.title);
+    }
     stages.moments = elapsed(start);
     let start = Instant::now();
     frames::make_frames(

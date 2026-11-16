@@ -257,7 +257,7 @@ pub fn render(
             out,
             "## {}. {} (t {:.3} to {:.3})\n",
             item.id,
-            one_line(&item.title),
+            short_title(&item.title),
             item.t0,
             item.t1
         )
@@ -286,7 +286,7 @@ pub fn render(
         writeln!(out, "- Why flagged: {}", one_line(&why)).unwrap();
         writeln!(
             out,
-            "- He said: {}",
+            "- Said: {}",
             if item.said.is_empty() {
                 "No speech captured.".into()
             } else {
@@ -377,4 +377,14 @@ fn log_time(time: f64) -> String {
     } else {
         format!("t {}", time_label(time))
     }
+}
+
+pub fn short_title(title: &str) -> String {
+    let title = one_line(title);
+    if title.chars().count() <= 80 {
+        return title;
+    }
+    let prefix: String = title.chars().take(77).collect();
+    let end = prefix.rfind(char::is_whitespace).unwrap_or(prefix.len());
+    format!("{}...", prefix[..end].trim_end())
 }
