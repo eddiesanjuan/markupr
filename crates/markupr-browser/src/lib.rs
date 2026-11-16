@@ -227,11 +227,16 @@ fn redact_url(raw: &str) -> String {
     let Ok(mut url) = url::Url::parse(raw) else {
         return raw.to_owned();
     };
-    let _ = url.set_password(None);
-    let _ = url.set_username("");
-    fn redact_pairs(raw: &str) -> String {
+    let mut changed = !url.username().is_empty() || url.password().is_some();
+    if changed {
+        let _ = url.set_password(None);
+        let _ = url.set_username("");
+    }
+    fn redact_pairs(raw: &str) -> Option<String> {
+        let mut changed = false;
         let pairs = url::form_urlencoded::parse(raw.as_bytes()).map(|(key, value)| {
             let secret = secret_key(&key);
+            changed |= secret;
             (
                 key.into_owned(),
                 if secret {
@@ -241,19 +246,28 @@ fn redact_url(raw: &str) -> String {
                 },
             )
         });
-        url::form_urlencoded::Serializer::new(String::new())
+        let redacted = url::form_urlencoded::Serializer::new(String::new())
             .extend_pairs(pairs)
-            .finish()
+            .finish();
+        changed.then_some(redacted)
     }
-    if let Some(query) = url.query() {
-        let redacted = redact_pairs(query);
+    if let Some(redacted) = url.query().and_then(redact_pairs) {
         url.set_query(Some(&redacted));
+        changed = true;
     }
-    if let Some(fragment) = url.fragment().filter(|f| f.contains('=')) {
-        let redacted = redact_pairs(fragment);
+    if let Some(redacted) = url
+        .fragment()
+        .filter(|f| f.contains('='))
+        .and_then(redact_pairs)
+    {
         url.set_fragment(Some(&redacted));
+        changed = true;
     }
-    url.into()
+    if changed {
+        url.into()
+    } else {
+        raw.to_owned()
+    }
 }
 // URLs in prose end at whitespace or surrounding quotation/bracket punctuation.
 fn redact_text(text: &str) -> String {
@@ -289,7 +303,9 @@ fn stamp_line(line: &mut Value, clock: Clock, arrival: f64) {
         if let Some(src) = line["src_ts"].as_f64() {
             if clock.t0_unix_ms() as f64 + arrival * 1000.0 - src > 1000.0 {
                 t = clock.t_from_unix_ms(src as u64);
-                line["replayed"] = json!(true);
+                if t < 0.0 {
+                    line["replayed"] = json!(true);
+                }
             }
         }
     }
@@ -752,6 +768,12 @@ mod tests {
     use super::*;
     #[test]
     fn url_with_token_and_code_keeps_secret_values_in_output() {
+        let unchanged = "http://localhost/a%20b?q=two%20words#frag%20ment";
+        assert_eq!(redact_url(unchanged), unchanged);
+        assert_eq!(
+            redact_url("http://user:password@localhost/a%20b?q=two%20words#frag%20ment"),
+            unchanged
+        );
         let output = redact_url("http://localhost/?token=abc&code=123&q=shoes");
         assert_eq!(
             output,
@@ -824,6 +846,12 @@ mod tests {
             stamp_line(&mut live, clock, 0.2);
             assert_eq!(live["t"], json!(0.2));
             assert!(live.get("replayed").is_none());
+            for (src, expected) in [(11_000.0, 1.0), (10_000.0, 0.0)] {
+                let mut delayed = json!({"type":kind,"src_ts":src});
+                stamp_line(&mut delayed, clock, 5.0);
+                assert_eq!(delayed["t"], json!(expected));
+                assert!(delayed.get("replayed").is_none());
+            }
             let mut boundary = json!({"type":kind,"src_ts":9_200.0});
             stamp_line(&mut boundary, clock, 0.2);
             assert!(boundary.get("replayed").is_none());
