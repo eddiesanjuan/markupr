@@ -1,0 +1,489 @@
+use markupr_core::round_t;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Word {
+    pub t0: f64,
+    pub t1: f64,
+    pub w: String,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Utterance {
+    pub t0: f64,
+    pub t1: f64,
+    pub text: String,
+    pub words: Vec<Word>,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct LogLine {
+    pub file: String,
+    pub line: usize,
+    pub t: f64,
+    pub text: String,
+    #[serde(skip)]
+    pub error: bool,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Moment {
+    pub t: f64,
+    pub kind: String,
+    pub detail: String,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Frame {
+    pub file: String,
+    pub zoom: Option<String>,
+    pub t: f64,
+    pub note: Option<String>,
+}
+#[derive(Clone, Debug, Serialize)]
+pub struct Item {
+    pub id: usize,
+    pub t0: f64,
+    pub t1: f64,
+    pub anchor_t: f64,
+    pub reasons: Vec<String>,
+    pub title: String,
+    pub said: String,
+    pub looking_at: Value,
+    pub frames: Vec<Frame>,
+    pub logs: Vec<LogLine>,
+    pub dive: Value,
+    #[serde(skip)]
+    pub clicks: Vec<Value>,
+    #[serde(skip)]
+    anchors: Vec<(u8, f64)>,
+}
+#[derive(Debug, Serialize)]
+pub struct Moments {
+    pub moments: Vec<Moment>,
+    pub items: Vec<Item>,
+    pub other_errors: Vec<LogLine>,
+}
+
+pub fn t(v: &Value) -> f64 {
+    v["t"].as_f64().unwrap_or(0.0)
+}
+pub fn kind(v: &Value) -> &str {
+    v["type"].as_str().unwrap_or("")
+}
+pub fn utterances(mut words: Vec<Word>) -> Vec<Utterance> {
+    words.sort_by(|a, b| a.t0.total_cmp(&b.t0));
+    let mut result: Vec<Utterance> = Vec::new();
+    for word in words {
+        if result
+            .last()
+            .is_none_or(|u| round_t(word.t0 - u.t1) >= 0.7 || round_t(word.t0 - u.t0) >= 12.0)
+        {
+            result.push(Utterance {
+                t0: word.t0,
+                t1: word.t1,
+                text: String::new(),
+                words: vec![],
+            });
+        }
+        let u = result.last_mut().unwrap();
+        u.t1 = u.t1.max(word.t1);
+        if !u.text.is_empty() {
+            u.text.push(' ');
+        }
+        u.text.push_str(&word.w);
+        u.words.push(word);
+    }
+    result
+}
+fn normalized(s: &str) -> String {
+    s.replace('’', "'")
+        .trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+        .to_lowercase()
+}
+fn pointing(u: &Utterance) -> (Vec<(f64, String)>, Option<f64>) {
+    let words: Vec<String> = u.words.iter().map(|w| normalized(&w.w)).collect();
+    let mut strong = vec![];
+    for phrase in [
+        "that's wrong",
+        "look at this",
+        "right here",
+        "broken",
+        "doesn't work",
+        "should be",
+    ] {
+        let parts: Vec<&str> = phrase.split_whitespace().collect();
+        for (i, window) in words.windows(parts.len()).enumerate() {
+            if window.iter().map(String::as_str).eq(parts.iter().copied()) {
+                strong.push((u.words[i].t0, phrase.to_owned()));
+            }
+        }
+    }
+    strong.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let weak = words
+        .iter()
+        .position(|w| ["this", "here", "that"].contains(&w.as_str()))
+        .map(|i| u.words[i].t0);
+    (strong, weak)
+}
+fn distance(t: f64, u: &Utterance) -> f64 {
+    (u.t0 - t).max(t - u.t1).max(0.0)
+}
+fn title(s: &str) -> String {
+    let end = s
+        .char_indices()
+        .find(|(_, c)| ['.', '!', '?'].contains(c))
+        .map(|(i, _)| i)
+        .unwrap_or(s.len());
+    s[..end].trim().to_owned()
+}
+fn new_item(t0: f64, t1: f64, said: String) -> Item {
+    Item {
+        id: 0,
+        t0,
+        t1,
+        anchor_t: round_t((t0 + t1) / 2.0),
+        reasons: vec![],
+        title: title(&said),
+        said,
+        looking_at: json!({}),
+        frames: vec![],
+        logs: vec![],
+        dive: json!({}),
+        clicks: vec![],
+        anchors: vec![],
+    }
+}
+
+pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> Moments {
+    let marks: Vec<&Value> = events.iter().filter(|v| kind(v) == "mark").collect();
+    let mut moments = vec![];
+    // Deduplicate against the last retained occurrence, so a continuing error may recur after 5 s.
+    let mut errors: Vec<&LogLine> = vec![];
+    let mut sorted: Vec<&LogLine> = logs.iter().filter(|l| l.error).collect();
+    sorted.sort_by(|a, b| a.t.total_cmp(&b.t));
+    for log in sorted {
+        if !errors
+            .iter()
+            .rev()
+            .any(|p| p.text == log.text && log.t - p.t <= 5.0)
+        {
+            errors.push(log);
+            moments.push(Moment {
+                t: log.t,
+                kind: "error".into(),
+                detail: log.text.clone(),
+            });
+        }
+    }
+    let mut attached: Vec<Vec<&LogLine>> = vec![vec![]; utterances.len()];
+    let mut other_errors = vec![];
+    for error in errors {
+        let owner = utterances
+            .iter()
+            .position(|u| u.t0 <= error.t && error.t <= u.t1)
+            .or_else(|| {
+                utterances
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, u)| u.t0 > error.t && u.t0 - error.t <= 8.0)
+                    .min_by(|a, b| a.1.t0.total_cmp(&b.1.t0))
+                    .map(|(i, _)| i)
+            })
+            .or_else(|| {
+                utterances
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, u)| u.t1 < error.t && error.t - u.t1 <= 3.0)
+                    .max_by(|a, b| a.1.t1.total_cmp(&b.1.t1))
+                    .map(|(i, _)| i)
+            });
+        match owner {
+            Some(i) => attached[i].push(error),
+            None => other_errors.push(error.clone()),
+        }
+    }
+    let mut mark_used = vec![false; marks.len()];
+    let mut candidates = vec![];
+    for (i, u) in utterances.iter().enumerate() {
+        let mut item = new_item(u.t0, u.t1, u.text.clone());
+        let mut score = 0;
+        for (m, mark) in marks.iter().enumerate() {
+            if round_t(distance(t(mark), u)) <= 3.0 {
+                mark_used[m] = true;
+                item.reasons.push(format!(
+                    "mark {} at {:.3}",
+                    mark["n"].as_u64().unwrap_or(m as u64 + 1),
+                    t(mark)
+                ));
+                item.anchors.push((0, t(mark)));
+            }
+        }
+        if !item.anchors.is_empty() {
+            score += 5;
+        }
+        for error in &attached[i] {
+            item.reasons
+                .push(format!("error at {:.3}: {}", error.t, error.text));
+        }
+        if !attached[i].is_empty() {
+            score += 3;
+        }
+        item.clicks = events
+            .iter()
+            .filter(|v| kind(v) == "mouse_down" && t(v) >= u.t0 && t(v) <= u.t1)
+            .cloned()
+            .collect();
+        for click in &item.clicks {
+            item.reasons.push(format!("click at {:.3}", t(click)));
+            item.anchors.push((2, t(click)));
+            moments.push(Moment {
+                t: t(click),
+                kind: "click_speech".into(),
+                detail: "click during speech".into(),
+            });
+        }
+        if !item.clicks.is_empty() {
+            score += 2;
+        }
+        let (strong, weak) = pointing(u);
+        for (time, phrase) in &strong {
+            item.reasons
+                .push(format!("pointing words {phrase:?} at {time:.3}"));
+            item.anchors.push((1, *time));
+            moments.push(Moment {
+                t: *time,
+                kind: "pointing".into(),
+                detail: phrase.clone(),
+            });
+        }
+        if !strong.is_empty() {
+            score += 2;
+        }
+        if let Some(time) = weak {
+            score += 1;
+            item.anchors.push((3, time));
+            item.reasons.push(format!("pointing word at {time:.3}"));
+            moments.push(Moment {
+                t: time,
+                kind: "pointing".into(),
+                detail: "this / here / that".into(),
+            });
+        }
+        if score >= 2 {
+            candidates.push(item);
+        }
+    }
+    for (i, mark) in marks.iter().enumerate() {
+        let detail = format!(
+            "mark {} at {:.3}",
+            mark["n"].as_u64().unwrap_or(i as u64 + 1),
+            t(mark)
+        );
+        moments.push(Moment {
+            t: t(mark),
+            kind: "mark".into(),
+            detail: detail.clone(),
+        });
+        if !mark_used[i] {
+            let mut item = new_item(t(mark), t(mark), String::new());
+            item.title = mark["note"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Marked moment (no speech captured)")
+                .into();
+            item.reasons.push(detail);
+            item.anchors.push((0, t(mark)));
+            candidates.push(item);
+        }
+    }
+    candidates.sort_by(|a, b| a.t0.total_cmp(&b.t0));
+    let mut items: Vec<Item> = vec![];
+    for mut next in candidates {
+        // Only utterances merge. A standalone mark stays useful even without narration.
+        if let Some(prev) = items.last_mut().filter(|p| {
+            !p.said.is_empty() && !next.said.is_empty() && round_t(next.t0 - p.t1) < 2.0
+        }) {
+            prev.t1 = prev.t1.max(next.t1);
+            prev.said.push(' ');
+            prev.said.push_str(&next.said);
+            prev.reasons.append(&mut next.reasons);
+            prev.anchors.append(&mut next.anchors);
+            prev.clicks.append(&mut next.clicks);
+        } else {
+            items.push(next);
+        }
+    }
+    for (i, item) in items.iter_mut().enumerate() {
+        item.id = i + 1;
+        item.anchors
+            .sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)));
+        if let Some((_, time)) = item.anchors.first() {
+            item.anchor_t = *time;
+        }
+        // Nearby marks can be just outside the spoken span; keep the dive range truthful.
+        item.t0 = item.t0.min(item.anchor_t);
+        item.t1 = item.t1.max(item.anchor_t);
+        let mut seen = std::collections::HashSet::new();
+        item.reasons.retain(|reason| seen.insert(reason.clone()));
+    }
+    assign_logs(&mut items, logs);
+    for item in &mut items {
+        if item.said.is_empty() {
+            if let Some(error) = item.logs.iter().find(|l| l.error) {
+                item.title = error.text.clone();
+            }
+        }
+    }
+    moments.sort_by(|a, b| a.t.total_cmp(&b.t));
+    Moments {
+        moments,
+        items,
+        other_errors,
+    }
+}
+
+fn assign_logs(items: &mut [Item], logs: &[LogLine]) {
+    for log in logs {
+        let owner = items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| log.t >= i.t0 - 15.0 && log.t <= i.t1 + 5.0)
+            .min_by(|a, b| {
+                (a.1.anchor_t - log.t)
+                    .abs()
+                    .total_cmp(&(b.1.anchor_t - log.t).abs())
+            })
+            .map(|(i, _)| i);
+        if let Some(i) = owner {
+            items[i].logs.push(log.clone());
+        }
+    }
+    for item in items {
+        item.logs.sort_by(|a, b| {
+            (a.t - item.anchor_t)
+                .abs()
+                .total_cmp(&(b.t - item.anchor_t).abs())
+        });
+        let (mut browser, mut system) = (0, 0);
+        item.logs.retain(|log| {
+            let (count, limit) = if log.file == "logs/browser.jsonl" {
+                (&mut browser, 8)
+            } else {
+                (&mut system, 3)
+            };
+            *count += 1;
+            *count <= limit
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn speech(t0: f64, text: &str) -> Utterance {
+        let words: Vec<_> = text
+            .split_whitespace()
+            .enumerate()
+            .map(|(i, w)| Word {
+                t0: t0 + i as f64 * 0.2,
+                t1: t0 + i as f64 * 0.2 + 0.18,
+                w: w.into(),
+            })
+            .collect();
+        utterances(words).remove(0)
+    }
+    fn error(t: f64) -> LogLine {
+        LogLine {
+            file: "logs/browser.jsonl".into(),
+            line: 1,
+            t,
+            text: "exception: broken cart".into(),
+            error: true,
+        }
+    }
+    #[test]
+    fn error_two_seconds_before_a_spoken_mark_is_not_lost_or_split() {
+        let result = detect(
+            &[speech(10.0, "this button is broken")],
+            &[json!({"type":"mark","t":10.5,"n":1})],
+            &[error(8.5)],
+        );
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].anchor_t, 10.5);
+        assert!(result.items[0]
+            .reasons
+            .iter()
+            .any(|s| s.starts_with("error")));
+        assert!(result.other_errors.is_empty());
+    }
+    #[test]
+    fn ordinary_talk_ten_seconds_after_an_error_does_not_become_an_item() {
+        let result = detect(
+            &[speech(20.0, "now I am going for coffee")],
+            &[],
+            &[error(10.0)],
+        );
+        assert!(result.items.is_empty());
+        assert_eq!(result.other_errors.len(), 1);
+    }
+    #[test]
+    fn overlapping_item_windows_do_not_cite_one_log_line_twice() {
+        let result = detect(
+            &[speech(10.0, "look at this"), speech(15.0, "that is broken")],
+            &[],
+            &[error(13.5)],
+        );
+        assert_eq!(result.items.len(), 2);
+        assert_eq!(result.items.iter().map(|i| i.logs.len()).sum::<usize>(), 1);
+        assert_eq!(result.items[1].logs.len(), 1);
+        assert_eq!(
+            result
+                .items
+                .iter()
+                .flat_map(|i| &i.reasons)
+                .filter(|s| s.starts_with("error"))
+                .count(),
+            1
+        );
+    }
+    #[test]
+    fn mark_without_speech_is_not_dropped() {
+        let result = detect(&[], &[json!({"type":"mark","t":4.2,"n":1})], &[]);
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].anchor_t, 4.2);
+    }
+    #[test]
+    fn pauses_and_twelve_second_spans_do_not_become_one_utterance() {
+        let paused = vec![
+            Word {
+                t0: 1.0,
+                t1: 1.6,
+                w: "hello".into(),
+            },
+            Word {
+                t0: 2.3,
+                t1: 2.5,
+                w: "again".into(),
+            },
+        ];
+        assert_eq!(utterances(paused).len(), 2);
+        let continuous = (0..26)
+            .map(|i| Word {
+                t0: i as f64 * 0.5,
+                t1: i as f64 * 0.5 + 0.4,
+                w: "word".into(),
+            })
+            .collect();
+        let result = utterances(continuous);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[1].t0, 12.0);
+    }
+    #[test]
+    fn repeated_errors_and_weak_words_do_not_inflate_items() {
+        let result = detect(
+            &[speech(10.0, "this here that")],
+            &[],
+            &[error(1.0), error(3.0)],
+        );
+        assert!(result.items.is_empty());
+        assert_eq!(result.other_errors.len(), 1);
+    }
+}

@@ -11,3 +11,7 @@ rust-version = "1.85"
 
 [profile.release]
 debug = "line-tables-only"
+
+# Dependencies (image codecs and so on) are optimized even in dev builds.
+[profile.dev.package."*"]
+opt-level = 2
