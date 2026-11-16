@@ -48,20 +48,28 @@ impl WavWriter {
             self.last_rate_in = rate_in;
             self.resampler = Resampler::default();
         }
+        let rate = self.sample_rate as u64;
+        let tol = (GAP_TOLERANCE_S * rate as f64) as u64;
+        let expected = (pts_ns.saturating_sub(self.start_ns) as u128 * rate as u128 / 1_000_000_000) as u64;
+        let backward = expected + tol < self.written;
+        if backward || expected > self.written + tol {
+            // Continuity is broken: never interpolate across it.
+            self.resampler = Resampler::default();
+        }
         let samples = if rate_in == self.sample_rate {
             samples.to_vec()
         } else {
             self.resampler.run(samples, rate_in, self.sample_rate)
         };
-        let rate = self.sample_rate as u64;
-        let tol = (GAP_TOLERANCE_S * rate as f64) as u64;
-        let expected = (pts_ns.saturating_sub(self.start_ns) as u128 * rate as u128 / 1_000_000_000) as u64;
         let mut s: &[i16] = &samples;
-        if expected + tol < self.written {
+        if backward {
             // Host time moved backward: drop what overlaps audio already written.
             let overlap = ((self.written - expected) as usize).min(s.len());
             self.dropped += overlap as u64;
             s = &s[overlap..];
+            if s.is_empty() {
+                self.resampler = Resampler::default(); // a rejected buffer leaves no history
+            }
         } else if expected > self.written + tol {
             // Silence for the whole gap, as a hole in the file: it reads back as zeros and
             // costs neither memory nor time however long the gap is.
@@ -94,6 +102,9 @@ impl WavWriter {
 
     pub fn finish(mut self) -> std::io::Result<()> {
         let data_len = (self.written * 2).min(u32::MAX as u64 - 36) as u32;
+        // A gap is a seek; if nothing was written after it, the file must still reach it.
+        self.out.flush()?;
+        self.out.get_ref().set_len(44 + data_len as u64)?;
         self.out.seek(SeekFrom::Start(0))?;
         self.out.write_all(&header(self.sample_rate, data_len))?;
         self.out.flush()?;
@@ -209,6 +220,26 @@ mod tests {
         assert_eq!((sample(80), sample(719_999)), (0, 0));
         assert_eq!((sample(720_000), sample(720_080)), (2, 3));
         assert!(notes.iter().any(|n| n.contains("89990 ms of gaps filled with silence")));
+    }
+
+    /// Bug: a gap followed by a buffer that resampled to nothing left the header claiming
+    /// more data than the file held.
+    #[test]
+    fn trailing_gap_with_no_samples_after_it_still_matches_the_header() {
+        let path = tmp("trail");
+        let mut w = WavWriter::create(&path, 16_000, 0).unwrap();
+        w.push(0, 16_000, &[1; 160]).unwrap();
+        w.push(10_000_000, 48_000, &[1; 2]).unwrap();
+        w.push(90_000_000_000, 48_000, &[1; 1]).unwrap();
+        // With history reset after a gap that buffer now yields one sample, so also end on a
+        // gap followed by an empty buffer: nothing at all is written after that seek.
+        w.push(120_000_000_000, 48_000, &[]).unwrap();
+        w.finish().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let claimed = u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize;
+        println!("header data {claimed} bytes, file {} bytes", bytes.len());
+        assert_eq!(bytes.len(), 44 + claimed);
     }
 
     /// Bug: per-buffer rounding in the resampler lost a fraction of a sample per buffer, which
