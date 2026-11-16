@@ -199,12 +199,21 @@ Then the lead reads the diff and runs the acceptance. Then `council` (Opus, Sol,
 
 ## First-article test
 
-A real recording on this Mac, run from the terminal:
+**Rule (Eddie, 11/16 14:10): no window ever opens on Eddie's screen.** Builders and the lead test headless or with no display at all, never move his cursor, type, or play sound. The on-screen first article below runs only after Eddie says he is ready; the lead asks through the seat inbox first. `tests/first-article/run.py` refuses on-screen modes without `--owner-ready`.
+
+What is proved before that slot, with no window:
+- screen crate: file timestamps equal host timestamps (numeric proof), passive short clips;
+- events crate: clock and key policy through in-process events fed to the handler; passive counts;
+- browser crate: headless Chrome, clock difference measured;
+- pack crate: synthetic session with file-generated speech;
+- whole recorder: a short passive `markupr record` run, checked by numbers and deleted.
+
+The on-screen slot, about three minutes, run from the terminal:
 
 1. A local test page (served from a temp port, stopped by PID) with two faults in two places: "Add to cart" throws a TypeError; "Save" posts to an endpoint that returns 500 and logs a console error. A click also changes the page color, for the clock check.
 2. Chrome started by binary with a throwaway profile on a non-default debug port, sized to cover one display. Only that display is recorded.
-3. Before starting: confirm the mic is not in use by another app and the Mac has been idle, because the test speaks through the speakers and moves the cursor.
-4. About 60 s: `say` narration in Eddie's style, synthetic cursor moves and clicks on both buttons, the mark hotkey pressed twice by synthetic key events.
+3. Clock check, about 12 s: five clicks on the page; the color change must show in the video 0 to 150 ms after each click.
+4. Walkthrough, about 60 s: `say` narration in Eddie's style, synthetic cursor moves and clicks on both buttons, the mark hotkey pressed twice by synthetic key events.
 5. Stop. Read `timing.stop_to_ready_ms`.
 6. Pass: SUMMARY.md has two items, each with the right sentence, a frame whose ring sits on the right button, and its own log line. The lead opens the frames, and checks for anything unrelated on screen, before citing the pack.
 
