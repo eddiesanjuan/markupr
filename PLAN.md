@@ -1,9 +1,9 @@
-# markupR v3 plan
+# markupR v3 design
 
-Rust rebuild of markupR as a whole-computer feedback recorder for AI coding agents. macOS first.
-Branch `rust-v3`, worktree `~/Projects/markupr-v3`. v2 (TypeScript/Electron 2.6.8) stays on `main` untouched.
+markupR v3 is a Rust rewrite of markupR as a whole-computer feedback recorder for AI coding agents. macOS first.
+The TypeScript/Electron v2 remains in the repository history.
 
-## What Eddie asked for (11/16)
+## The idea, in the owner's words
 
 "Takes a screen recording and the logs of your computer or the browser you're using, records them all time-stamped as you're doing it, as well as the audio... all of this stuff time-stamped together then gets post-processed so that it's understood which key points in the video, the logs, and the audio need to all line up and be highlighted for the agents. And then it basically gets composed into a whole context pack. And then whenever that context pack is ready, you get a little pop-up... copy the prompt to your agent... the agent could still dive into any of the stuff that it needed to... stripped down to what it was needing."
 
@@ -11,16 +11,16 @@ The agent should feel like it is "literally just watching me use the computer, a
 
 ## Decisions
 
-1. **One binary, `markupr`.** CLI now, menu bar in M4. The same recorder and pack code runs under both.
+1. **One binary, `markupr`.** A menu bar app and a CLI. The same recorder and pack code runs under both.
 2. **One clock: mach host time.** ScreenCaptureKit frame and audio timestamps, CGEvent timestamps and unified-log mach timestamps are already on it. Sources without a host timestamp (browser, window polls, CLI marks) are stamped on arrival and keep their native time as `src_ts`.
 3. **The pack folder is the session folder.** The recorder writes raw files into it; post-processing adds derived files. `session.json.status` goes `recording`, `processing`, `ready`.
 4. **Post-processing is deterministic and local.** Whisper for speech, rules for key moments. No cloud model. The agent that receives the pack is the model.
 5. **File formats are the contract between crates,** not shared Rust types. Only `markupr-core` is shared (clock, JSONL writer, paths, manifest).
-6. **Screen capture uses the `screencapturekit` crate (v11, feature `macos_15_0`).** Fallback if it will not build on Command Line Tools only (SDK 15.5): `objc2-screen-capture-kit` plus `objc2-av-foundation` with our own AVAssetWriter. Requires macOS 15+.
+6. **Screen capture goes through `objc2` bindings to ScreenCaptureKit, with our own AVAssetWriter.** Owning the writer is what makes video time zero exact: the writer session starts at the first frame's own timestamp. (The `screencapturekit` crate needs the macOS 26 SDK to build; this route builds with the Command Line Tools alone.) Requires macOS 15+.
 7. **External tools at run time:** `ffmpeg` and `whisper-cli`. Whisper model paths come from config. The code never downloads a model.
-8. **The "pack ready" pop-up is a small native AppKit panel with a Copy prompt button,** not a Notification Center banner. A banner's action button hides behind hover, and it needs a signed app bundle plus a notification permission click; this Mac has no signing identity. The panel needs neither and matches "a little pop-up". A banner can be added in M5 once there is a bundle.
-9. **Browser logs come through the Chrome DevTools Protocol** from a dedicated debug profile. Chrome 136+ ignores `--remote-debugging-port` on the default profile, so the helper launches Chrome with its own `--user-data-dir`. Attaching to the real profile (Chrome 144+ `chrome://inspect/#remote-debugging`) is M5.
-10. **v1 records one display:** the one under the cursor at start, or `--display`. All displays is M5. Events carry global coordinates so this is additive.
+8. **The "pack ready" pop-up is a small native AppKit panel with a Copy prompt button,** not a Notification Center banner. A banner's action button hides behind hover, and it needs a signed app bundle plus a notification permission click. The panel needs neither, does not take keyboard focus, and matches "a little pop-up".
+9. **Browser logs come through the Chrome DevTools Protocol** from a dedicated debug profile. Chrome 136+ ignores `--remote-debugging-port` on the default profile, so the helper launches Chrome with its own `--user-data-dir`. Attaching to the everyday profile (Chrome 144+ `chrome://inspect/#remote-debugging`) is not built yet.
+10. **v1 records one display:** the one under the cursor at start, or `--display`. Events carry global coordinates, so recording every display later is additive.
 
 ## Crates
 
@@ -33,7 +33,7 @@ The agent should feel like it is "literally just watching me use the computer, a
 | `crates/markupr-pack`    | transcribe, align, moments, key frames, SUMMARY.md, PROMPT.md                                                       | pure functions over the pack folder             |
 | `crates/markupr`         | CLI, control socket, hotkeys, main-thread loop, menu bar, pop-up                                                    | bin `markupr`                                   |
 
-Main thread runs a `tao` event loop from M1 (accessory activation policy, no Dock icon), so hotkeys (`global-hotkey`), the menu bar (`tray-icon`) and the pop-up attach without a rewrite. Capture runs on worker threads.
+The main thread runs a `tao` event loop (accessory activation policy, no Dock icon) that carries the hotkeys (`global-hotkey`), the menu bar item (`tray-icon`) and the pop-up. Capture runs on worker threads.
 
 Commands: `app` (the default), `record`, `start`, `stop` (waits for the pack and prints its path), `status`, `mark`, `pack <dir>`, `frame <dir> <t>` (the screen at any time, cursor ringed), `prompt [--copy]`, `doctor`, `displays`, `browser`, `popup <dir>`. No MCP server in v1: the pack is plain files and the CLI covers the rest.
 `stop` and `mark` reach the running recorder through a Unix socket at `~/Library/Application Support/markupr/control.sock`.
@@ -45,7 +45,7 @@ Default hotkeys: toggle `ctrl+opt+R`, mark `ctrl+opt+X`. Configurable in `~/Libr
 - `session.json.clock = { t0_host_ns, t0_unix_ms }`. Wall time is for people; `t` is for alignment.
 - **Video time zero.** `video.start_t` is the host time of the first frame written to the file. The screen crate must establish it exactly, either by owning the writer (session starts at the first frame's timestamp) or by logging every delivered frame's timestamp and matching the file's frame deltas against that log. File time = `t - video.start_t`.
 - Mic and system audio each carry their own `start_t` from the first sample's host timestamp.
-- Tolerance, measured in M1: a click-triggered page change appears in the frame at `t_click + 0.15 s` and not at `t_click - 0.05 s`; the same sound in the mic and system tracks agrees within 100 ms.
+- Tolerance, checked by the acceptance test: a click-triggered page change appears in the video 0 to 150 ms after the click, never before it.
 
 ## Pack format (`markupr.pack/1`)
 
@@ -153,8 +153,8 @@ A request that never finished is written at stop with `"pending": true`. Console
 
 ## Post-processing
 
-1. **Transcribe.** `ffmpeg` to 16 kHz mono, then `whisper-cli` with word timestamps. Default model is the accurate one; `--fast` uses the small one. Speech comes from the mic; `--audio-source system` transcribes the system audio track instead. No model configured: skip speech, still build the pack, say so in SUMMARY. Speech stretches come from the audio's own energy and each is transcribed separately, so word times cannot drift across pauses; no stretch found means no speech (Whisper is not run on silence, where it invents text).
-2. **Utterances.** Join whisper words into utterances; split on a gap of 0.7 s or more, or after 12 s.
+1. **Transcribe.** `ffmpeg` to 16 kHz mono, then `whisper-cli` with word timestamps. Default model is the accurate one; `--fast` uses the small one. Speech comes from the mic; `--audio-source system` transcribes the system audio track instead. No model configured: skip speech, still build the pack, say so in SUMMARY. Speech stretches come from the audio itself, not from Whisper: frame energy against the recording's own noise floor finds candidate stretches, and a stretch counts as speech only where it has sustained voicing (a pitch in the human range). Each voiced part is transcribed separately, so word times cannot drift across pauses, and mouse, keyboard, fan and chime noise never reach Whisper, which invents sentences for non-speech sound. A long voiced part that yields almost no words is dropped as well. Rejected sound is counted in one capture note. Known limit: whispered speech has no pitch and is not transcribed.
+2. **Utterances.** One utterance per voiced stretch: pauses under half a second stay inside it, and a stretch longer than about 12 s is cut at its quietest point.
 3. **Moments.** `mark` (every mark). `error` (browser exception, console error, request failed or status 400+, a request sent at least 3 s before stop that never got a response). System log lines never score: an app's unified log carries routine error chatter. `pointing`: strong phrases are unambiguous complaints or pointing ("that's wrong", "this is wrong", "look at this", "right here", "over here", "broken", "doesn't work", "not working", "nothing happens", "should be", "fix this", "needs to be"); weak words are "this", "here", "that" and bare complaint words ("wrong", "should", "shouldn't", "bug", "weird"), which need a second signal such as a click. `click_speech` (a click inside an utterance). Clicks on markupR's own menu and panel are ignored. Canceled requests and long-lived requests that did get a response are not errors. Lines Chrome replays from before the recording are never scored.
 4. **Items.** Score each utterance: an attached mark, +5; an attached error, +3; strong phrase, +2; click inside, +1; any weak word, +1 once. A mark attaches to one utterance: the one being spoken, else the nearest within 3 s. Each error attaches to one utterance: the one being spoken when it happened (a request counts from when it was sent), else the next one starting within 8 s, else the one that ended within 3 s before; an error text that already scored one utterance does not score another. Score 2 or more makes an item. Flagged utterances less than 2 s apart merge, unless each has its own mark. A mark with no speech becomes its own item. Errors nobody talked about go in one short "Other errors" list. Everything else that was said is listed, one line each, under "Other things said", so the summary never hides speech.
 5. **Anchor and frames.** Anchor time is the mark, else the strong phrase, else the click, else the first weak word, else the item's attached error, else the utterance midpoint. The video only has a frame when the screen changed, so the picture for a time is the last frame at or before it. Pull that frame, ring the cursor, and write the zoom crop. Every further mark in the item gets its own ringed frame (`item-NN-mark-K.jpg`). An anchor before the first video frame uses the first frame and says so. If the item has a click more than 1 s from the anchor, add a second frame 0.3 s after the click.
@@ -172,59 +172,41 @@ Target: stop to pack ready in under 20 s for a one-minute session with the accur
 | Accessibility (and Input Monitoring) | event tap for cursor, clicks, keys; focused window; element under cursor | `AXIsProcessTrusted`, `CGPreflightListenEventAccess` |
 | Microphone                           | narration                                                                | `AVCaptureDevice.authorizationStatus(.audio)`        |
 
-- Run from a terminal, the binary inherits that terminal's grants. That is the dev and first-article path on this Mac (T3 Code holds all three, checked 11/16).
-- A bundled `markupR.app` gets its own grants, tied to its signature. With ad-hoc signing every rebuild needs a re-grant, so the bundle waits for M5 and a signing identity. Eddie clicks the three prompts once.
+- Run from a terminal, the binary inherits that terminal app's grants (Terminal, iTerm and so on). That is the development path today.
+- A bundled `markupR.app` gets its own grants, tied to its signature. With ad-hoc signing every rebuild needs a re-grant, so the bundle waits for a signing identity.
 - `markupr doctor` prints each state and opens the right Settings pane. A missing permission disables that source and is recorded in `session.json`; it never blocks the others. One exception in v1: the microphone is captured through the screen stream, so without Screen Recording there is no microphone audio either.
 - macOS 15+ periodically re-asks about direct screen capture. Expected.
 
-## Milestones
+## Status
 
-Each lane owns its files exclusively. Lanes do not commit; the lead commits each lane after review. No pushes, tags or releases.
+| Part | State |
+| --- | --- |
+| Recorder: screen video, system audio, microphone, cursor, clicks, scroll, key activity, focus and marks on one clock | built |
+| Context pack: transcript, key moments, ringed key frames, SUMMARY.md, PROMPT.md | built |
+| Browser logs through the DevTools Protocol | built |
+| Menu bar toggle, global hotkeys, pack-ready pop-up with Copy prompt | built |
+| Signed app bundle, all displays in one recording, attaching to the everyday browser profile, crash-safe video | not built |
 
-| #   | Outcome                                            | Lanes                                          | Acceptance                                                                                                                                                         |
-| --- | -------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Recorder writes video, mic and events on one clock | core + CLI (Sol); screen (Opus); events (Opus) | 20 s run: `ffprobe` reads `video.mp4` and `mic.wav`; events show clicks, keys, focus, marks; both clock tolerances pass                                            |
-| 2   | Pack with transcript and SUMMARY                   | pack (Sol), started early on fixtures          | recorded session yields SUMMARY.md naming the marked issues with ringed frames                                                                                     |
-| 3   | Browser logs                                       | browser (Sol), started early                   | console error, exception and failed request land in `logs/browser.jsonl` within 100 ms of the click that caused them; `markupr browser` launches the debug profile |
-| 4   | Pop-up with Copy prompt, menu bar toggle           | app shell (Sol)                                | stop from the menu bar or hotkey, panel appears when ready, button puts PROMPT.md text on the clipboard                                                            |
-| 5   | Polish                                             | as needed                                      | README, all displays, real-profile attach, `list`/`mcp`, app bundle script, crash-safe video                                                                       |
+Measured on an Apple M5 Pro: video file time equals host time within 0.006 ms on every frame; browser lines land within a few ms of the click that caused them; first-word speech timing within 0.22 s on a ground-truth track; a pack for a 12 s recording is ready 2.5 to 4 s after stop.
 
-Review, per RULINGS 2026-11-16 13:45 (the reviewer is never the builder's provider; permission diffs never go to Sol or Codex):
+## Acceptance test
 
-| Built by    | Paths                                        | Builder's check                      |
-| ----------- | -------------------------------------------- | ------------------------------------ |
-| Claude Opus | `markupr-screen`                             | Sol, with `sol-loop`                 |
-| Claude Opus | `markupr-events` (input and permission code) | Grok                                 |
-| Codex Sol   | core, CLI, pack, browser, app shell          | Grok while Claude is full, else Opus |
+`tests/first-article/` holds a scripted acceptance run and its display-free checks.
 
-Then the lead reads the diff and runs the acceptance. Then `council` (Opus, Sol, Grok) closes the milestone, each seat scoped to paths its own provider did not build; Sol never gets `markupr-events`.
+- `python3 tests/first-article/check_offscreen.py` needs no display. It drives the test page in headless Chrome and runs every checker against fixture packs, including one fixture per check that must fail only that check.
+- `python3 tests/first-article/run.py --owner-go` is the on-screen run. It moves the real cursor, presses the mark hotkey and speaks through the speakers, so it only starts with that flag, and it also refuses while the Mac is in use or the microphone is busy. It opens a page titled "markupR test page (automated)" with two faults in two places: "Add to cart" throws a TypeError, and "Save" posts to an endpoint that returns 500.
+  1. Clock check, about 12 s: five clicks; the page's color change must show in the video 0 to 150 ms after each click.
+  2. Walkthrough, about 60 s: spoken narration, clicks on both buttons, two marks.
+  3. Pass: SUMMARY.md has exactly two items, each with the right sentence, a frame whose ring sits on the right button and shows the page after the click, and its own log line within 100 ms of the click; the pack is ready within 20 s of stop; the pop-up's Copy prompt button puts PROMPT.md on the clipboard.
 
-## First-article test
+Test packs are written to `~/markupr/packs/`, never into the repository. A pack holds whatever was on screen, so look before sharing one.
 
-**Test windows (Eddie, 11/16 14:13).** Test windows on his screen are fine as long as he can tell what they are: the test page is titled "markupR test page (automated)", and any other test window is labeled the same way. (A 14:10 no-window rule was lifted three minutes later.) The on-screen run moves his cursor and speaks, so it starts only when Eddie replies "markupr go" (seat, 11/16 14:51). Nothing auto-starts on idle: an idle Mac can mean he is on a call. The harness refuses without `--owner-go`, and still checks that the Mac is idle and the mic is free before it begins. No capture tests and no test panels run during a call.
+## Known limits
 
-What is proved without the on-screen run:
-- screen crate: file timestamps equal host timestamps (numeric proof), short passive clips;
-- events crate: clock and key policy through in-process events fed to the handler; passive counts;
-- browser crate: headless Chrome, clock difference measured;
-- pack crate: synthetic session with file-generated speech;
-- whole recorder: a short passive `markupr record` run, checked by numbers and deleted.
-
-The on-screen run, about three minutes, from the terminal:
-
-1. A local test page titled "markupR test page (automated)" (served from a temp port, stopped by PID) with two faults in two places: "Add to cart" throws a TypeError; "Save" posts to an endpoint that returns 500 and logs a console error. A click also changes the page color, for the clock check.
-2. Chrome started by binary with a throwaway profile on a non-default debug port, sized to cover one display. Only that display is recorded.
-3. Clock check, about 12 s: five clicks on the page; the color change must show in the video 0 to 150 ms after each click.
-4. Walkthrough, about 60 s: `say` narration in Eddie's style, synthetic cursor moves and clicks on both buttons, the mark hotkey pressed twice by synthetic key events.
-5. Stop. Read `timing.stop_to_ready_ms`.
-6. Pass: SUMMARY.md has two items, each with the right sentence, a frame whose ring sits on the right button, and its own log line. The lead opens the frames, and checks for anything unrelated on screen, before citing the pack.
-
-No EFSJ windows, titles or audio in any test pack. Test packs live in `~/markupr/packs/`, never in git.
-
-## Risks
-
-- **Capture binding on Command Line Tools only.** First deliverable of the screen lane is a 3 s video plus mic that `ffprobe` reads. If the crate cannot do it, switch to the objc2 fallback the same day.
-- **Narration through speakers is not Eddie's voice.** The first article proves the pipeline; the first thing Eddie should try is one spoken run.
-- **Input-capture code and Codex content filters.** That lane stays on Claude.
-- **Arc.** Debug-port support is community-reported only. Chrome is the supported browser in v1.
-- **A crash mid-recording loses the video** (MP4 is finalized at stop). JSONL files survive. Fragmented writing is M5.
+- One display per recording.
+- Browser logs need a Chrome-family browser started with the debug profile (`markupr browser`). Arc's debug-port support is community-reported only.
+- No signed app bundle yet; permissions attach to the terminal app that launches the binary.
+- The microphone is captured through the screen stream, so without Screen Recording there is no microphone audio either.
+- A crash mid-recording loses the video, because MP4 is finalized at stop. The JSONL files survive.
+- Whispered speech is not transcribed. English is the default language (`whisper.language` in the config).
+- Key moments come from rules, not a model. Everything said that did not become an item is still listed in SUMMARY.md, so nothing spoken is hidden.

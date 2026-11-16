@@ -5,6 +5,22 @@ Press a hotkey, use the computer while talking, then press it again.
 It lines up screen video, your voice, cursor and clicks, browser logs, and the system log on one clock, picks out key moments, and writes a context pack folder an agent can read.
 A small pop-up offers “Copy prompt” when the pack is ready; capture and processing stay on your Mac.
 
+## Try it
+
+```sh
+cargo build --release -p markupr
+./target/release/markupr doctor   # permissions, ffmpeg, whisper-cli, model paths
+./target/release/markupr          # starts the menu bar app
+```
+
+1. Press **Control+Option+R**. The menu bar item shows that it is recording.
+2. Use the computer and say what is wrong as you go. Press **Control+Option+X** whenever you want to say "look at this".
+3. Press **Control+Option+R** again.
+4. A small panel appears at the top right when the pack is ready. Click **Copy prompt** and paste it into your coding agent.
+
+For browser console and network logs, use "Open debug browser" in the menu first and reproduce the problem in that window.
+The first run needs a config file with your Whisper model path; see Requirements.
+
 ## Status
 
 This is the early Rust rebuild: v3, in development, on `rust-v3`.
@@ -108,6 +124,7 @@ markupr prompt --copy
 ## What is in a context pack
 
 Each recording gets a dated folder with raw files and processed results. Missing sources are called out in the summary.
+The video only has a frame when the screen changed; `markupr frame <pack dir> <seconds>` writes the screen at any moment, with the cursor ringed.
 
 ```text
 2026-11-16_14-30-00/
@@ -168,7 +185,9 @@ Sources without usable host timestamps are aligned by arrival or wall time, so t
 - Browser logs require a Chrome-family browser through the debug profile.
 - No signed app bundle yet; run the binary from a terminal.
 - A crash during recording loses the video because MP4 is finalized at stop; JSONL files survive.
-- Speech recognition is set to English.
+- Speech recognition defaults to English (`language` under `[whisper]` in the config).
+- Whispered speech is not transcribed: speech is found by its voicing, which keeps mouse and keyboard noise out of the transcript.
+- Key moments are picked by rules, not a model. Everything said that did not become an item is still listed in SUMMARY.md.
 
 ## Credits and license
 
