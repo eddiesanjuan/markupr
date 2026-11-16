@@ -323,12 +323,15 @@ pub mod replay {
 
 // ---------- worker: cursor throttle, scroll and typing coalescing, element lookups ----------
 
+const BUTTONS: [&str; 3] = ["left", "right", "other"];
+
 fn run_worker(rx: mpsc::Receiver<Raw>, events: &JsonlWriter, cursor: &JsonlWriter, clock: &Clock) {
     let t = |ns: u64| round_t(clock.t_from_host_ns(ns));
     let mut last_cursor_ns = 0u64;
     let mut pending_cursor: Option<(u64, f64, f64)> = None;
     let mut scroll: Option<(u64, f64, f64, i64, i64)> = None; // start ns, x, y, dx, dy
     let mut typing: Option<(u64, u64, u32)> = None; // first ns, last ns, count
+    let mut own_down = [false; 3]; // per button: the open mouse_down hit our own process
 
     let write_cursor = |ns: u64, x: f64, y: f64| { let _ = cursor.write(&json!({ "t": t(ns), "x": x, "y": y })); };
     let flush_scroll = |s: &mut Option<(u64, f64, f64, i64, i64)>| {
@@ -359,9 +362,19 @@ fn run_worker(rx: mpsc::Receiver<Raw>, events: &JsonlWriter, cursor: &JsonlWrite
             Ok(Raw::Button { ns, down, button, x, y }) => {
                 let ty = if down { "mouse_down" } else { "mouse_up" };
                 let mut line = json!({ "t": t(ns), "type": ty, "button": button, "x": x, "y": y });
+                let slot = BUTTONS.iter().position(|b| *b == button).unwrap_or(2);
                 if down {
-                    if let Some(el) = ax::element_at(x, y) { line["el"] = el; }
+                    match ax::element_at(x, y) {
+                        ax::Hit::Own => own_down[slot] = true,
+                        ax::Hit::Other(el) => {
+                            own_down[slot] = false;
+                            if let Some(el) = el { line["el"] = el; }
+                        }
+                    }
                 }
+                // The matching mouse_up carries the same tag as its mouse_down.
+                if own_down[slot] { line["self"] = true.into(); }
+                if !down { own_down[slot] = false; }
                 let _ = events.write(&line);
             }
             Ok(Raw::Scroll { ns, x, y, dx, dy }) => {

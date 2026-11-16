@@ -38,37 +38,56 @@ fn attr_element(el: AXUIElementRef, name: &str) -> Option<Cf> {
     (err == 0 && !out.is_null()).then(|| Cf(out))
 }
 
+/// What a mouse_down landed on.
+#[derive(Debug, PartialEq)]
+pub enum Hit {
+    /// An element of this very process (markupR's menu bar item or pop-up): tag `self`, no `el`.
+    Own,
+    /// Anything else; `el` when it could be read.
+    Other(Option<Value>),
+}
+
+/// The tagging decision. An unreadable pid is never tagged.
+pub fn is_own(el_pid: Option<i32>, own_pid: u32) -> bool { el_pid.is_some_and(|p| p > 0 && p as u32 == own_pid) }
+
 /// Element under a global point: role, subrole, title, label (AXDescription), and value only for
-/// static text. Inside a text-entry or secure field, or when that cannot be ruled out, only role
-/// and subrole. Text-entry and secure fields never have their value read. None on any failure.
-pub fn element_at(x: f64, y: f64) -> Option<Value> {
+/// static text. Our own elements are not queried further (our main thread may be busy with the menu).
+pub fn element_at(x: f64, y: f64) -> Hit {
     objc2::rc::autoreleasepool(|_| {
         let sys = Cf(unsafe { AXUIElementCreateSystemWide() });
         unsafe { AXUIElementSetMessagingTimeout(sys.0, EL_TIMEOUT_S) };
         let mut el: AXUIElementRef = std::ptr::null();
         if unsafe { AXUIElementCopyElementAtPosition(sys.0, x as f32, y as f32, &mut el) } != 0 || el.is_null() {
-            return None;
+            return Hit::Other(None);
         }
         let el = Cf(el);
-        unsafe { AXUIElementSetMessagingTimeout(el.0, EL_TIMEOUT_S) };
-        let role = attr_string(el.0, "AXRole").ok()??;
-        let mut m = Map::new();
-        m.insert("role".into(), Value::String(cap(&role, EL_MAX_CHARS)));
-        let mut fields = vec![("subrole", "AXSubrole")];
-        if !walk_says_inside(ancestors(el.0)) {
-            fields.extend([("title", "AXTitle"), ("label", "AXDescription")]);
-            // Allowlist: the only role whose value is read.
-            if role == "AXStaticText" { fields.push(("value", "AXValue")); }
-        }
-        for (key, attr) in fields {
-            match attr_string(el.0, attr) {
-                Ok(Some(v)) => { m.insert(key.into(), Value::String(cap(&v, EL_MAX_CHARS))); }
-                Ok(None) => {}
-                Err(()) => break,
-            }
-        }
-        Some(Value::Object(m))
+        // Local read, no message to the owning app.
+        let mut pid = 0;
+        let pid = (unsafe { AXUIElementGetPid(el.0, &mut pid) } == 0).then_some(pid);
+        if is_own(pid, std::process::id()) { return Hit::Own; }
+        Hit::Other(element_info(el.0))
     })
+}
+
+fn element_info(el: AXUIElementRef) -> Option<Value> {
+    unsafe { AXUIElementSetMessagingTimeout(el, EL_TIMEOUT_S) };
+    let role = attr_string(el, "AXRole").ok()??;
+    let mut m = Map::new();
+    m.insert("role".into(), Value::String(cap(&role, EL_MAX_CHARS)));
+    let mut fields = vec![("subrole", "AXSubrole")];
+    if !walk_says_inside(ancestors(el)) {
+        fields.extend([("title", "AXTitle"), ("label", "AXDescription")]);
+        // Allowlist: the only role whose value is read.
+        if role == "AXStaticText" { fields.push(("value", "AXValue")); }
+    }
+    for (key, attr) in fields {
+        match attr_string(el, attr) {
+            Ok(Some(v)) => { m.insert(key.into(), Value::String(cap(&v, EL_MAX_CHARS))); }
+            Ok(None) => {}
+            Err(()) => break,
+        }
+    }
+    Some(Value::Object(m))
 }
 
 /// One step of the walk up AXParent.
@@ -190,6 +209,16 @@ extern "C" {}
 
 #[cfg(test)]
 mod tests {
+    /// Bug guarded: a click on markupR's own menu bar item or pop-up is reported as a user click.
+    #[test]
+    fn click_on_our_own_menu_is_reported_as_a_user_click() {
+        let me = std::process::id();
+        assert!(super::is_own(Some(me as i32), me), "our own element is tagged");
+        assert!(!super::is_own(Some(me as i32 + 1), me), "another app's element is not");
+        assert!(!super::is_own(None, me), "unreadable pid is not tagged");
+        assert!(!super::is_own(Some(-1), u32::MAX), "negative pid never matches");
+    }
+
     use super::{walk_says_inside, Ancestor::{self, *}, WALK_MAX_DEPTH};
     fn node(role: &str) -> Ancestor { Node { role: Some(role.into()), subrole: None } }
 
