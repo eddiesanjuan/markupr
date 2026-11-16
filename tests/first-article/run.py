@@ -235,6 +235,8 @@ def main():
     parser.add_argument('--no-speech', action='store_true')
     parser.add_argument('--idle-min', type=float, default=60)
     parser.add_argument('--force', action='store_true')
+    parser.add_argument('--audio-source', choices=['mic', 'system'], default='mic', help='which track the pack transcribes')
+    parser.add_argument('--say-device', help='audio device name for the narration (say -a); default output if omitted')
     args = parser.parse_args()
     if args.idle_min < 0:
         parser.error('--idle-min must be nonnegative')
@@ -303,6 +305,8 @@ def main():
             heading = (content_x + 220, content_y + 75)
             move(heading)
             record_args = [str(args.markupr_bin), 'record', '--display', str(display['id']), '--browser-port', str(port), '--out', str(args.packs_dir)]
+            if args.mode == 'walkthrough':
+                record_args += ['--audio-source', args.audio_source]
             if args.mode == 'clock-check':
                 if '--no-pack' in command([args.markupr_bin, 'record', '--help']):
                     record_args.append('--no-pack')
@@ -322,7 +326,7 @@ def main():
                 print('NARRATION:', text, flush=True)
                 start = time.monotonic()
                 if not args.no_speech:
-                    speech = sp.Popen(['/usr/bin/say', '-r', '155', text])
+                    speech = sp.Popen(['/usr/bin/say', '-r', '155'] + (['-a', args.say_device] if args.say_device else []) + [text])
                 if target:
                     time.sleep(max(0, start + 1.5 - time.monotonic()))
                     click(center(rectangles[target]))
