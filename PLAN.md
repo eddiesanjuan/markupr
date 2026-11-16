@@ -201,7 +201,7 @@ Then the lead reads the diff and runs the acceptance. Then `council` (Opus, Sol,
 
 ## First-article test
 
-**Test windows (Eddie, 11/16 14:13).** Test windows on his screen are fine as long as he can tell what they are: the test page is titled "markupR test page (automated)", and any other test window is labeled the same way. (A 14:10 no-window rule was lifted three minutes later.) Runs that move the cursor or speak keep two gates: the Mac has been idle for a minute, and the mic is not in use by another app.
+**Test windows (Eddie, 11/16 14:13).** Test windows on his screen are fine as long as he can tell what they are: the test page is titled "markupR test page (automated)", and any other test window is labeled the same way. (A 14:10 no-window rule was lifted three minutes later.) The on-screen run moves his cursor and speaks, so it starts only when Eddie replies "markupr go" (seat, 11/16 14:51). Nothing auto-starts on idle: an idle Mac can mean he is on a call. The harness refuses without `--owner-go`, and still checks that the Mac is idle and the mic is free before it begins. No capture tests and no test panels run during a call.
 
 What is proved without the on-screen run:
 - screen crate: file timestamps equal host timestamps (numeric proof), short passive clips;

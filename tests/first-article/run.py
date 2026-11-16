@@ -235,9 +235,13 @@ def main():
     parser.add_argument('--no-speech', action='store_true')
     parser.add_argument('--idle-min', type=float, default=60)
     parser.add_argument('--force', action='store_true')
+    parser.add_argument('--owner-go', action='store_true', help='required: the owner said "markupr go" for this run')
     parser.add_argument('--audio-source', choices=['mic', 'system'], default='mic', help='which track the pack transcribes')
     parser.add_argument('--say-device', help='audio device name for the narration (say -a); default output if omitted')
     args = parser.parse_args()
+    if not args.owner_go:
+        print('BLOCKED: this run moves the cursor and speaks. It starts only after the owner says "markupr go"; pass --owner-go then. There is no idle auto-start.')
+        return 2
     if args.idle_min < 0:
         parser.error('--idle-min must be nonnegative')
     signal.signal(signal.SIGTERM, interrupted)

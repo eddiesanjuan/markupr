@@ -1,5 +1,5 @@
 # First article (macOS, logged-in desktop)
-Run from the repo root; display-free checks: `python3 tests/first-article/check_offscreen.py`; on-screen tests move the cursor.
+On-screen runs need `--owner-go` and start only after the owner says "markupr go"; nothing auto-starts on idle. Run from the repo root; display-free checks: `python3 tests/first-article/check_offscreen.py`; on-screen tests move the cursor.
 Build: `CARGO_TARGET_DIR=target/l7 cargo build -p markupr`.
 Walkthrough: `python3 tests/first-article/run.py --markupr-bin target/l7/debug/markupr`.
 Silent dry run: append `--no-speech`; speech checks will fail without recorded narration.
