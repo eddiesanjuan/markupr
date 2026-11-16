@@ -25,7 +25,11 @@ enum Command {
     App(RecordOptions),
     Record(RecordOptions),
     Start,
-    Stop,
+    Stop {
+        #[arg(long)]
+        no_wait: bool,
+    },
+    Status,
     Mark {
         #[arg(long)]
         note: Option<String>,
@@ -60,6 +64,8 @@ enum UserEvent {
     Start,
     Toggle,
     Stop,
+    WaitStop(std::os::unix::net::UnixStream),
+    Status(std::os::unix::net::UnixStream),
     Mark {
         source: &'static str,
         note: Option<String>,
@@ -87,7 +93,13 @@ fn main() -> Result<()> {
         Some(Command::Record(opts)) => shell::run(Some(opts), false, None),
         Some(Command::Popup { dir }) => shell::run(None, false, Some(dir)),
         Some(Command::Start) => control::send(serde_json::json!({"cmd":"start"})),
-        Some(Command::Stop) => control::send(serde_json::json!({"cmd":"stop"})),
+        Some(Command::Stop { no_wait }) => {
+            control::send(serde_json::json!({"cmd":"stop","wait":!no_wait}))
+        }
+        Some(Command::Status) => {
+            control::status();
+            Ok(())
+        }
         Some(Command::Mark { note }) => {
             control::send(serde_json::json!({"cmd":"mark","note":note}))
         }

@@ -254,6 +254,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
     let mut tray = None;
     let mut state = State::Idle;
     let mut active: Option<Active> = None;
+    let mut stop_waiters = Vec::new();
     let mut panel: Option<Popup> = None;
     let mut last = latest(&config);
     let mut copyable = last.is_some();
@@ -378,6 +379,22 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     let _ = active.commands.send(RecorderCommand::Stop);
                 }
             }
+            UserEvent::WaitStop(mut stream) => {
+                if state == State::Idle {
+                    control::reply_to(&mut stream, &serde_json::json!({"ok":false,"error":"no recording in progress"}));
+                } else {
+                    stop_waiters.push(stream);
+                    if state == State::Recording {
+                        state = State::Processing;
+                        if let Some(active) = &active {
+                            let _ = active.commands.send(RecorderCommand::Stop);
+                        }
+                    }
+                }
+            }
+            UserEvent::Status(mut stream) => {
+                control::reply_to(&mut stream, &serde_json::json!({"state":state.name(),"last_pack":control::last_pack(&config)}));
+            }
             UserEvent::Mark { source, note } if state == State::Recording => {
                 if let Some(active) = &active {
                     let _ = active.commands.send(RecorderCommand::Mark { source, note });
@@ -389,6 +406,11 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     let _ = active.worker.join();
                 }
                 state = State::Idle;
+                // Recorder::stop saves session.json before the worker sends Finished.
+                let reply = control::stop_reply(root.as_deref(), result.as_ref().err().map(String::as_str));
+                for mut stream in stop_waiters.drain(..) {
+                    control::reply_to(&mut stream, &reply);
+                }
                 let report = match result {
                     Ok(report) => report,
                     Err(error) => {

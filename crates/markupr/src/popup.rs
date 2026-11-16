@@ -92,6 +92,41 @@ impl Popup {
                 session.timing.stop_to_ready_ms.unwrap_or(0) as f64 / 1000.0
             )
         };
+        let notice = if failed {
+            None
+        } else {
+            let words = report.map(|report| report.words).unwrap_or_else(|| {
+                fs::read(pack.transcript_json())
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+                    .and_then(|transcript| {
+                        transcript["segments"].as_array().map(|segments| {
+                            segments
+                                .iter()
+                                .map(|segment| segment["words"].as_array().map_or(0, Vec::len))
+                                .sum()
+                        })
+                    })
+                    .unwrap_or(0)
+            });
+            let mut missing = Vec::new();
+            if session.mic.is_none() {
+                missing.push("No microphone audio");
+            }
+            if words == 0 {
+                missing.push("No speech recognized");
+            }
+            if !session
+                .sources
+                .browser
+                .as_ref()
+                .is_some_and(|browser| browser.attached)
+            {
+                missing.push("No browser logs: use Open debug browser in the menu");
+            }
+            missing.truncate(2);
+            (!missing.is_empty()).then(|| missing.join(" · "))
+        };
         let mtm = MainThreadMarker::new().expect("popup runs on the main thread");
         let screens = NSScreen::screens(mtm);
         let main = screens
@@ -109,8 +144,9 @@ impl Popup {
             })
             .unwrap_or(main.clone());
         let visible = screen.visibleFrame();
-        let width = 396.0_f64.min(visible.size.width - 32.0);
-        let height = 136.0;
+        let width =
+            (if notice.is_some() { 500.0_f64 } else { 396.0 }).min(visible.size.width - 32.0);
+        let height = if notice.is_some() { 160.0 } else { 136.0 };
         let frame = rect(
             visible.origin.x + visible.size.width - width - 16.0,
             visible.origin.y + visible.size.height - height - 16.0,
@@ -160,12 +196,19 @@ impl Popup {
             }),
             mtm,
         );
-        title.setFrame(rect(18.0, 94.0, width - 54.0, 23.0));
+        title.setFrame(rect(18.0, height - 42.0, width - 54.0, 23.0));
         title.setFont(Some(&NSFont::boldSystemFontOfSize(15.0)));
         let line = NSTextField::labelWithString(&NSString::from_str(&detail), mtm);
-        line.setFrame(rect(18.0, 66.0, width - 32.0, 22.0));
+        line.setFrame(rect(18.0, height - 70.0, width - 32.0, 22.0));
         line.setFont(Some(&NSFont::systemFontOfSize(12.0)));
         line.setTextColor(Some(&NSColor::secondaryLabelColor()));
+        if let Some(notice) = notice {
+            let missing = NSTextField::labelWithString(&NSString::from_str(&notice), mtm);
+            missing.setFrame(rect(18.0, height - 94.0, width - 32.0, 22.0));
+            missing.setFont(Some(&NSFont::systemFontOfSize(11.0)));
+            missing.setTextColor(Some(&NSColor::tertiaryLabelColor()));
+            view.addSubview(&missing);
+        }
         let actions = Actions::alloc(mtm).set_ivars(proxy);
         let actions: Retained<Actions> = unsafe { msg_send![super(actions), init] };
         let make_button = |title: &str, frame: NSRect, action| {
@@ -189,7 +232,7 @@ impl Popup {
         let _finder = make_button("Show in Finder", finder_rect, sel!(showFinder:));
         let _close = make_button(
             "×",
-            rect(width - 33.0, 101.0, 24.0, 24.0),
+            rect(width - 33.0, height - 35.0, 24.0, 24.0),
             sel!(closePopup:),
         );
         view.addSubview(&title);

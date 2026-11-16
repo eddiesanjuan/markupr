@@ -1,6 +1,6 @@
 use crate::UserEvent;
 use anyhow::{bail, Context, Result};
-use markupr_core::config::app_support_dir;
+use markupr_core::{config::app_support_dir, Config};
 use serde_json::{json, Value};
 use std::{
     fs::{self, File, OpenOptions},
@@ -9,7 +9,7 @@ use std::{
         fd::AsRawFd,
         unix::net::{UnixListener, UnixStream},
     },
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -57,12 +57,19 @@ impl ControlServer {
                 while !stop.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
-                            let reply = handle_request(&mut stream, &proxy);
-                            let value = match reply {
-                                Ok(()) => json!({"ok":true}),
-                                Err(e) => json!({"ok":false,"error":e.to_string()}),
-                            };
-                            let _ = writeln!(stream, "{value}");
+                            let reply = handle_request(&mut stream, &|event| {
+                                proxy
+                                    .send_event(event)
+                                    .map_err(|_| anyhow::anyhow!("recorder has stopped"))
+                            });
+                            match reply {
+                                Ok(Some(value)) => reply_to(&mut stream, &value),
+                                Ok(None) => {} // The main loop owns the deferred reply.
+                                Err(e) => reply_to(
+                                    &mut stream,
+                                    &json!({"ok":false,"error":e.to_string()}),
+                                ),
+                            }
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(20))
@@ -82,15 +89,20 @@ impl ControlServer {
         })
     }
 }
-fn handle_request(stream: &mut UnixStream, proxy: &EventLoopProxy<UserEvent>) -> Result<()> {
+fn handle_request(
+    stream: &mut UnixStream,
+    dispatch: &impl Fn(UserEvent) -> Result<()>,
+) -> Result<Option<Value>> {
     stream.set_read_timeout(Some(Duration::from_secs(1)))?;
     stream.set_write_timeout(Some(Duration::from_secs(1)))?;
     let mut line = String::new();
-    BufReader::new(stream).read_line(&mut line)?;
+    BufReader::new(&mut *stream).read_line(&mut line)?;
     let value: Value = serde_json::from_str(&line)?;
     let event = match value["cmd"].as_str() {
         Some("start") => UserEvent::Start,
+        Some("stop") if value["wait"] != false => UserEvent::WaitStop(stream.try_clone()?),
         Some("stop") => UserEvent::Stop,
+        Some("status") => UserEvent::Status(stream.try_clone()?),
         Some("mark") => {
             let note = match &value["note"] {
                 Value::Null => None,
@@ -104,10 +116,21 @@ fn handle_request(stream: &mut UnixStream, proxy: &EventLoopProxy<UserEvent>) ->
         }
         _ => bail!("unknown command"),
     };
-    proxy
-        .send_event(event)
-        .map_err(|_| anyhow::anyhow!("recorder has stopped"))?;
-    Ok(())
+    let deferred = matches!(event, UserEvent::WaitStop(_) | UserEvent::Status(_));
+    dispatch(event)?;
+    Ok((!deferred).then(|| json!({"ok":true})))
+}
+pub fn reply_to(stream: &mut UnixStream, value: &Value) {
+    let _ = writeln!(stream, "{value}");
+}
+pub fn stop_reply(pack: Option<&Path>, error: Option<&str>) -> Value {
+    match (pack, error) {
+        (Some(pack), None) => json!({"ok":true,"pack":pack,"status":"ready"}),
+        (Some(pack), Some(error)) => {
+            json!({"ok":false,"pack":pack,"status":"failed","error":error})
+        }
+        (None, _) => json!({"ok":false,"error":error.unwrap_or("no pack was created")}),
+    }
 }
 impl Drop for ControlServer {
     fn drop(&mut self) {
@@ -118,21 +141,165 @@ impl Drop for ControlServer {
         let _ = fs::remove_file(&self.path);
     }
 }
-pub fn send(request: Value) -> Result<()> {
+fn request(request: &Value) -> Result<Value> {
     let mut stream = UnixStream::connect(app_support_dir().join("control.sock"))
         .context("no running markupr recorder")?;
-    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
+    let waited_stop = request["cmd"] == "stop" && request["wait"] != false;
+    stream.set_read_timeout((!waited_stop).then(|| Duration::from_secs(3)))?;
     stream.set_write_timeout(Some(Duration::from_secs(3)))?;
     writeln!(stream, "{request}")?;
     let mut reply = String::new();
     BufReader::new(stream).read_line(&mut reply)?;
     let value: Value = serde_json::from_str(&reply)?;
+    Ok(value)
+}
+pub fn send(value: Value) -> Result<()> {
+    let value = request(&value)?;
+    write_reply(&value, &mut std::io::stdout().lock())
+}
+fn write_reply(value: &Value, output: &mut impl Write) -> Result<()> {
+    writeln!(output, "{value}")?;
+    if let Some(pack) = value["pack"].as_str() {
+        writeln!(output, "{pack}")?;
+    }
     if value["ok"] != true {
         bail!(
             "{}",
             value["error"].as_str().unwrap_or("control request failed")
         );
     }
-    println!("{}", reply.trim_end());
     Ok(())
+}
+
+pub fn last_pack(config: &Config) -> Option<PathBuf> {
+    fs::read_dir(&config.packs_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| path.join("session.json").is_file())
+        .max()?
+        .canonicalize()
+        .ok()
+}
+
+pub fn status() {
+    let value = request(&json!({"cmd":"status"})).ok().filter(|value| {
+        matches!(value["state"].as_str(), Some("idle" | "recording" | "processing"))
+    }).unwrap_or_else(|| {
+        json!({"state":"not_running", "last_pack":Config::load().ok().and_then(|config| last_pack(&config))})
+    });
+    println!("{value}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{io::Read, sync::mpsc};
+
+    #[test]
+    fn waited_stop_has_no_early_ack_and_does_not_block_status_requests() -> Result<()> {
+        let (dispatch, events) = mpsc::channel();
+        let dispatch = |event| dispatch.send(event).map_err(Into::into);
+        let (mut client, mut server) = UnixStream::pair()?;
+        writeln!(client, "{{\"cmd\":\"stop\"}}")?;
+        assert!(handle_request(&mut server, &dispatch)?.is_none());
+        let UserEvent::WaitStop(mut completion) = events.recv_timeout(Duration::from_secs(1))?
+        else {
+            panic!("stop must wait")
+        };
+        client.set_nonblocking(true)?;
+        assert_eq!(
+            client.read(&mut [0]).unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        client.set_nonblocking(false)?;
+        client.set_read_timeout(Some(Duration::from_secs(1)))?;
+
+        // A pending stop must leave the accept loop free to route status requests.
+        let (mut status_client, mut status_server) = UnixStream::pair()?;
+        status_client.set_read_timeout(Some(Duration::from_secs(1)))?;
+        writeln!(status_client, "{{\"cmd\":\"status\"}}")?;
+        assert!(handle_request(&mut status_server, &dispatch)?.is_none());
+        let UserEvent::Status(mut status) = events.recv_timeout(Duration::from_secs(1))? else {
+            panic!("status was blocked")
+        };
+        reply_to(&mut status, &json!({"state":"processing","last_pack":null}));
+        let mut line = String::new();
+        BufReader::new(status_client).read_line(&mut line)?;
+        assert_eq!(serde_json::from_str::<Value>(&line)?["state"], "processing");
+
+        let pack = Path::new("/tmp/markupr-unit-pack");
+        reply_to(&mut completion, &stop_reply(Some(pack), None));
+        line.clear();
+        BufReader::new(client).read_line(&mut line)?;
+        assert_eq!(
+            serde_json::from_str::<Value>(&line)?,
+            json!({"ok":true,"pack":pack,"status":"ready"})
+        );
+        let mut stdout = Vec::new();
+        write_reply(&serde_json::from_str(&line)?, &mut stdout)?;
+        assert_eq!(
+            String::from_utf8(stdout)?.lines().last(),
+            Some("/tmp/markupr-unit-pack")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn no_wait_stop_acknowledges_immediately_and_failed_completion_keeps_the_pack_path(
+    ) -> Result<()> {
+        let (dispatch, events) = mpsc::channel();
+        let (mut client, mut server) = UnixStream::pair()?;
+        writeln!(client, "{{\"cmd\":\"stop\",\"wait\":false}}")?;
+        let reply = handle_request(&mut server, &|event| {
+            dispatch.send(event).map_err(Into::into)
+        })?;
+        assert!(matches!(
+            events.recv_timeout(Duration::from_secs(1))?,
+            UserEvent::Stop
+        ));
+        assert_eq!(reply, Some(json!({"ok":true})));
+        let failed = stop_reply(
+            Some(Path::new("/tmp/markupr-failed-pack")),
+            Some("pack write failed"),
+        );
+        assert_eq!(
+            failed,
+            json!({"ok":false,"pack":"/tmp/markupr-failed-pack","status":"failed","error":"pack write failed"})
+        );
+        let mut stdout = Vec::new();
+        assert!(write_reply(&failed, &mut stdout).is_err());
+        assert_eq!(
+            String::from_utf8(stdout)?.lines().last(),
+            Some("/tmp/markupr-failed-pack")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn status_does_not_hide_the_newest_pack_when_prompt_was_not_written() -> Result<()> {
+        let root = std::env::temp_dir().join(format!(
+            "markupr-l9-status-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        let older = root.join("2026-11-16_14-00-00");
+        let newest = root.join("2026-11-16_14-01-00");
+        fs::create_dir_all(&older)?;
+        fs::create_dir(&newest)?;
+        fs::write(older.join("session.json"), "{}")?;
+        fs::write(older.join("PROMPT.md"), "ready")?;
+        fs::write(newest.join("session.json"), "{}")?;
+        let config = Config {
+            packs_dir: root.clone(),
+            ..Config::default()
+        };
+        let actual = last_pack(&config);
+        let expected = newest.canonicalize()?;
+        fs::remove_dir_all(&root)?;
+        assert_eq!(actual, Some(expected));
+        Ok(())
+    }
 }
