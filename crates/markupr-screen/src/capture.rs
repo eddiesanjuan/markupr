@@ -30,12 +30,13 @@ use objc2_core_media::{
 use objc2_foundation::{NSArray, NSDictionary, NSError, NSNumber, NSObject, NSObjectProtocol, NSString, NSURL};
 use objc2_screen_capture_kit::{
     SCContentFilter, SCFrameStatus, SCShareableContent, SCStream, SCStreamConfiguration,
-    SCStreamFrameInfoDisplayTime, SCStreamFrameInfoStatus, SCStreamOutput, SCStreamOutputType,
+    SCStreamDelegate, SCStreamFrameInfoDisplayTime, SCStreamFrameInfoStatus, SCStreamOutput,
+    SCStreamOutputType,
 };
 
 use crate::wav::WavWriter;
 use crate::{
-    host_now_ns, ticks_to_ns, DisplayChoice, DisplayInfo, MicInfo, ScreenConfig, ScreenError,
+    host_now_ns, ticks_to_ns, CaptureStop, DisplayChoice, DisplayInfo, MicInfo, ScreenConfig, ScreenError,
     ScreenReport, SystemAudioInfo, VideoInfo,
 };
 
@@ -45,6 +46,8 @@ const PIXEL_420V: u32 = u32::from_be_bytes(*b"420v");
 const AAC: u32 = u32::from_be_bytes(*b"aac ");
 const SYS_RATE: u32 = 48_000;
 const SYS_CHANNELS: u32 = 2;
+/// Longest video edge in pixels; H.264 refuses 5K and 6K sizes.
+const MAX_EDGE: u32 = 3840;
 
 /// Moves an Objective-C object across threads. ScreenCaptureKit and AVFoundation objects used
 /// here are thread-safe for the calls we make; every access is serialized by a Mutex or the
@@ -141,10 +144,14 @@ struct State {
     audio_in: Option<Retained<AVAssetWriterInput>>,
     /// Host ns of the first accepted frame; the writer session starts here.
     video_start: Option<u64>,
-    /// Host ns of every frame accepted by the writer, in order.
+    /// MARKUPR_SCREEN_DEBUG is set: keep the per-frame lists below.
+    debug: bool,
+    /// Host ns of every frame accepted by the writer, in order (debug only).
     frames: Vec<u64>,
-    /// window-server display time (host ns) for each accepted frame, when attached.
+    /// Window-server display time (host ns) for each accepted frame (debug only).
     frame_display: Vec<Option<u64>>,
+    /// Latest complete frame the busy encoder could not take; retried with its own timestamp.
+    pending: Option<Pending>,
     frames_dropped_not_ready: u64,
     frames_idle: u64,
     last_frame_ns: u64,
@@ -162,8 +169,18 @@ struct State {
     lag_sys: LagStats,
     lag_mic: LagStats,
     errors: Vec<String>,
+    /// Set by stop() before it stops the stream; the delegate then ignores the stop.
+    stopping: bool,
     /// Set by stop() under the lock; later callbacks are ignored.
     stopped: bool,
+    /// The stream stopped by itself (delegate).
+    capture_stopped: Option<CaptureStop>,
+}
+
+struct Pending {
+    sb: CFRetained<CMSampleBuffer>,
+    pts: u64,
+    display: Option<u64>,
 }
 
 struct OutputIvars {
@@ -199,6 +216,19 @@ define_class!(
             }
         }
     }
+
+    unsafe impl SCStreamDelegate for Output {
+        #[unsafe(method(stream:didStopWithError:))]
+        fn did_stop(&self, _stream: &SCStream, error: &NSError) {
+            let now = host_now_ns();
+            let mut guard = self.ivars().state.lock().unwrap_or_else(|p| p.into_inner());
+            let st = &mut guard.0;
+            if !st.stopping && st.capture_stopped.is_none() {
+                let reason = error.localizedDescription().to_string();
+                st.capture_stopped = Some(CaptureStop { host_ns: now, reason });
+            }
+        }
+    }
 );
 
 impl Output {
@@ -226,22 +256,39 @@ fn on_screen(st: &mut State, sb: &CMSampleBuffer, now: u64) {
     let status = number(&info, unsafe { SCStreamFrameInfoStatus }).map(|n| n.integerValue());
     if status != Some(SCFrameStatus::Complete.0) {
         st.frames_idle += 1;
+        // Idle callbacks keep coming on a still screen: retry a frame the encoder refused.
+        if st.pending.is_some() && unsafe { st.video_in.isReadyForMoreMediaData() } {
+            let p = st.pending.take().unwrap();
+            append_frame(st, &p.sb, p.pts, p.display, now);
+        }
         return;
     }
     let Some(pts) = cmtime_ns(unsafe { sb.presentation_time_stamp() }) else { return };
-    if !unsafe { st.video_in.isReadyForMoreMediaData() } {
+    let display = number(&info, unsafe { SCStreamFrameInfoDisplayTime })
+        .map(|n| ticks_to_ns(n.unsignedLongLongValue()));
+    let superseded = if unsafe { st.video_in.isReadyForMoreMediaData() } {
+        let old = st.pending.take();
+        append_frame(st, sb, pts, display, now);
+        old
+    } else {
+        st.pending.replace(Pending { sb: sb.retain().into(), pts, display })
+    };
+    if superseded.is_some() {
         st.frames_dropped_not_ready += 1;
-        return;
     }
+}
+
+/// Append one frame at its own timestamp; the first one starts the writer session.
+fn append_frame(st: &mut State, sb: &CMSampleBuffer, pts: u64, display: Option<u64>, now: u64) {
     if st.video_start.is_none() {
         unsafe { st.writer.startSessionAtSourceTime(sb.presentation_time_stamp()) };
         st.video_start = Some(pts);
     }
     if unsafe { st.video_in.appendSampleBuffer(sb) } {
-        st.frames.push(pts);
-        let disp = number(&info, unsafe { SCStreamFrameInfoDisplayTime })
-            .map(|n| ticks_to_ns(n.unsignedLongLongValue()));
-        st.frame_display.push(disp);
+        if st.debug {
+            st.frames.push(pts);
+            st.frame_display.push(display);
+        }
         st.last_frame_ns = pts;
         st.last_frame = Some(sb.retain().into());
         st.lag_video.add(now as i64 - pts as i64);
@@ -295,7 +342,7 @@ fn on_mic(st: &mut State, sb: &CMSampleBuffer, now: u64) {
         }
     }
     if let Some(w) = st.mic.as_mut() {
-        if let Err(e) = w.push(pts, &mono) {
+        if let Err(e) = w.push(pts, asbd.mSampleRate.round() as u32, &mono) {
             st.errors.push(format!("mic write: {e}"));
             st.mic_wanted = false;
         }
@@ -363,17 +410,41 @@ fn append_copy_at(input: &AVAssetWriterInput, sb: &CMSampleBuffer, at_ns: u64) -
     let copy = NonNull::new(out).filter(|_| err == 0).ok_or(format!("copy failed ({err})"))?;
     // SAFETY: a Create function returns a +1 reference.
     let copy = unsafe { CFRetained::from_raw(copy) };
-    let deadline = std::time::Instant::now() + Duration::from_secs(1);
-    while !unsafe { input.isReadyForMoreMediaData() } {
-        if std::time::Instant::now() > deadline {
-            return Err("encoder not ready".into());
-        }
-        std::thread::sleep(Duration::from_millis(5));
+    if !wait_ready(input) {
+        return Err("encoder not ready".into());
     }
     if unsafe { input.appendSampleBuffer(&copy) } {
         Ok(())
     } else {
         Err("append refused".into())
+    }
+}
+
+fn wait_ready(input: &AVAssetWriterInput) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while !unsafe { input.isReadyForMoreMediaData() } {
+        if std::time::Instant::now() > deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    true
+}
+
+/// Native pixel size, with the longer edge capped at MAX_EDGE and the other edge even.
+pub(crate) fn capture_size(display: &DisplayInfo) -> (u32, u32) {
+    let w = (display.w * display.scale).round() as u32;
+    let h = (display.h * display.scale).round() as u32;
+    let long = w.max(h);
+    if long <= MAX_EDGE {
+        return (w, h);
+    }
+    let even = |v: f64| ((v / 2.0).round() as u32 * 2).max(2);
+    let f = MAX_EDGE as f64 / long as f64;
+    if w >= h {
+        (MAX_EDGE, even(h as f64 * f))
+    } else {
+        (even(w as f64 * f), MAX_EDGE)
     }
 }
 
@@ -517,8 +588,7 @@ impl ScreenRecorder {
         }
         let display = choose_display(&cfg.display)?;
         let fps = cfg.fps.clamp(1, 120);
-        let width = (display.w * display.scale).round() as u32;
-        let height = (display.h * display.scale).round() as u32;
+        let (width, height) = capture_size(&display);
 
         std::fs::create_dir_all(&cfg.out_dir)?;
         let video_path = cfg.out_dir.join("video.mp4");
@@ -568,7 +638,9 @@ impl ScreenRecorder {
             video_in,
             audio_in,
             video_start: None,
+            debug: std::env::var_os("MARKUPR_SCREEN_DEBUG").is_some(),
             frames: Vec::new(),
+            pending: None,
             frame_display: Vec::new(),
             frames_dropped_not_ready: 0,
             frames_idle: 0,
@@ -586,11 +658,14 @@ impl ScreenRecorder {
             lag_sys: LagStats::default(),
             lag_mic: LagStats::default(),
             errors: Vec::new(),
+            stopping: false,
             stopped: false,
+            capture_stopped: None,
         })));
 
-        let stream = unsafe { SCStream::initWithFilter_configuration_delegate(SCStream::alloc(), &filter, &conf, None) };
         let output = Output::new(state.clone());
+        let delegate: &ProtocolObject<dyn SCStreamDelegate> = ProtocolObject::from_ref(&*output);
+        let stream = unsafe { SCStream::initWithFilter_configuration_delegate(SCStream::alloc(), &filter, &conf, Some(delegate)) };
         let queue = DispatchQueue::new("markupr.screen.samples", None);
         let proto = ProtocolObject::from_ref(&*output);
         let mut kinds = vec![SCStreamOutputType::Screen];
@@ -624,6 +699,7 @@ impl ScreenRecorder {
 
     pub fn stop(self) -> Result<ScreenReport, ScreenError> {
         let stop_ns = host_now_ns();
+        self.state.lock().unwrap_or_else(|p| p.into_inner()).0.stopping = true;
         let (tx, rx) = mpsc::channel::<Option<String>>();
         let block = RcBlock::new(move |err: *mut NSError| {
             let _ = tx.send(ns_err(err));
@@ -642,52 +718,36 @@ impl ScreenRecorder {
         let st = &mut guard.0;
         st.stopped = true;
         warnings.append(&mut st.errors);
+        let capture_stopped = st.capture_stopped.clone();
+        if let Some(c) = &capture_stopped {
+            warnings.push(format!(
+                "capture stopped by itself {:.1} s before stop: {}",
+                stop_ns.saturating_sub(c.host_ns) as f64 / 1e9,
+                c.reason
+            ));
+        }
 
-        let Some(video_start) = st.video_start else {
-            unsafe { st.writer.cancelWriting() };
-            return Err(ScreenError::Capture("no video frame arrived before stop".into()));
+        let video_start = match finish_video(st, stop_ns, capture_stopped.is_none()) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                warnings.push(format!("video: {e}"));
+                None
+            }
         };
-        // AVAssetWriter does not stretch the last frame to the session end, so a still
-        // screen at the end would cut the video short. Repeat the last frame at stop time.
-        let end = stop_ns.max(st.last_frame_ns + 1);
-        if let Some(last) = st.last_frame.take() {
-            if end > st.last_frame_ns + 1_000_000 {
-                match append_copy_at(&st.video_in, &last, end) {
-                    Ok(()) => {
-                        st.frames.push(end);
-                        st.frame_display.push(None);
-                    }
-                    Err(e) => warnings.push(format!("video tail frame: {e}")),
-                }
-            }
-        }
-        unsafe {
-            st.video_in.markAsFinished();
-            if let Some(a) = &st.audio_in {
-                a.markAsFinished();
-            }
-            st.writer.endSessionAtSourceTime(ns_cmtime(end));
-        }
-        let (tx, rx) = mpsc::channel::<()>();
-        let done = RcBlock::new(move || {
-            let _ = tx.send(());
-        });
-        unsafe { st.writer.finishWritingWithCompletionHandler(&done) };
-        wait(&rx, "video finalize")?;
-        let status = unsafe { st.writer.status() };
-        if status != AVAssetWriterStatus::Completed {
-            let e = unsafe { st.writer.error() }.map(|e| e.localizedDescription().to_string());
-            return Err(ScreenError::Writer(e.unwrap_or_else(|| format!("writer status {}", status.0))));
-        }
+        warnings.append(&mut st.errors);
 
+        // The mic is finalized on every path, whatever happened to the video.
         let mic = match st.mic.take() {
             Some(w) => {
                 let info = MicInfo { path: st.mic_path.clone(), start_host_ns: w.start_ns, sample_rate: w.sample_rate, channels: 1 };
-                if w.padded > 0 {
-                    warnings.push(format!("mic: {} ms of gaps filled with silence", w.padded * 1000 / w.sample_rate as u64));
+                warnings.extend(w.notes());
+                match w.finish() {
+                    Ok(()) => Some(info),
+                    Err(e) => {
+                        warnings.push(format!("mic finalize: {e}"));
+                        None
+                    }
                 }
-                w.finish()?;
-                Some(info)
             }
             None => {
                 if self.cfg.mic {
@@ -696,11 +756,11 @@ impl ScreenRecorder {
                 None
             }
         };
-        let system_audio = match st.sys_first {
-            Some(t) => Some(SystemAudioInfo { path: self.cfg.out_dir.join("video.mp4"), stream: "a:0".into(), start_host_ns: t }),
-            None => {
+        let system_audio = match (video_start, st.sys_first) {
+            (Some(_), Some(t)) => Some(SystemAudioInfo { path: self.cfg.out_dir.join("video.mp4"), stream: "a:0".into(), start_host_ns: t }),
+            _ => {
                 if self.cfg.system_audio && st.audio_in.is_some() {
-                    warnings.push(format!("system audio: no samples written ({} buffers)", st.sys_buffers));
+                    warnings.push(format!("system audio: none in the file ({} buffers received)", st.sys_buffers));
                 }
                 None
             }
@@ -718,24 +778,101 @@ impl ScreenRecorder {
             let disp: Vec<String> = st.frame_display.iter().map(|d| d.map_or("null".into(), |v| v.to_string())).collect();
             let json = format!(
                 r#"{{"stop_ns":{},"video_start":{},"frames":[{}],"display_time":[{}],"idle":{},"lag_video":{},"lag_sys":{},"lag_mic":{},"mic_channels_in":{}}}"#,
-                stop_ns, video_start, frames.join(","), disp.join(","), st.frames_idle,
+                stop_ns, video_start.map_or("null".into(), |v| v.to_string()), frames.join(","), disp.join(","), st.frames_idle,
                 st.lag_video.json(), st.lag_sys.json(), st.lag_mic.json(), st.mic_channels_in
             );
             let _ = std::fs::write(p, json);
         }
 
+        if video_start.is_none() && mic.is_none() {
+            return Err(ScreenError::Capture(format!("nothing usable was recorded: {}", warnings.join("; "))));
+        }
         Ok(ScreenReport {
             display: self.display,
-            video: VideoInfo {
+            video: video_start.map(|start_host_ns| VideoInfo {
                 path: self.cfg.out_dir.join("video.mp4"),
-                start_host_ns: video_start,
+                start_host_ns,
                 width: self.width,
                 height: self.height,
                 fps: self.cfg.fps,
-            },
+            }),
             mic,
             system_audio,
+            capture_stopped,
             warnings,
         })
+    }
+}
+
+/// Finish video.mp4 and return its time zero. `alive`: the stream was running at stop, so the
+/// last frame is repeated at the stop time to keep a still tail.
+fn finish_video(st: &mut State, stop_ns: u64, alive: bool) -> Result<u64, String> {
+    // Audio first, so the writer does not hold video waiting to interleave with it.
+    if let Some(a) = &st.audio_in {
+        unsafe { a.markAsFinished() };
+    }
+    if let Some(p) = st.pending.take() {
+        if wait_ready(&st.video_in) {
+            append_frame(st, &p.sb, p.pts, p.display, host_now_ns());
+        } else {
+            st.frames_dropped_not_ready += 1;
+        }
+    }
+    let Some(video_start) = st.video_start else {
+        unsafe { st.writer.cancelWriting() };
+        return Err("no frame arrived before stop".into());
+    };
+    let end = stop_ns.max(st.last_frame_ns + 1);
+    if alive && end > st.last_frame_ns + 1_000_000 {
+        if let Some(last) = st.last_frame.take() {
+            match append_copy_at(&st.video_in, &last, end) {
+                Ok(()) => {
+                    if st.debug {
+                        st.frames.push(end);
+                        st.frame_display.push(None);
+                    }
+                }
+                Err(e) => st.errors.push(format!("video tail frame: {e}")),
+            }
+        }
+    }
+    unsafe {
+        st.video_in.markAsFinished();
+        if alive {
+            st.writer.endSessionAtSourceTime(ns_cmtime(end));
+        }
+    }
+    let (tx, rx) = mpsc::channel::<()>();
+    let done = RcBlock::new(move || {
+        let _ = tx.send(());
+    });
+    unsafe { st.writer.finishWritingWithCompletionHandler(&done) };
+    wait(&rx, "video finalize").map_err(|e| e.to_string())?;
+    let status = unsafe { st.writer.status() };
+    if status != AVAssetWriterStatus::Completed {
+        let e = unsafe { st.writer.error() }.map(|e| e.localizedDescription().to_string());
+        return Err(e.unwrap_or_else(|| format!("writer status {}", status.0)));
+    }
+    Ok(video_start)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Bug: H.264 refuses 5K/6K native sizes and the session gets no video at all.
+    #[test]
+    fn capture_size_caps_long_edge_and_keeps_builtin_native() {
+        let d = |w: f64, h: f64, scale: f64| DisplayInfo { id: 1, x: 0.0, y: 0.0, w, h, scale };
+        for (disp, want) in [
+            (d(1800.0, 1169.0, 2.0), (3600, 2338)), // this Mac's built-in display
+            (d(2560.0, 1440.0, 2.0), (3840, 2160)), // 5K
+            (d(3008.0, 1692.0, 2.0), (3840, 2160)), // 6K
+            (d(1080.0, 1920.0, 2.0), (2160, 3840)), // portrait
+        ] {
+            let got = capture_size(&disp);
+            println!("{}x{} @{} -> {}x{}", disp.w, disp.h, disp.scale, got.0, got.1);
+            assert_eq!(got, want);
+        }
     }
 }

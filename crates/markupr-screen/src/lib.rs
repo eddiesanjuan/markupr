@@ -7,8 +7,9 @@
 //! Time zero: the writer session starts at the presentation timestamp of the first
 //! complete frame it accepted, so for every frame in `video.mp4`,
 //! `file time = frame host ns - video.start_host_ns`. Frames arrive only when the
-//! screen changes; they keep their real timestamps (variable frame rate), and the
-//! session ends at the stop time so the last frame lasts to the end.
+//! screen changes; they keep their real timestamps (variable frame rate). While the stream
+//! is alive at stop, the last frame is repeated at the stop time so a still tail keeps its
+//! length.
 
 mod capture;
 mod wav;
@@ -50,6 +51,7 @@ pub struct DisplayInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct VideoInfo {
     pub path: PathBuf,
+    // width/height are the file's pixel size: native, or the longer edge capped at 3840.
     /// Host ns of the first frame in the file: file time = host ns - start_host_ns.
     pub start_host_ns: u64,
     pub width: u32,
@@ -75,12 +77,21 @@ pub struct SystemAudioInfo {
     pub start_host_ns: u64,
 }
 
+/// The stream stopped by itself before stop() (display gone, permission revoked, ...).
+#[derive(Debug, Clone, Serialize)]
+pub struct CaptureStop {
+    pub host_ns: u64,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ScreenReport {
     pub display: DisplayInfo,
-    pub video: VideoInfo,
+    /// None when the video could not be finalized or no frame arrived; see `warnings`.
+    pub video: Option<VideoInfo>,
     pub mic: Option<MicInfo>,
     pub system_audio: Option<SystemAudioInfo>,
+    pub capture_stopped: Option<CaptureStop>,
     pub warnings: Vec<String>,
 }
 
