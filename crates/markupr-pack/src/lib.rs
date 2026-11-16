@@ -15,9 +15,11 @@ use serde_json::Value;
 use std::{
     fs, io,
     path::Path,
-    process::Command,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    process::{Command, Stdio},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+pub use frames::{frame_at, FrameAt};
 
 pub type PackError = Box<dyn std::error::Error + Send + Sync>;
 #[derive(Clone, Copy, Debug)]
@@ -45,10 +47,47 @@ fn elapsed(start: Instant) -> u64 {
 fn has_data(path: &Path) -> bool {
     path.metadata().is_ok_and(|m| m.is_file() && m.len() > 0)
 }
+#[derive(Debug)]
+struct CommandTimeout(String);
+impl std::fmt::Display for CommandTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+impl std::error::Error for CommandTimeout {}
 fn run(command: &mut Command) -> Result<Vec<u8>, PackError> {
-    let output = command.output()?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    run_timed(command, Duration::from_secs(30))
+}
+fn run_timed(command: &mut Command, limit: Duration) -> Result<Vec<u8>, PackError> {
+    // File-backed output avoids blocking on a full pipe while checking the deadline.
+    let temp = tempfile::tempdir()?;
+    let stdout = temp.path().join("stdout");
+    let stderr = temp.path().join("stderr");
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&stdout)?)
+        .stderr(fs::File::create(&stderr)?)
+        .spawn()?;
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if started.elapsed() >= limit {
+            let _ = child.kill(); // This Child handle belongs only to this invocation.
+            let _ = child.wait();
+            return Err(CommandTimeout(format!(
+                "{} timed out after {:.1} s; stopped child PID {}",
+                command.get_program().to_string_lossy(),
+                limit.as_secs_f64(),
+                child.id()
+            ))
+            .into());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    if !status.success() {
+        let stderr = fs::read_to_string(stderr)?;
         let tail: String = stderr
             .chars()
             .rev()
@@ -60,14 +99,18 @@ fn run(command: &mut Command) -> Result<Vec<u8>, PackError> {
         return Err(format!(
             "{} exited {}: {}",
             command.get_program().to_string_lossy(),
-            output.status,
+            status,
             tail.trim()
         )
         .into());
     }
-    Ok(output.stdout)
+    Ok(fs::read(stdout)?)
 }
-fn read_jsonl(path: &Path, warnings: &mut Vec<String>) -> Result<Vec<(usize, Value)>, PackError> {
+fn read_jsonl(
+    path: &Path,
+    duration: Option<f64>,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<(usize, Value)>, PackError> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(vec![]),
@@ -82,6 +125,14 @@ fn read_jsonl(path: &Path, warnings: &mut Vec<String>) -> Result<Vec<(usize, Val
             Ok(mut value)
                 if value.is_object() && value["t"].as_f64().is_some_and(f64::is_finite) =>
             {
+                if duration.is_some_and(|end| t(&value) > end) {
+                    continue;
+                }
+                if value["self"] == true
+                    && matches!(kind(&value), "mouse_down" | "mouse_up" | "scroll")
+                {
+                    continue;
+                }
                 value["t"] = serde_json::json!(round_t(t(&value)));
                 lines.push((i + 1, value));
             }
@@ -97,7 +148,13 @@ fn read_jsonl(path: &Path, warnings: &mut Vec<String>) -> Result<Vec<(usize, Val
 fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLine> {
     let mut result = vec![];
     for (line, v) in browser {
-        let pending = v["pending"] == true && v["dur_ms"].as_f64().unwrap_or(0.0) >= 3000.0;
+        let network = kind(v) == "network";
+        if network && v["canceled"] == true {
+            continue;
+        }
+        let pending = v["pending"] == true
+            && v["status"].is_null()
+            && v["dur_ms"].as_f64().unwrap_or(0.0) >= 3000.0;
         let failed =
             v["failed"].as_bool().unwrap_or(false) || v["status"].as_u64().unwrap_or(0) >= 400;
         let error = kind(v) == "exception"
@@ -105,7 +162,7 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
             || (kind(v) == "network" && (failed || pending));
         let warning =
             kind(v) == "console" && matches!(v["level"].as_str(), Some("warn" | "warning"));
-        if !error && !warning {
+        if !error && !warning && v["replayed"] != true {
             continue;
         }
         let text = if kind(v) == "network" && pending {
@@ -140,13 +197,15 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
         result.push(LogLine {
             file: "logs/browser.jsonl".into(),
             line: *line,
-            t: if pending {
+            t: if network {
                 round_t(v["start_t"].as_f64().unwrap_or(t(v)))
             } else {
                 t(v)
             },
             text: text.trim().into(),
             error,
+            replayed: v["replayed"] == true,
+            observed_t: network.then(|| t(v)),
         });
     }
     for (line, v) in system {
@@ -166,6 +225,8 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
             .trim()
             .into(),
             error: true,
+            replayed: false,
+            observed_t: None,
         });
     }
     result
@@ -186,20 +247,21 @@ pub fn build_pack(
     let transcript = speech::transcribe(pack, &session, cfg, opts, &mut warnings);
     stages.transcribe = elapsed(start);
     let start = Instant::now();
-    let events: Vec<_> = read_jsonl(&pack.events(), &mut warnings)?
+    let events: Vec<_> = read_jsonl(&pack.events(), session.duration, &mut warnings)?
         .into_iter()
         .map(|(_, v)| v)
         .collect();
-    let cursor: Vec<_> = read_jsonl(&pack.cursor(), &mut warnings)?
+    let cursor: Vec<_> = read_jsonl(&pack.cursor(), session.duration, &mut warnings)?
         .into_iter()
         .map(|(_, v)| v)
         .collect();
-    let browser = read_jsonl(&pack.browser_log(), &mut warnings)?;
-    let system = read_jsonl(&pack.system_log(), &mut warnings)?;
+    let browser = read_jsonl(&pack.browser_log(), session.duration, &mut warnings)?;
+    let system = read_jsonl(&pack.system_log(), session.duration, &mut warnings)?;
     let logs = log_lines(&browser, &system);
     let mut moments = moments::detect(&transcript.segments, &events, &logs);
     let browser: Vec<_> = browser.into_iter().map(|(_, v)| v).collect();
     summary::enrich(&mut moments.items, &session, &events, &cursor, &browser);
+    summary::other_elements(&mut moments, &browser);
     for item in &mut moments.items {
         item.title = summary::short_title(&item.title);
     }
@@ -298,5 +360,36 @@ mod tests {
         let result = moments::detect(&utterance, &[], &logs);
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].anchor_t, 10.0);
+    }
+    #[test]
+    fn canceled_or_completed_pending_requests_do_not_become_errors_and_failures_use_send_time() {
+        use serde_json::json;
+        let logs = log_lines(
+            &[
+                (
+                    1,
+                    json!({"t":20.0,"type":"network","pending":true,"dur_ms":5200,"status":200,"start_t":8.0}),
+                ),
+                (
+                    2,
+                    json!({"t":20.0,"type":"network","failed":true,"canceled":true,"status":500,"start_t":8.0}),
+                ),
+                (
+                    3,
+                    json!({"t":20.0,"type":"network","status":500,"start_t":8.0,"method":"POST","url":"http://localhost/save"}),
+                ),
+            ],
+            &[],
+        );
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].t, 8.0);
+        assert_eq!(logs[0].observed_t, Some(20.0));
+        let narration = moments::utterances(vec![moments::Word {
+            t0: 8.0,
+            t1: 8.5,
+            w: "saving".into(),
+        }]);
+        let result = moments::detect(&narration, &[], &logs);
+        assert_eq!(result.items[0].anchor_t, 8.0);
     }
 }

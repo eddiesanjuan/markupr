@@ -1,15 +1,12 @@
 use crate::{
     frames::cursor_at,
-    moments::{kind, t, time_label, Item, Moments},
+    moments::{kind, t, time_label, Item, LogLine, Moments},
     PackDir,
 };
 use markupr_core::{round_t, Session};
 use serde_json::{json, Value};
 use std::fmt::Write;
 
-fn text(v: &Value, key: &str) -> String {
-    v[key].as_str().unwrap_or("").replace(['\n', '\r'], " ")
-}
 pub fn enrich(
     items: &mut [Item],
     session: &Session,
@@ -26,28 +23,13 @@ pub fn enrich(
         if let Some(focus) = focus {
             looking["app"] = focus["app"].clone();
             looking["window"] = focus["window"].clone();
-            let app = format!("{} {}", text(focus, "app"), text(focus, "bundle")).to_lowercase();
-            if [
-                "chrome", "chromium", "arc", "brave", "edge", "vivaldi", "opera",
-            ]
-            .iter()
-            .any(|name| app.contains(name))
-            {
-                if let Some(line) = browser
-                    .iter()
-                    .filter(|v| {
-                        t(v) <= item.anchor_t
-                            && (v["tab"]["url"].is_string() || kind(v) == "navigation")
-                    })
-                    .max_by(|a, b| t(a).total_cmp(&t(b)))
-                {
-                    looking["tab"] = line["tab"].clone();
-                    if !looking["tab"].is_object() {
-                        looking["tab"] = json!({});
-                    }
-                    if looking["tab"]["url"].is_null() {
-                        looking["tab"]["url"] = line["url"].clone();
-                    }
+            if let Some(line) = browser_line(browser, focus, item.anchor_t) {
+                looking["tab"] = line["tab"].clone();
+                if !looking["tab"].is_object() {
+                    looking["tab"] = json!({});
+                }
+                if looking["tab"]["url"].is_null() {
+                    looking["tab"]["url"] = line["url"].clone();
                 }
             }
         }
@@ -58,7 +40,10 @@ pub fn enrich(
         });
         let dom = browser
             .iter()
-            .filter(|v| kind(v) == "dom_click")
+            .filter(|v| {
+                kind(v) == "dom_click"
+                    && focus.is_some_and(|f| browser_bundle(f["bundle"].as_str().unwrap_or("")))
+            })
             .filter(|v| match click {
                 Some(click) => (t(v) - t(click)).abs() <= 0.5,
                 None => t(v) >= item.t0 && t(v) <= item.t1,
@@ -83,13 +68,72 @@ pub fn enrich(
         if let Some(video) = &session.video {
             item.dive["video_t0"] = json!(round_t((item.t0 - video.start_t).max(0.0)));
             item.dive["video_t1"] = json!(round_t((item.t1 - video.start_t).max(0.0)));
-            item.dive["ffmpeg"] = json!(format!(
-                "ffmpeg -ss {:.3} -i {} -frames:v 1 frame.png",
-                (item.anchor_t - video.start_t).max(0.0),
-                shell_quote(&video.file)
-            ));
         }
     }
+}
+fn browser_bundle(bundle: &str) -> bool {
+    [
+        "com.google.Chrome",
+        "com.google.Chrome.canary",
+        "com.brave.Browser",
+        "com.microsoft.edgemac",
+        "company.thebrowser.Browser",
+        "org.chromium.Chromium",
+    ]
+    .contains(&bundle)
+}
+fn browser_line<'a>(browser: &'a [Value], focus: &Value, anchor: f64) -> Option<&'a Value> {
+    let bundle = focus["bundle"].as_str().unwrap_or("");
+    if !browser_bundle(bundle) {
+        return None;
+    }
+    let app = focus["app"].as_str().unwrap_or("");
+    let window = focus["window"].as_str().unwrap_or("");
+    let focused_app = |v: &&Value| {
+        v["bundle"].as_str().is_some_and(|b| b == bundle)
+            || v["app"]
+                .as_str()
+                .is_some_and(|a| !app.is_empty() && a == app)
+    };
+    let candidates: Vec<_> = browser
+        .iter()
+        .filter(|v| t(v) <= anchor && v["replayed"] != true)
+        .filter(|v| v["tab"].is_object())
+        .filter(|v| {
+            v["bundle"].as_str().is_none_or(|b| b == bundle)
+                && v["app"].as_str().is_none_or(|a| a == app)
+        })
+        .collect();
+    candidates
+        .iter()
+        .copied()
+        .filter(|v| {
+            v["tab"]["title"]
+                .as_str()
+                .is_some_and(|title| !title.is_empty() && window.starts_with(title))
+        })
+        .max_by(|a, b| {
+            a["tab"]["title"]
+                .as_str()
+                .unwrap()
+                .len()
+                .cmp(&b["tab"]["title"].as_str().unwrap().len())
+                .then_with(|| t(a).total_cmp(&t(b)))
+        })
+        .or_else(|| {
+            candidates
+                .iter()
+                .copied()
+                .filter(focused_app)
+                .max_by(|a, b| t(a).total_cmp(&t(b)))
+        })
+}
+pub(crate) fn frame_hint(file: &str, file_t: f64) -> String {
+    format!(
+        "ffmpeg -ss {} -i {} -frames:v 1 frame.png",
+        crate::frames::seek_arg(file_t),
+        shell_quote(file)
+    )
 }
 fn shell_quote(s: &str) -> String {
     if s.chars()
@@ -197,7 +241,7 @@ pub fn render(
         source(clicks, "clicks".into());
     }
     source(
-        crate::has_data(&pack.browser_log()),
+        session.sources.browser.as_ref().is_some_and(|b| b.attached),
         session
             .sources
             .browser
@@ -233,11 +277,15 @@ pub fn render(
     if let Some(video) = &session.video {
         write!(out, " Video time = t - {:.3}.", video.start_t).unwrap();
     }
-    out.push_str("\n\n");
-    for warning in warnings {
-        writeln!(out, "Processing note: {}", one_line(warning)).unwrap();
+    out.push('\n');
+    if session.video.is_some() {
+        out.push_str("Video only has a frame when the screen changed. Use `markupr frame <pack dir> <t>` for the screen at any time.\n");
     }
-    if !warnings.is_empty() {
+    out.push('\n');
+    for warning in session.warnings.iter().chain(warnings) {
+        writeln!(out, "Capture notes: {}", one_line(warning)).unwrap();
+    }
+    if !warnings.is_empty() || !session.warnings.is_empty() {
         out.push('\n');
     }
     writeln!(
@@ -301,8 +349,8 @@ pub fn render(
         for frame in &item.frames {
             write!(
                 out,
-                "- Frame: ![item {}]({}) at t {:.3}",
-                item.id, frame.file, frame.t
+                "- Frame: ![item {}]({}) at t {:.3}; screen last changed at t {:.3}",
+                item.id, frame.file, frame.t, frame.frame_t
             )
             .unwrap();
             if let Some(mark) = frame.mark {
@@ -329,7 +377,7 @@ pub fn render(
                     "  - {}:{} {} {}",
                     log.file,
                     log.line,
-                    log_time(log.t),
+                    log_time(log),
                     one_line(&log.text)
                 )
                 .unwrap();
@@ -362,20 +410,57 @@ pub fn render(
                 "- {}:{} {} {}",
                 log.file,
                 log.line,
-                log_time(log.t),
+                log_time(log),
                 one_line(&log.text)
             )
             .unwrap();
         }
     }
+    if !moments.other_said.is_empty() {
+        out.push_str("\n## Other things said\n\n");
+        for said in &moments.other_said {
+            write!(
+                out,
+                "- t {:.3} to {:.3}: \"{}\"",
+                said.t0,
+                said.t1,
+                one_line(&said.text)
+            )
+            .unwrap();
+            for click in &said.clicks {
+                let el = &click["el"];
+                let name = el["title"]
+                    .as_str()
+                    .or_else(|| el["text"].as_str())
+                    .or_else(|| el["selector"].as_str())
+                    .or_else(|| el["role"].as_str())
+                    .unwrap_or("element not captured");
+                write!(out, "; clicked \"{}\"", one_line(name)).unwrap();
+            }
+            out.push('\n');
+        }
+    }
     out
 }
 
-fn log_time(time: f64) -> String {
-    if time < 0.0 {
-        time_label(time)
+fn log_time(log: &LogLine) -> String {
+    if log.replayed {
+        return format!(
+            "before the recording started ({:.3} s earlier)",
+            log.t.abs()
+        );
+    }
+    let label = |time| {
+        if time < 0.0 {
+            time_label(time)
+        } else {
+            format!("t {}", time_label(time))
+        }
+    };
+    if let Some(observed) = log.observed_t {
+        format!("request start {}; log {}", label(log.t), label(observed))
     } else {
-        format!("t {}", time_label(time))
+        label(log.t)
     }
 }
 
@@ -387,4 +472,20 @@ pub fn short_title(title: &str) -> String {
     let prefix: String = title.chars().take(77).collect();
     let end = prefix.rfind(char::is_whitespace).unwrap_or(prefix.len());
     format!("{}...", prefix[..end].trim_end())
+}
+
+pub fn other_elements(moments: &mut Moments, browser: &[Value]) {
+    for said in &mut moments.other_said {
+        for click in &mut said.clicks {
+            if !click["el"].is_object() {
+                if let Some(dom) = browser
+                    .iter()
+                    .filter(|v| kind(v) == "dom_click" && (t(v) - t(click)).abs() <= 0.5)
+                    .min_by(|a, b| (t(a) - t(click)).abs().total_cmp(&(t(b) - t(click)).abs()))
+                {
+                    click["el"] = json!({"selector":dom["selector"],"text":dom["text"]});
+                }
+            }
+        }
+    }
 }

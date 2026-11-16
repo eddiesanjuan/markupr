@@ -7,8 +7,13 @@ use image::{
     Rgb, RgbImage,
 };
 use markupr_core::{Config, PackDir, Session};
-use serde_json::Value;
-use std::{fs, process::Command};
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub fn cursor_at(time: f64, cursor: &[Value], events: &[Value]) -> Option<(f64, f64)> {
     cursor
@@ -18,7 +23,7 @@ pub fn cursor_at(time: f64, cursor: &[Value], events: &[Value]) -> Option<(f64, 
                 .iter()
                 .filter(|v| matches!(crate::moments::kind(v), "mouse_down" | "mark")),
         )
-        .filter(|v| t(v) <= time && v["x"].is_number() && v["y"].is_number())
+        .filter(|v| v["self"] != true && t(v) <= time && v["x"].is_number() && v["y"].is_number())
         .max_by(|a, b| t(a).total_cmp(&t(b)))
         .map(|v| (v["x"].as_f64().unwrap(), v["y"].as_f64().unwrap()))
 }
@@ -41,29 +46,84 @@ fn ring(image: &mut RgbImage, x: f64, y: f64, sx: f64, sy: f64) {
         }
     }
 }
-fn extract(
+#[derive(Debug, Serialize)]
+pub struct FrameAt {
+    pub t: f64,
+    pub frame_t: f64,
+    pub file: PathBuf,
+    pub ringed: bool,
+}
+
+fn frame_times(pack: &PackDir, session: &Session, cfg: &Config) -> Result<Vec<f64>, PackError> {
+    let video = session
+        .video
+        .as_ref()
+        .ok_or("No screen video was captured")?;
+    // Packet timestamps only: stream copy does not decode the video.
+    let output = run(Command::new(&cfg.ffmpeg_bin)
+        .args(["-hide_banner", "-loglevel", "error", "-copyts", "-i"])
+        .arg(pack.root().join(&video.file))
+        .args(["-map", "0:v:0", "-c:v", "copy", "-f", "framecrc", "-"]))?;
+    let mut base = None;
+    let mut times = vec![];
+    for line in std::str::from_utf8(&output)?.lines() {
+        if let Some(tb) = line.strip_prefix("#tb 0:") {
+            let (n, d) = tb.trim().split_once('/').ok_or("missing video time base")?;
+            base = Some(n.parse::<f64>()? / d.parse::<f64>()?);
+        } else if !line.starts_with('#') && !line.trim().is_empty() {
+            let pts = line
+                .split(',')
+                .nth(2)
+                .ok_or("missing video packet time")?
+                .trim()
+                .parse::<f64>()?;
+            times.push(pts * base.ok_or("missing video time base")?);
+        }
+    }
+    times.sort_by(f64::total_cmp);
+    times.dedup();
+    if times.is_empty() {
+        return Err("Video has no frames".into());
+    }
+    Ok(times)
+}
+fn choose_frame(times: &[f64], requested: f64) -> f64 {
+    times[times.partition_point(|t| *t <= requested).saturating_sub(1)]
+}
+pub(crate) fn seek_arg(time: f64) -> String {
+    // ffmpeg parses seeks to microseconds. Round down so a fractional PTS cannot
+    // round past the selected frame and accidentally return the next change.
+    format!("{:.6}", (time.max(0.0) * 1_000_000.0).floor() / 1_000_000.0)
+}
+fn decode(
     pack: &PackDir,
     session: &Session,
     cfg: &Config,
-    time: f64,
-    name: &str,
-    cursor: Option<(f64, f64)>,
-) -> Result<Frame, PackError> {
-    let video = session.video.as_ref().unwrap();
-    let video_t = (time - video.start_t).max(0.0);
+    file_t: f64,
+) -> Result<RgbImage, PackError> {
+    let video = session
+        .video
+        .as_ref()
+        .ok_or("No screen video was captured")?;
     let out = run(Command::new(&cfg.ffmpeg_bin)
         .args([
             "-hide_banner",
             "-loglevel",
             "error",
             "-ss",
-            &format!("{video_t:.3}"),
+            &seek_arg(file_t),
             "-i",
         ])
         .arg(pack.root().join(&video.file))
         .args(["-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "-"]))?;
-    let mut image = image::load_from_memory(&out)?.to_rgb8();
-    let pixel = session.display.as_ref().and_then(|d| {
+    Ok(image::load_from_memory(&out)?.to_rgb8())
+}
+fn cursor_pixel(
+    session: &Session,
+    image: &RgbImage,
+    cursor: Option<(f64, f64)>,
+) -> Option<(f64, f64, f64, f64)> {
+    session.display.as_ref().and_then(|d| {
         cursor.and_then(|(x, y)| {
             if x < d.x as f64
                 || y < d.y as f64
@@ -73,14 +133,72 @@ fn extract(
                 return None;
             }
             let (sx, sy) = (
-                video.width as f64 / d.w as f64,
-                video.height as f64 / d.h as f64,
+                session.video.as_ref().unwrap().width as f64 / d.w as f64,
+                session.video.as_ref().unwrap().height as f64 / d.h as f64,
             );
             let (px, py) = ((x - d.x as f64) * sx, (y - d.y as f64) * sy);
             (px >= 0.0 && py >= 0.0 && px < image.width() as f64 && py < image.height() as f64)
                 .then_some((px, py, sx, sy))
         })
-    });
+    })
+}
+
+pub fn frame_at(
+    pack: &PackDir,
+    cfg: &Config,
+    t: f64,
+    out: &Path,
+    ring_cursor: bool,
+) -> Result<FrameAt, PackError> {
+    if !t.is_finite() {
+        return Err("Frame time must be finite".into());
+    }
+    let session = Session::load(pack)?;
+    let video = session
+        .video
+        .as_ref()
+        .ok_or("No screen video was captured")?;
+    let times = frame_times(pack, &session, cfg)?;
+    let selected = choose_frame(&times, t - video.start_t);
+    let mut image = decode(pack, &session, cfg, selected)?;
+    let mut ringed = false;
+    if ring_cursor {
+        let mut warnings = vec![];
+        let events: Vec<_> = crate::read_jsonl(&pack.events(), session.duration, &mut warnings)?
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect();
+        let cursor: Vec<_> = crate::read_jsonl(&pack.cursor(), session.duration, &mut warnings)?
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect();
+        if let Some((x, y, sx, sy)) = cursor_pixel(&session, &image, cursor_at(t, &cursor, &events))
+        {
+            ring(&mut image, x, y, sx, sy);
+            ringed = true;
+        }
+    }
+    image.save(out)?;
+    Ok(FrameAt {
+        t,
+        frame_t: video.start_t + selected,
+        file: out.to_path_buf(),
+        ringed,
+    })
+}
+
+fn extract(
+    pack: &PackDir,
+    session: &Session,
+    cfg: &Config,
+    time: f64,
+    file_t: f64,
+    name: &str,
+    cursor: Option<(f64, f64)>,
+) -> Result<Frame, PackError> {
+    let frame_t = session.video.as_ref().unwrap().start_t + file_t;
+    let mut image = decode(pack, session, cfg, file_t)?;
+    let pixel = cursor_pixel(session, &image, cursor);
     let (mut zoom, mut note) = (None, None);
     if let Some((x, y, sx, sy)) = pixel {
         ring(&mut image, x, y, sx, sy);
@@ -108,11 +226,8 @@ fn extract(
             .into(),
         );
     }
-    if time < video.start_t {
-        let first = format!(
-            "first video frame, {:.3} s after the mark",
-            video.start_t - time
-        );
+    if time < frame_t {
+        let first = format!("first video frame, {:.3} s after the mark", frame_t - time);
         note = Some(match note {
             Some(note) => format!("{first}; {note}"),
             None => first,
@@ -127,7 +242,8 @@ fn extract(
     Ok(Frame {
         file,
         zoom,
-        t: time.max(video.start_t),
+        t: time.max(frame_t),
+        frame_t,
         note,
         mark: None,
         said: String::new(),
@@ -159,6 +275,14 @@ pub fn make_frames(
         warnings.push("No screen video was captured; key frames could not be extracted.".into());
         return Ok(());
     }
+    let times = match frame_times(pack, session, cfg) {
+        Ok(times) => times,
+        Err(error) => {
+            warnings.push(format!("Video frame times unavailable: {error}"));
+            return Ok(());
+        }
+    };
+    let video = session.video.as_ref().unwrap();
     for item in items {
         for request in selected_frames(item) {
             let time = request.t;
@@ -167,6 +291,7 @@ pub fn make_frames(
                 session,
                 cfg,
                 time,
+                choose_frame(&times, time - video.start_t),
                 &request.name,
                 cursor_at(time, cursor, events),
             ) {
@@ -180,6 +305,12 @@ pub fn make_frames(
                     item.id
                 )),
             }
+        }
+        if let Some(frame) = item.frames.first() {
+            item.dive["ffmpeg"] = json!(crate::summary::frame_hint(
+                &video.file,
+                frame.frame_t - video.start_t
+            ));
         }
     }
     Ok(())
@@ -255,6 +386,14 @@ mod tests {
     use super::*;
     use crate::moments::{detect, utterances, Word};
     use serde_json::json;
+    #[test]
+    fn a_still_screen_uses_the_previous_frame_instead_of_a_future_click_result() {
+        let times = [0.0, 5.0, 10.0];
+        assert_eq!(choose_frame(&times, 3.0), 0.0);
+        assert_eq!(choose_frame(&times, 7.0), 5.0);
+        assert_eq!(choose_frame(&times, 12.0), 10.0);
+        assert_eq!(choose_frame(&times, -1.0), 0.0);
+    }
     #[test]
     fn two_marks_in_one_spoken_item_do_not_lose_the_second_frame_or_its_words() {
         let words = (0..20)

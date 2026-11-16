@@ -1,12 +1,12 @@
 use crate::{
     moments::{utterances, Utterance, Word},
-    run, PackError,
+    run, run_timed, CommandTimeout, PackError,
 };
 use crate::{AudioSource, PackOptions};
 use markupr_core::{round_t, Config, PackDir, Session};
 use serde::Serialize;
 use serde_json::Value;
-use std::{fs, process::Command};
+use std::{fs, process::Command, time::Duration};
 
 #[derive(Serialize)]
 pub struct Transcript {
@@ -77,13 +77,17 @@ pub fn transcribe(
         run(&mut ffmpeg)?;
         match aligned_stretches(&wav, start_t, temp.path(), cfg, model) {
             Ok(segments) => Ok(segments),
+            Err(error) if error.downcast_ref::<CommandTimeout>().is_some() => Err(error),
             Err(error) => {
                 warnings.push(format!(
                     "Speech timing alignment failed: {error}; using single-pass Whisper timing."
                 ));
                 let prefix = temp.path().join("words");
                 let mut command = whisper(cfg, model);
-                run(command.arg("-f").arg(&wav).arg("-of").arg(&prefix))?;
+                run_timed(
+                    command.arg("-f").arg(&wav).arg("-of").arg(&prefix),
+                    Duration::from_secs_f64(60.0 + 2.0 * session.duration.unwrap_or(60.0).max(0.0)),
+                )?;
                 let output: Value =
                     serde_json::from_slice(&fs::read(prefix.with_extension("json"))?)?;
                 Ok(utterances(read_words(&output, start_t)))
@@ -104,10 +108,16 @@ pub fn transcribe(
 
 fn whisper(cfg: &Config, model: &std::path::Path) -> Command {
     let mut command = Command::new(&cfg.whisper.bin);
-    command
-        .arg("-m")
-        .arg(model)
-        .args(["-ojf", "-ml", "1", "-sow", "-np", "-l", "en"]);
+    command.arg("-m").arg(model).args([
+        "-ojf",
+        "-ml",
+        "1",
+        "-sow",
+        "-np",
+        "-l",
+        &cfg.whisper.language,
+        "--suppress-nst",
+    ]);
     command
 }
 
@@ -129,14 +139,28 @@ fn aligned_stretches(
         .collect();
     let stretches = detect(&samples);
     if stretches.is_empty() {
+        if samples.iter().any(|sample| *sample != 0) {
+            return Err("No speech stretch found in non-silent audio".into());
+        }
         return Ok(vec![]);
     }
     let mut command = whisper(cfg, model);
     let mut files = vec![];
     let mut offsets = vec![];
     for (i, stretch) in stretches.iter().enumerate() {
-        let lo = stretch.start.saturating_sub(RATE * 12 / 100);
-        let hi = (stretch.end + RATE * 12 / 100).min(samples.len());
+        let lo = if i > 0 && stretches[i - 1].end == stretch.start {
+            stretch.start
+        } else {
+            stretch.start.saturating_sub(RATE * 12 / 100)
+        };
+        let hi = if stretches
+            .get(i + 1)
+            .is_some_and(|next| next.start == stretch.end)
+        {
+            stretch.end
+        } else {
+            (stretch.end + RATE * 12 / 100).min(samples.len())
+        };
         let file = temp.join(format!("stretch-{i}.wav"));
         write_wav(&file, &pcm[lo * 2..hi * 2])?;
         command.arg("-of").arg(temp.join(format!("stretch-{i}")));
@@ -153,7 +177,10 @@ fn aligned_stretches(
         .replace('-', ".");
     command.args(["-dtw", &preset, "-nfa"]);
     // Several files in one invocation: load the configured model only once.
-    run(command.args(&files))?;
+    run_timed(
+        command.args(&files),
+        Duration::from_secs_f64(60.0 + 2.0 * samples.len() as f64 / RATE as f64),
+    )?;
     let mut result = vec![];
     for (i, stretch) in stretches.iter().enumerate() {
         let output: Value = serde_json::from_slice(&fs::read(files[i].with_extension("json"))?)?;
@@ -199,14 +226,10 @@ fn write_wav(path: &std::path::Path, pcm: &[u8]) -> Result<(), PackError> {
 fn read_words(output: &Value, start_t: f64) -> Vec<Word> {
     let mut words = vec![];
     if let Some(segments) = output["transcription"].as_array() {
-        for segment in segments {
+        for (segment, text) in segments.iter().zip(label_texts(segments)) {
             // -ml 1 -sow emits word-sized segments. Segment end times can
             // span a long silence; use lexical token times, not punctuation.
-            let text = segment["text"].as_str().unwrap_or("").trim();
-            if text.is_empty()
-                || (text.starts_with('[') && text.ends_with(']'))
-                || text.starts_with("<|")
-            {
+            if text.is_empty() {
                 continue;
             }
             let lexical: Vec<_> = segment["tokens"]
@@ -237,7 +260,7 @@ fn read_words(output: &Value, start_t: f64) -> Vec<Word> {
             words.push(Word {
                 t0: round_t(start_t + from / 1000.0),
                 t1: round_t(start_t + to / 1000.0),
-                w: text.into(),
+                w: text,
             });
         }
     }
@@ -249,9 +272,8 @@ fn aligned_words(output: &Value, offset: f64, t0: f64, t1: f64) -> Result<Vec<Wo
         .as_array()
         .ok_or("Whisper returned no transcription array")?;
     let mut timed = vec![];
-    for segment in segments {
-        let text = segment["text"].as_str().unwrap_or("").trim();
-        if text.is_empty() || text.starts_with('[') || text.starts_with("<|") {
+    for (segment, text) in segments.iter().zip(label_texts(segments)) {
+        if text.is_empty() {
             continue;
         }
         let tokens: Vec<_> = segment["tokens"]
@@ -300,4 +322,78 @@ fn aligned_words(output: &Value, offset: f64, t0: f64, t1: f64) -> Result<Vec<Wo
         });
     }
     Ok(words)
+}
+
+fn label_texts(segments: &[Value]) -> Vec<String> {
+    let mut closing = None;
+    segments
+        .iter()
+        .map(|segment| {
+            let text = segment["text"].as_str().unwrap_or("");
+            if text.trim_start().starts_with("<|") {
+                return String::new();
+            }
+            let mut kept = String::new();
+            let mut chars = text.chars().peekable();
+            while let Some(c) = chars.next() {
+                if c == '*' {
+                    while chars.peek() == Some(&'*') {
+                        chars.next();
+                    }
+                }
+                let music = |c| ['♪', '♫', '♬', '♩'].contains(&c);
+                if let Some(end) = closing {
+                    if c == end || (music(c) && music(end)) {
+                        closing = None;
+                    }
+                } else if let Some(end) = match c {
+                    '(' => Some(')'),
+                    '[' => Some(']'),
+                    '*' => Some('*'),
+                    c if music(c) => Some(c),
+                    _ => None,
+                } {
+                    closing = Some(end);
+                } else {
+                    kept.push(c);
+                }
+            }
+            if kept.chars().any(char::is_alphanumeric) {
+                kept.trim().to_owned()
+            } else {
+                String::new()
+            }
+        })
+        .collect()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn non_speech_labels_split_across_word_tokens_do_not_become_narration() {
+        let segments: Vec<_> = [
+            "(upbeat",
+            " music)",
+            " [BLANK_AUDIO]",
+            "*laughing*",
+            "**music**",
+            "♪",
+            "instrumental",
+            "♫",
+            "Please",
+            " save",
+            " this.",
+        ]
+        .iter()
+        .map(|text| json!({"text":text}))
+        .collect();
+        assert_eq!(
+            label_texts(&segments)
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>(),
+            vec!["Please", "save", "this."]
+        );
+    }
 }
