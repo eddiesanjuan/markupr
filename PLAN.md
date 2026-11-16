@@ -133,10 +133,12 @@ Coordinates are global display points, origin at the top-left of the main displa
 ```json
 {"t":4.861,"type":"exception","text":"TypeError: Cannot read properties of undefined (reading 'total')","url":"http://127.0.0.1:8123/app.js","line":12,"col":9,"stack":["addToCart app.js:12"],"tab":{"id":"A1","url":"http://127.0.0.1:8123/","title":"Shop demo"},"src_ts":1234.5}
 {"t":5.002,"type":"console","level":"error","text":"Save failed: 500","url":"...","line":30,"tab":{}}
-{"t":5.000,"type":"network","method":"POST","url":"http://127.0.0.1:8123/api/save","status":500,"mime":"text/plain","dur_ms":12,"failed":false,"error":null,"tab":{}}
+{"t":5.000,"type":"network","method":"POST","url":"http://127.0.0.1:8123/api/save","status":500,"mime":"text/plain","dur_ms":12,"start_t":4.988,"failed":false,"error":null,"tab":{}}
 {"t":1.100,"type":"navigation","url":"http://127.0.0.1:8123/","tab":{}}
 {"t":4.800,"type":"dom_click","selector":"button#add","tag":"button","text":"Add to cart","tab":{}}
 ```
+
+A request that never finished is written at stop with `"pending": true`. Console lines Chrome replays from before the recording carry their own time (negative `t`) and `"replayed": true`.
 
 `logs/system.jsonl`: `{"t":5.2,"level":"error","process":"Google Chrome","pid":812,"subsystem":"...","category":"...","msg":"..."}`.
 
@@ -155,7 +157,7 @@ Coordinates are global display points, origin at the top-left of the main displa
 2. **Utterances.** Join whisper words into utterances; split on a gap of 0.7 s or more, or after 12 s.
 3. **Moments.** `mark` (every mark). `error` (browser exception, console error, request failed or status 400+, system log error or fault; identical text within 5 s counts once). `pointing` (strong phrases such as "that's wrong", "look at this", "right here", "broken", "doesn't work", "should be"; weak words "this", "here", "that"). `click_speech` (a click inside an utterance).
 4. **Items.** Score each utterance: mark inside or within 3 s, +5; an attached error, +3; click inside, +2; strong phrase, +2; any weak word, +1 once. Each error attaches to one utterance only: the one being spoken when it happened, else the next one starting within 8 s, else the one that ended within 3 s before. Score 2 or more makes an item. Flagged utterances less than 2 s apart merge. A mark with no speech becomes its own item. Errors nobody talked about go in one short "Other errors" list, deduplicated.
-5. **Anchor and frames.** Anchor time is the mark, else the strong phrase, else the click, else the first weak word, else the utterance midpoint. Pull the frame at the anchor, ring the cursor, and write the zoom crop. If the item has a click more than 1 s from the anchor, add a second frame 0.3 s after the click.
+5. **Anchor and frames.** Anchor time is the mark, else the strong phrase, else the click, else the first weak word, else the item's attached error, else the utterance midpoint. Pull the frame at the anchor, ring the cursor, and write the zoom crop. Every further mark in the item gets its own ringed frame (`item-NN-mark-K.jpg`). An anchor before the first video frame uses the first frame and says so. If the item has a click more than 1 s from the anchor, add a second frame 0.3 s after the click.
 6. **Log lines per item.** Browser errors, warnings and failed requests from 15 s before the item to 5 s after, nearest first, at most 8, each cited as `logs/browser.jsonl:LINE`. System log errors, at most 3. A log line is listed under one item only, the one whose anchor is nearest.
 7. **SUMMARY.md.** Header (when, how long, what was captured, what was missing). Then one section per item, in time order: title (first sentence he said, else the error text), why it was flagged, what he said, what he was looking at (app, window, URL, element, cursor), the frame, matching log lines, and where to dive deeper (`t` range, video offset, an `ffmpeg -ss` line). Target under 150 lines for a one-minute session.
 8. **PROMPT.md.** The pack path, "read SUMMARY.md first", then the raw files and how to pull more frames.
