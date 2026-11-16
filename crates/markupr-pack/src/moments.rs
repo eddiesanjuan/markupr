@@ -36,6 +36,8 @@ pub struct Frame {
     pub zoom: Option<String>,
     pub t: f64,
     pub note: Option<String>,
+    pub mark: Option<u64>,
+    pub said: String,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Item {
@@ -54,6 +56,12 @@ pub struct Item {
     pub clicks: Vec<Value>,
     #[serde(skip)]
     anchors: Vec<(u8, f64)>,
+    #[serde(skip)]
+    pub marks: Vec<Value>,
+    #[serde(skip)]
+    pub words: Vec<Word>,
+    #[serde(skip)]
+    errors: Vec<LogLine>,
 }
 #[derive(Debug, Serialize)]
 pub struct Moments {
@@ -149,30 +157,19 @@ fn new_item(t0: f64, t1: f64, said: String) -> Item {
         dive: json!({}),
         clicks: vec![],
         anchors: vec![],
+        marks: vec![],
+        words: vec![],
+        errors: vec![],
     }
 }
 
 pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> Moments {
     let marks: Vec<&Value> = events.iter().filter(|v| kind(v) == "mark").collect();
     let mut moments = vec![];
-    // Deduplicate against the last retained occurrence, so a continuing error may recur after 5 s.
-    let mut errors: Vec<&LogLine> = vec![];
-    let mut sorted: Vec<&LogLine> = logs.iter().filter(|l| l.error).collect();
-    sorted.sort_by(|a, b| a.t.total_cmp(&b.t));
-    for log in sorted {
-        if !errors
-            .iter()
-            .rev()
-            .any(|p| p.text == log.text && log.t - p.t <= 5.0)
-        {
-            errors.push(log);
-            moments.push(Moment {
-                t: log.t,
-                kind: "error".into(),
-                detail: log.text.clone(),
-            });
-        }
-    }
+    // Ownership comes first: an earlier duplicate must not hide a later
+    // occurrence which is close enough to attach to speech.
+    let mut errors: Vec<&LogLine> = logs.iter().filter(|l| l.error).collect();
+    errors.sort_by(|a, b| a.t.total_cmp(&b.t));
     let mut attached: Vec<Vec<&LogLine>> = vec![vec![]; utterances.len()];
     let mut other_errors = vec![];
     for error in errors {
@@ -183,7 +180,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
                 utterances
                     .iter()
                     .enumerate()
-                    .filter(|(_, u)| u.t0 > error.t && u.t0 - error.t <= 8.0)
+                    .filter(|(_, u)| u.t0 > error.t && round_t(u.t0 - error.t) <= 8.0)
                     .min_by(|a, b| a.1.t0.total_cmp(&b.1.t0))
                     .map(|(i, _)| i)
             })
@@ -191,7 +188,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
                 utterances
                     .iter()
                     .enumerate()
-                    .filter(|(_, u)| u.t1 < error.t && error.t - u.t1 <= 3.0)
+                    .filter(|(_, u)| u.t1 < error.t && round_t(error.t - u.t1) <= 3.0)
                     .max_by(|a, b| a.1.t1.total_cmp(&b.1.t1))
                     .map(|(i, _)| i)
             });
@@ -214,6 +211,8 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
     let mut candidates = vec![];
     for (i, u) in utterances.iter().enumerate() {
         let mut item = new_item(u.t0, u.t1, u.text.clone());
+        item.words = u.words.clone();
+        item.errors = attached[i].iter().map(|l| (*l).clone()).collect();
         let mut score = 0;
         for (m, mark) in marks.iter().enumerate() {
             if mark_owners[m] == Some(i) {
@@ -223,14 +222,14 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
                     t(mark)
                 ));
                 item.anchors.push((0, t(mark)));
+                item.marks.push((*mark).clone());
             }
         }
         if !item.anchors.is_empty() {
             score += 5;
         }
         for error in &attached[i] {
-            item.reasons
-                .push(format!("error at {:.3}: {}", error.t, error.text));
+            item.anchors.push((4, error.t));
         }
         if !attached[i].is_empty() {
             score += 3;
@@ -300,6 +299,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
                 .into();
             item.reasons.push(detail);
             item.anchors.push((0, t(mark)));
+            item.marks.push((*mark).clone());
             candidates.push(item);
         }
     }
@@ -316,6 +316,9 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
             prev.reasons.append(&mut next.reasons);
             prev.anchors.append(&mut next.anchors);
             prev.clicks.append(&mut next.clicks);
+            prev.marks.append(&mut next.marks);
+            prev.words.append(&mut next.words);
+            prev.errors.append(&mut next.errors);
         } else {
             items.push(next);
         }
@@ -330,6 +333,15 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
         // Nearby marks can be just outside the spoken span; keep the dive range truthful.
         item.t0 = item.t0.min(item.anchor_t);
         item.t1 = item.t1.max(item.anchor_t);
+        item.marks.sort_by(|a, b| t(a).total_cmp(&t(b)));
+        if let Some(mark) = item.marks.last() {
+            item.t1 = item.t1.max(t(mark));
+        }
+        item.errors = dedupe_logs(&item.errors);
+        for error in &item.errors {
+            item.reasons
+                .push(format!("error at {}: {}", time_label(error.t), error.text));
+        }
         let mut seen = std::collections::HashSet::new();
         item.reasons.retain(|reason| seen.insert(reason.clone()));
     }
@@ -341,11 +353,50 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
             }
         }
     }
+    other_errors.retain(|log| {
+        !items
+            .iter()
+            .flat_map(|i| &i.logs)
+            .any(|cited| cited.file == log.file && cited.line == log.line)
+    });
+    other_errors = dedupe_logs(&other_errors);
+    let mut errors: Vec<_> = logs.iter().filter(|l| l.error).cloned().collect();
+    errors.sort_by(|a, b| a.t.total_cmp(&b.t));
+    for error in dedupe_logs(&errors) {
+        moments.push(Moment {
+            t: error.t,
+            kind: "error".into(),
+            detail: error.text.clone(),
+        });
+    }
     moments.sort_by(|a, b| a.t.total_cmp(&b.t));
     Moments {
         moments,
         items,
         other_errors,
+    }
+}
+
+/// Keep the preferred line in each five-second group, after its destination is known.
+fn dedupe_logs(logs: &[LogLine]) -> Vec<LogLine> {
+    let mut retained: Vec<LogLine> = vec![];
+    for log in logs {
+        if !retained
+            .iter()
+            .rev()
+            .any(|p| p.text == log.text && round_t((log.t - p.t).abs()) <= 5.0)
+        {
+            retained.push(log.clone());
+        }
+    }
+    retained
+}
+
+pub fn time_label(time: f64) -> String {
+    if time < 0.0 {
+        format!("before the recording started ({:.3} s earlier)", -time)
+    } else {
+        format!("{time:.3}")
     }
 }
 
@@ -371,6 +422,7 @@ fn assign_logs(items: &mut [Item], logs: &[LogLine]) {
                 .abs()
                 .total_cmp(&(b.t - item.anchor_t).abs())
         });
+        item.logs = dedupe_logs(&item.logs);
         let (mut browser, mut system) = (0, 0);
         item.logs.retain(|log| {
             let (count, limit) = if log.file == "logs/browser.jsonl" {
@@ -402,7 +454,7 @@ mod tests {
     fn error(t: f64) -> LogLine {
         LogLine {
             file: "logs/browser.jsonl".into(),
-            line: 1,
+            line: (t * 10.0) as usize,
             t,
             text: "exception: broken cart".into(),
             error: true,
@@ -503,13 +555,44 @@ mod tests {
         assert_eq!(result[1].t0, 12.0);
     }
     #[test]
-    fn repeated_errors_and_weak_words_do_not_inflate_items() {
+    fn earlier_duplicate_does_not_hide_the_error_within_eight_seconds_of_speech() {
         let result = detect(
             &[speech(10.0, "this here that")],
             &[],
             &[error(1.0), error(3.0)],
         );
-        assert!(result.items.is_empty());
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].anchor_t, 10.0); // weak word still beats the error
+        assert_eq!(
+            result.items[0]
+                .reasons
+                .iter()
+                .filter(|r| r.starts_with("error at"))
+                .count(),
+            1
+        );
+        assert!(result.items[0]
+            .reasons
+            .iter()
+            .any(|r| r.starts_with("error at 3.000")));
+        assert_eq!(result.items[0].logs.len(), 1);
+        assert_eq!(result.items[0].logs[0].t, 3.0);
         assert_eq!(result.other_errors.len(), 1);
+        assert_eq!(result.other_errors[0].t, 1.0);
+    }
+    #[test]
+    fn unnarrated_error_cited_under_a_mark_is_not_repeated_in_other_errors() {
+        let result = detect(&[], &[json!({"type":"mark","t":10.0,"n":1})], &[error(8.0)]);
+        assert_eq!(result.items[0].logs.len(), 1);
+        assert!(result.other_errors.is_empty());
+    }
+    #[test]
+    fn error_only_speech_anchors_at_its_attached_error_instead_of_its_midpoint() {
+        let narration = speech(10.0, "ordinary narration about coffee");
+        let result = detect(&[narration], &[], &[error(3.0)]);
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].anchor_t, 3.0);
+        let strong = detect(&[speech(10.0, "broken")], &[], &[error(3.0)]);
+        assert_eq!(strong.items[0].anchor_t, 10.0);
     }
 }

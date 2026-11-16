@@ -96,17 +96,25 @@ fn read_jsonl(path: &Path, warnings: &mut Vec<String>) -> Result<Vec<(usize, Val
 fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLine> {
     let mut result = vec![];
     for (line, v) in browser {
+        let pending = v["pending"] == true && v["dur_ms"].as_f64().unwrap_or(0.0) >= 3000.0;
         let failed =
             v["failed"].as_bool().unwrap_or(false) || v["status"].as_u64().unwrap_or(0) >= 400;
         let error = kind(v) == "exception"
             || (kind(v) == "console" && v["level"] == "error")
-            || (kind(v) == "network" && failed);
+            || (kind(v) == "network" && (failed || pending));
         let warning =
             kind(v) == "console" && matches!(v["level"].as_str(), Some("warn" | "warning"));
         if !error && !warning {
             continue;
         }
-        let text = if kind(v) == "network" {
+        let text = if kind(v) == "network" && pending {
+            format!(
+                "network: {} {} no response after {:.1} s",
+                v["method"].as_str().unwrap_or(""),
+                v["url"].as_str().unwrap_or(""),
+                v["dur_ms"].as_f64().unwrap() / 1000.0
+            )
+        } else if kind(v) == "network" {
             format!(
                 "network: {} {} {} {}",
                 v["method"].as_str().unwrap_or(""),
@@ -131,7 +139,11 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
         result.push(LogLine {
             file: "logs/browser.jsonl".into(),
             line: *line,
-            t: t(v),
+            t: if pending {
+                round_t(v["start_t"].as_f64().unwrap_or(t(v)))
+            } else {
+                t(v)
+            },
             text: text.trim().into(),
             error,
         });
@@ -246,4 +258,41 @@ pub fn build_pack(
 
 pub fn prompt_text(pack: &PackDir) -> String {
     format!("I recorded my screen while talking through what I want changed. Everything is in this context pack:\n\n{}\n\nRead SUMMARY.md in that folder first. It has one item per issue: what I said, what I was looking at, a key frame (open the image), and the matching log lines.\n\nThen work through the items. If you need more than the summary gives you, the raw material is in the same folder: transcript.md, events.jsonl (clicks, keys, focus, marks), cursor.jsonl, logs/browser.jsonl, logs/system.jsonl and video.mp4. All times are seconds from the start of the recording, and SUMMARY.md shows how to pull any frame from the video.\n", pack.root().display())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn hung_request_is_scored_at_send_time_instead_of_stop_time() {
+        let logs = log_lines(
+            &[
+                (
+                    1,
+                    json!({"t":30.0,"type":"network","pending":true,"dur_ms":5200,"start_t":10.0,"method":"POST","url":"http://localhost/save"}),
+                ),
+                (
+                    2,
+                    json!({"t":30.0,"type":"network","pending":true,"dur_ms":2999,"start_t":10.0}),
+                ),
+            ],
+            &[],
+        );
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].t, 10.0);
+        assert_eq!(
+            logs[0].text,
+            "network: POST http://localhost/save no response after 5.2 s"
+        );
+        assert!(logs[0].error);
+        let utterance = moments::utterances(vec![moments::Word {
+            t0: 10.0,
+            t1: 10.5,
+            w: "saving".into(),
+        }]);
+        let result = moments::detect(&utterance, &[], &logs);
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].anchor_t, 10.0);
+    }
 }

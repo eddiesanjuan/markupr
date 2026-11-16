@@ -1,6 +1,6 @@
 use crate::{
     frames::cursor_at,
-    moments::{kind, t, Item, Moments},
+    moments::{kind, t, time_label, Item, Moments},
     PackDir,
 };
 use markupr_core::{round_t, Session};
@@ -101,7 +101,7 @@ fn shell_quote(s: &str) -> String {
     }
 }
 fn one_line(s: &str) -> String {
-    s.replace(['\n', '\r'], " ")
+    s.replace(['\n', '\r'], " ").replace('`', "'")
 }
 fn looking_text(v: &Value) -> String {
     let mut parts = vec![];
@@ -283,7 +283,7 @@ pub fn render(
             }
             why.push_str(&format!("pointing phrases: {}", phrases.join(", ")));
         }
-        writeln!(out, "- Why flagged: {why}").unwrap();
+        writeln!(out, "- Why flagged: {}", one_line(&why)).unwrap();
         writeln!(
             out,
             "- He said: {}",
@@ -305,6 +305,12 @@ pub fn render(
                 item.id, frame.file, frame.t
             )
             .unwrap();
+            if let Some(mark) = frame.mark {
+                write!(out, "; mark {mark}").unwrap();
+            }
+            if !frame.said.is_empty() {
+                write!(out, "; said near this time: \"{}\"", one_line(&frame.said)).unwrap();
+            }
             if let Some(zoom) = &frame.zoom {
                 write!(out, "; zoom {zoom}").unwrap();
             }
@@ -320,10 +326,10 @@ pub fn render(
             for log in &item.logs {
                 writeln!(
                     out,
-                    "  - {}:{} t {:.3} {}",
+                    "  - {}:{} {} {}",
                     log.file,
                     log.line,
-                    log.t,
+                    log_time(log.t),
                     one_line(&log.text)
                 )
                 .unwrap();
@@ -338,7 +344,7 @@ pub fn render(
         if let Some(cmd) = item.dive["ffmpeg"].as_str() {
             write!(
                 out,
-                "; video {:.3} to {:.3} s; `{cmd}`",
+                "; video {:.3} to {:.3} s.\n\n```sh\n{cmd}\n```",
                 item.dive["video_t0"].as_f64().unwrap(),
                 item.dive["video_t1"].as_f64().unwrap()
             )
@@ -353,14 +359,22 @@ pub fn render(
         for log in &moments.other_errors {
             writeln!(
                 out,
-                "- {}:{} t {:.3} {}",
+                "- {}:{} {} {}",
                 log.file,
                 log.line,
-                log.t,
+                log_time(log.t),
                 one_line(&log.text)
             )
             .unwrap();
         }
     }
     out
+}
+
+fn log_time(time: f64) -> String {
+    if time < 0.0 {
+        time_label(time)
+    } else {
+        format!("t {}", time_label(time))
+    }
 }

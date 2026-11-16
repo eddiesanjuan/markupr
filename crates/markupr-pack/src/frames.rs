@@ -50,14 +50,7 @@ fn extract(
     cursor: Option<(f64, f64)>,
 ) -> Result<Frame, PackError> {
     let video = session.video.as_ref().unwrap();
-    let video_t = time - video.start_t;
-    if video_t < 0.0 {
-        return Err(format!(
-            "t {time:.3} precedes the first video frame at {:.3}",
-            video.start_t
-        )
-        .into());
-    }
+    let video_t = (time - video.start_t).max(0.0);
     let out = run(Command::new(&cfg.ffmpeg_bin)
         .args([
             "-hide_banner",
@@ -115,6 +108,16 @@ fn extract(
             .into(),
         );
     }
+    if time < video.start_t {
+        let first = format!(
+            "first video frame, {:.3} s after the mark",
+            video.start_t - time
+        );
+        note = Some(match note {
+            Some(note) => format!("{first}; {note}"),
+            None => first,
+        });
+    }
     if image.width() > 1920 {
         let height = (image.height() as f64 * 1920.0 / image.width() as f64).round() as u32;
         image = imageops::resize(&image, 1920, height, FilterType::Lanczos3);
@@ -124,8 +127,10 @@ fn extract(
     Ok(Frame {
         file,
         zoom,
-        t: time,
+        t: time.max(video.start_t),
         note,
+        mark: None,
+        said: String::new(),
     })
 }
 pub fn make_frames(
@@ -142,17 +147,7 @@ pub fn make_frames(
     for entry in fs::read_dir(pack.frames_dir())? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
-        let stem = name
-            .strip_prefix("item-")
-            .and_then(|s| s.strip_suffix(".jpg"));
-        if stem.is_some_and(|s| {
-            s.split('-')
-                .next()
-                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
-                && ["", "-zoom", "-click", "-click-zoom"]
-                    .iter()
-                    .any(|suffix| s.trim_start_matches(|c: char| c.is_ascii_digit()) == *suffix)
-        }) {
+        if generated_frame(&name) {
             fs::remove_file(entry.path())?;
         }
     }
@@ -165,27 +160,21 @@ pub fn make_frames(
         return Ok(());
     }
     for item in items {
-        let mut times = vec![(item.anchor_t, format!("item-{:02}", item.id))];
-        if let Some(click) = item
-            .clicks
-            .iter()
-            .find(|c| (t(c) - item.anchor_t).abs() > 1.0)
-        {
-            times.push((
-                markupr_core::round_t(t(click) + 0.3),
-                format!("item-{:02}-click", item.id),
-            ));
-        }
-        for (time, name) in times {
+        for request in selected_frames(item) {
+            let time = request.t;
             match extract(
                 pack,
                 session,
                 cfg,
                 time,
-                &name,
+                &request.name,
                 cursor_at(time, cursor, events),
             ) {
-                Ok(frame) => item.frames.push(frame),
+                Ok(mut frame) => {
+                    frame.mark = request.mark;
+                    frame.said = request.said;
+                    item.frames.push(frame);
+                }
                 Err(e) => warnings.push(format!(
                     "Item {} frame at t {time:.3} unavailable: {e}",
                     item.id
@@ -194,4 +183,108 @@ pub fn make_frames(
         }
     }
     Ok(())
+}
+
+struct FrameRequest {
+    t: f64,
+    name: String,
+    mark: Option<u64>,
+    said: String,
+}
+fn words_around(item: &Item, time: f64) -> String {
+    let Some((i, _)) = item.words.iter().enumerate().min_by(|a, b| {
+        let distance = |w: &crate::moments::Word| (w.t0 - time).max(time - w.t1).max(0.0);
+        distance(a.1).total_cmp(&distance(b.1))
+    }) else {
+        return String::new();
+    };
+    item.words[i.saturating_sub(3)..(i + 4).min(item.words.len())]
+        .iter()
+        .map(|w| w.w.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+fn selected_frames(item: &Item) -> Vec<FrameRequest> {
+    let mut requests = vec![FrameRequest {
+        t: item.anchor_t,
+        name: format!("item-{:02}", item.id),
+        mark: item.marks.first().and_then(|m| m["n"].as_u64()),
+        said: words_around(item, item.anchor_t),
+    }];
+    for mark in item.marks.iter().skip(1) {
+        let n = mark["n"].as_u64().unwrap();
+        requests.push(FrameRequest {
+            t: t(mark),
+            name: format!("item-{:02}-mark-{n}", item.id),
+            mark: Some(n),
+            said: words_around(item, t(mark)),
+        });
+    }
+    if let Some(click) = item
+        .clicks
+        .iter()
+        .find(|c| markupr_core::round_t((t(c) - item.anchor_t).abs()) > 1.0)
+    {
+        let time = markupr_core::round_t(t(click) + 0.3);
+        requests.push(FrameRequest {
+            t: time,
+            name: format!("item-{:02}-click", item.id),
+            mark: None,
+            said: words_around(item, time),
+        });
+    }
+    requests
+}
+fn generated_frame(name: &str) -> bool {
+    let Some(stem) = name
+        .strip_prefix("item-")
+        .and_then(|s| s.strip_suffix(".jpg"))
+    else {
+        return false;
+    };
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    let stem = stem.strip_suffix("-zoom").unwrap_or(stem);
+    if let Some((item, mark)) = stem.split_once("-mark-") {
+        digits(item) && digits(mark)
+    } else {
+        digits(stem.strip_suffix("-click").unwrap_or(stem))
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::moments::{detect, utterances, Word};
+    use serde_json::json;
+    #[test]
+    fn two_marks_in_one_spoken_item_do_not_lose_the_second_frame_or_its_words() {
+        let words = (0..20)
+            .map(|i| Word {
+                t0: i as f64 * 0.4,
+                t1: i as f64 * 0.4 + 0.35,
+                w: format!("word{i}"),
+            })
+            .collect();
+        let result = detect(
+            &utterances(words),
+            &[
+                json!({"t":2.0,"type":"mark","n":1}),
+                json!({"t":5.0,"type":"mark","n":2}),
+            ],
+            &[],
+        );
+        assert_eq!(result.items.len(), 1);
+        let selected = selected_frames(&result.items[0]);
+        assert_eq!(
+            selected
+                .iter()
+                .map(|r| (r.t, r.name.as_str()))
+                .collect::<Vec<_>>(),
+            vec![(2.0, "item-01"), (5.0, "item-01-mark-2")]
+        );
+        assert!(selected[0].said.contains("word5"));
+        assert!(selected[1].said.contains("word12"));
+        assert!(generated_frame("item-01-mark-2.jpg"));
+        assert!(generated_frame("item-01-mark-2-zoom.jpg"));
+        assert!(!generated_frame("item-01-mark-notes.jpg"));
+    }
 }
