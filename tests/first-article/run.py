@@ -159,7 +159,7 @@ def frame_checks(pack, session, number, rect, flip, background_point, results):
     if count:
         centroid = (display['x'] + sum_x / count * sx, display['y'] + sum_y / count * sy)
         distance = math.dist(centroid, center(rect))
-        results.add(prefix + ' ring', inside(centroid, rect),
+        results.add(prefix + ' ring', inside(centroid, rect, 0),
                     f'centroid=({centroid[0]:.1f}, {centroid[1]:.1f}) pt, distance={distance:.1f} pt, pixels={count}')
     else:
         results.add(prefix + ' ring', False, 'zero ring pixels')
@@ -225,10 +225,6 @@ def clipboard_text():
     return sp.check_output(['/usr/bin/pbpaste']).decode('utf-8')
 
 
-def set_clipboard(text):
-    sp.run(['/usr/bin/pbcopy'], input=text.encode('utf-8'), check=True)
-
-
 def wait_log(path, pattern, seconds=3):
     deadline = time.monotonic() + seconds
     while True:
@@ -238,10 +234,14 @@ def wait_log(path, pattern, seconds=3):
         time.sleep(.05)
 
 
-def popup_checks(pack, recorder_log, results, click_fn=None, read_clipboard=None, write_clipboard=None):
+def popup_checks(pack, recorder_log, results, click_fn=None, read_clipboard=None,
+                 save_clipboard=None, restore_clipboard=None, clipboard_helper=None):
     click_fn = click if click_fn is None else click_fn
     read_clipboard = clipboard_text if read_clipboard is None else read_clipboard
-    write_clipboard = set_clipboard if write_clipboard is None else write_clipboard
+    if save_clipboard is None:
+        save_clipboard = lambda path: command([clipboard_helper, 'clipboard-save', path])
+    if restore_clipboard is None:
+        restore_clipboard = lambda path: command([clipboard_helper, 'clipboard-restore', path])
     match = wait_log(recorder_log, r'popup: frame=[^\n]+ copy=([-\d.,]+) finder=')
     copy_rect = [float(n) for n in match[1].split(',')] if match else []
     appeared = len(copy_rect) == 4 and copy_rect[2] > 0 and copy_rect[3] > 0
@@ -250,17 +250,19 @@ def popup_checks(pack, recorder_log, results, click_fn=None, read_clipboard=None
         results.add('popup closed copy', False, 'popup did not appear')
         results.add('clipboard equals PROMPT.md', False, 'popup did not appear')
         return False
-    saved = read_clipboard()
-    try:
-        x, y, w, h = copy_rect
-        click_fn((x + w / 2, y + h / 2))
-        closed = wait_log(recorder_log, r'popup: closed reason=copy(?:\s|$)')
-        results.add('popup closed copy', bool(closed), 'reason=copy' if closed else 'no copy close within 3 s')
-        prompt = pack / 'PROMPT.md'
-        same = prompt.is_file() and read_clipboard() == prompt.read_bytes().decode('utf-8')
-        results.add('clipboard equals PROMPT.md', same, 'exact match' if same else 'clipboard differs or PROMPT.md missing')
-    finally:
-        write_clipboard(saved)
+    with tempfile.TemporaryDirectory(prefix='markupr-clipboard-') as folder:
+        saved = Path(folder) / 'pasteboard.json'
+        save_clipboard(saved)
+        try:
+            x, y, w, h = copy_rect
+            click_fn((x + w / 2, y + h / 2))
+            closed = wait_log(recorder_log, r'popup: closed reason=copy(?:\s|$)')
+            results.add('popup closed copy', bool(closed), 'reason=copy' if closed else 'no copy close within 3 s')
+            prompt = pack / 'PROMPT.md'
+            same = prompt.is_file() and read_clipboard() == prompt.read_bytes().decode('utf-8')
+            results.add('clipboard equals PROMPT.md', same, 'exact match' if same else 'clipboard differs or PROMPT.md missing')
+        finally:
+            restore_clipboard(saved)
     return bool(closed)
 
 
@@ -385,20 +387,33 @@ def clock_checks(pack, session, state, point, results):
         sy = video['height'] / display['h']
         x = round((point[0] + 40 - display['x']) * sx)
         y = round((point[1] - display['y']) * sy)
-        before, after = max(0, t - start - .2), t - start + .4
-        times = [p for p in pts if before <= p <= after]
-        vf = f"select=between(t\\,{before:.6f}\\,{after:.6f}),crop=8:8:{x}:{y},scale=1:1:flags=area"
+        click_time = t - start
+        # ScreenCaptureKit may emit nothing while the page is still. The last
+        # frame can be arbitrarily old; select its actual frame index, not a
+        # fixed pre-click time window or an interpolated/repeated frame.
+        baseline_index = next((n for n in range(len(pts) - 1, -1, -1)
+                               if pts[n] <= click_time), None)
+        if baseline_index is None:
+            results.add(f'click {i+1} video flip', False, 'no frame at or before click')
+            continue
+        indices = [baseline_index] + [n for n in range(baseline_index + 1, len(pts))
+                                      if pts[n] <= click_time + .4]
+        select = '+'.join(f'eq(n\\,{n})' for n in indices)
+        vf = f'select={select},crop=8:8:{x}:{y},scale=1:1:flags=area'
         raw = sp.check_output([FFMPEG, '-v', 'error', '-i', str(video_path), '-an', '-vf', vf,
                                '-fps_mode', 'passthrough', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], timeout=30)
         colors = [tuple(raw[j:j+3]) for j in range(0, len(raw), 3)]
-        if len(colors) != len(times) or not colors or not any(p + start < t for p in times):
-            results.add(f'click {i+1} video flip', False, 'no baseline frame or timestamp/frame count mismatch')
+        if len(colors) != len(indices):
+            results.add(f'click {i+1} video flip', False, 'timestamp/frame count mismatch')
             continue
         baseline = colors[0]
-        changed = next((p for p, c in zip(times, colors) if math.dist(c, baseline) > 100), None)
+        changed = next((pts[n] for n, color in zip(indices[1:], colors[1:])
+                        if math.dist(color, baseline) > 100), None)
         delta = (changed + start - t) * 1000 if changed is not None else None
+        age = (click_time - pts[baseline_index]) * 1000
         results.add(f'click {i+1} video flip', delta is not None and 0 <= delta <= 150,
-                    f'{delta:.1f} ms' if delta is not None else 'no color flip in -200..+400 ms')
+                    (f'{delta:.1f} ms' if delta is not None else 'no color flip by +400 ms') +
+                    f'; baseline age={age:.1f} ms')
 
 
 def main():
@@ -533,7 +548,7 @@ def main():
                 time.sleep(2)
             results = Results()
             pack = finish_recording(args.markupr_bin, recorder, stdout_path, recorder_log, results,
-                                    popup=args.mode == 'walkthrough')
+                                    popup=args.mode == 'walkthrough', clipboard_helper=helper)
             print('RECORDER STDERR:\n' + recorder_log.read_text(), flush=True)
             if args.packs_dir not in pack.parents or not (pack / 'session.json').is_file():
                 raise RuntimeError('Recorder last stdout line is not a session path inside --packs-dir')

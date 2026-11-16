@@ -6,7 +6,40 @@ import CoreGraphics
 func check(_ status: OSStatus) {
     if status != noErr { fputs("CoreAudio error: \(status)\n", stderr); exit(1) }
 }
+struct PasteboardRepresentation: Codable {
+    let type: String
+    let data: Data
+}
+
 switch CommandLine.arguments[1] {
+case "clipboard-save", "clipboard-restore":
+    let file = URL(fileURLWithPath: CommandLine.arguments[2])
+    let pasteboard = CommandLine.arguments.count > 3
+        ? NSPasteboard(name: NSPasteboard.Name(CommandLine.arguments[3])) : NSPasteboard.general
+    if CommandLine.arguments[1] == "clipboard-save" {
+        let items = try (pasteboard.pasteboardItems ?? []).map { item in
+            try item.types.map { type -> PasteboardRepresentation in
+                guard let data = item.data(forType: type) else {
+                    throw NSError(domain: "markupr-first-article", code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Cannot save pasteboard type \(type.rawValue)"])
+                }
+                return PasteboardRepresentation(type: type.rawValue, data: data)
+            }
+        }
+        try JSONEncoder().encode(items).write(to: file, options: .atomic)
+    } else {
+        // Decode and materialize all representations before clearing anything.
+        let saved = try JSONDecoder().decode([[PasteboardRepresentation]].self, from: Data(contentsOf: file))
+        let items = saved.map { representations -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for representation in representations {
+                precondition(item.setData(representation.data, forType: NSPasteboard.PasteboardType(representation.type)))
+            }
+            return item
+        }
+        pasteboard.clearContents()
+        if !items.isEmpty { precondition(pasteboard.writeObjects(items)) }
+    }
 case "mic":
     var device = AudioDeviceID(0)
     var size = UInt32(MemoryLayout<AudioDeviceID>.size)

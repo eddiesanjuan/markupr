@@ -160,7 +160,8 @@ print('popup: closed reason=copy', file=sys.stderr, flush=True)
 print(sys.argv[1], flush=True)
 """)
     stdout, log = pack / 'stub.stdout', pack / 'stub.stderr'
-    clipboard = ['prior clipboard\n\n']
+    original = {'text': 'prior clipboard\n\n', 'image': 'AAH/gA=='}
+    clipboard = [dict(original)]
     writes, clicks, budgets = [], [], []
     with stdout.open('w') as out, log.open('w') as err:
         process = sp.Popen([sys.executable, str(stub), str(pack)], stdin=sp.PIPE,
@@ -169,12 +170,14 @@ print(sys.argv[1], flush=True)
         driver.until(lambda: 'popup: frame=' in log.read_text(), 3, 'fixture popup')
         def fake_click(point):
             clicks.append(point)
-            clipboard[0] = (pack / 'PROMPT.md').read_text() + ('different' if wrong_clipboard else '')
+            clipboard[0] = {'text': (pack / 'PROMPT.md').read_text() + ('different' if wrong_clipboard else '')}
             process.stdin.write('copy\n')
             process.stdin.flush()
-        def fake_write(text):
-            writes.append(text)
-            clipboard[0] = text
+        def fake_save(path):
+            path.write_text(json.dumps(clipboard[0]))
+        def fake_restore(path):
+            clipboard[0] = json.loads(path.read_text())
+            writes.append(dict(clipboard[0]))
         def fake_stop(argv, timeout):
             assert argv == ['stub-markupr', 'stop']
             budgets.append(timeout)
@@ -182,11 +185,11 @@ print(sys.argv[1], flush=True)
             return str(pack)
         actual = driver.finish_recording('stub-markupr', process, stdout, log, results,
                     popup=True, stop_command=fake_stop, click_fn=fake_click,
-                    read_clipboard=lambda: clipboard[0], write_clipboard=fake_write)
+                    read_clipboard=lambda: clipboard[0]['text'], save_clipboard=fake_save, restore_clipboard=fake_restore)
         assert actual == pack.resolve()
         assert budgets == [180], budgets
         assert clicks == [(165, 216)], clicks
-        assert clipboard[0] == 'prior clipboard\n\n' and writes == ['prior clipboard\n\n']
+        assert clipboard[0] == original and writes == [original]
         assert process.returncode == 0
     finally:
         driver.stop_owned(process)
@@ -240,14 +243,17 @@ def fixtures(temp):
     passing.show()
     assert all(row['status'] == 'PASS' for row in passing.rows)
     print('PASS stop budget=180 s; stdout pack path used; injected click=(165, 216); clipboard restored exactly')
-    cases = [('wrong ring', 'item 1 ring'), ('zero ring', 'item 1 ring'),
+    cases = [('edge ring', 'item 1 ring'), ('wrong ring', 'item 1 ring'), ('zero ring', 'item 1 ring'),
              ('pre-click picture', 'item 1 picture state'), ('late browser', 'item 1 browser timing'),
              ('late network', 'item 2 browser timing'),
              ('slow pack', 'stop_to_ready_ms'), ('different clipboard', 'clipboard equals PROMPT.md')]
     for slug, expected in cases:
         broken = temp / slug.replace(' ', '-')
         shutil.copytree(pack, broken)
-        if slug == 'wrong ring':
+        if slug == 'edge ring':
+            rect = rectangles['add']
+            render_frame(broken, 1, (rect['x'] - 10, driver.center(rect)[1]), (32, 80, 224))
+        elif slug == 'wrong ring':
             render_frame(broken, 1, driver.center(rectangles['save']), (32, 80, 224))
         elif slug == 'zero ring':
             render_frame(broken, 1, None, (32, 80, 224))
@@ -304,6 +310,32 @@ def clock_fixture(temp):
     print('SYNTHETIC VIDEO CLOCK FIXTURE (not a live clock measurement):')
     results.show()
     assert all(r['status'] == 'PASS' for r in results.rows)
+    sparse = temp / 'sparse-clock-fixture'
+    sparse.mkdir()
+    # Keep only the initial frame and actual flips; preserve their original PTS.
+    select = '+'.join(f'eq(n\\,{n})' for n in (0, 60, 105, 150, 195, 240))
+    sp.run([driver.FFMPEG, '-v', 'error', '-i', str(pack / 'video.mp4'), '-vf', 'select=' + select,
+            '-fps_mode', 'vfr', '-c:v', 'libx264', str(sparse / 'video.mp4')], check=True, timeout=30)
+    probe = json.loads(driver.command([driver.FFPROBE, '-v', 'error', '-show_frames',
+                       '-select_streams', 'v:0', '-show_entries', 'frame=best_effort_timestamp_time',
+                       '-of', 'json', sparse / 'video.mp4']))
+    assert len(probe['frames']) == 6, probe
+    (sparse / 'events.jsonl').write_text((pack / 'events.jsonl').read_text())
+    sparse_results = driver.Results()
+    driver.clock_checks(sparse, session, state, (20, 60), sparse_results)
+    print('SPARSE VIDEO FIXTURE (6 frames: start plus 5 flips):')
+    sparse_results.show()
+    assert all(r['status'] == 'PASS' for r in sparse_results.rows)
+    early_events = [dict(e) for e in events]
+    early_events[0]['t'] += .1
+    early_state = json.loads(json.dumps(state))
+    early_state[0]['data']['unix_ms'] += 100
+    (sparse / 'events.jsonl').write_text(''.join(json.dumps(e) + '\n' for e in early_events))
+    sparse_early = driver.Results()
+    driver.clock_checks(sparse, session, early_state, (20, 60), sparse_early)
+    failed = [r for r in sparse_early.rows if r['status'] == 'FAIL']
+    assert [r['check'] for r in failed] == ['click 1 video flip'], failed
+    print(f"SINGLE FAILURE (sparse flip 90 ms early): FAIL | {failed[0]['check']} | {failed[0]['detail']}")
     # Exactly one page-clock row fails; video timing and all other clicks pass.
     shifted = json.loads(json.dumps(state))
     shifted[0]['data']['unix_ms'] += 51
@@ -321,6 +353,58 @@ def clock_fixture(temp):
     print('PASS clock checker rejects a flip 90 ms before its click')
 
 
+def private_pasteboard_fixture(temp, helper):
+    import hashlib
+    import uuid
+    name = 'org.markupr.first-article.' + str(uuid.uuid4())
+    source = temp / 'pasteboard-fixture.swift'
+    source.write_text('''import AppKit
+let board = NSPasteboard(name: NSPasteboard.Name(CommandLine.arguments[1]))
+switch CommandLine.arguments[2] {
+case "seed":
+    board.clearContents()
+    let text = NSPasteboardItem()
+    text.setString("first text\\n", forType: .string)
+    let mixed = NSPasteboardItem()
+    let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXxQAAAAASUVORK5CYII=")!
+    mixed.setData(png, forType: .png)
+    mixed.setString("second text 🐦\\n", forType: .string)
+    precondition(board.writeObjects([text, mixed]))
+case "overwrite":
+    board.clearContents()
+    precondition(board.setString("replacement", forType: .string))
+case "snapshot":
+    let items = (board.pasteboardItems ?? []).map { item in
+        item.types.map { type in ["type": type.rawValue, "data": item.data(forType: type)!.base64EncodedString()] }
+    }
+    print(String(data: try JSONSerialization.data(withJSONObject: items, options: [.sortedKeys]), encoding: .utf8)!)
+case "release": board.releaseGlobally()
+default: exit(2)
+}
+''')
+    fixture = temp / 'pasteboard-fixture'
+    driver.command(['/usr/bin/swiftc', source, '-o', fixture])
+    saved = temp / 'private-pasteboard.json'
+    try:
+        driver.command([fixture, name, 'seed'])
+        before = json.loads(driver.command([fixture, name, 'snapshot']))
+        assert [len(item) for item in before] == [1, 2], before
+        driver.command([helper, 'clipboard-save', saved, name])
+        driver.command([fixture, name, 'overwrite'])
+        assert json.loads(driver.command([fixture, name, 'snapshot'])) != before
+        driver.command([helper, 'clipboard-restore', saved, name])
+        after = json.loads(driver.command([fixture, name, 'snapshot']))
+        assert after == before, (before, after)
+        for index, item in enumerate(after, 1):
+            for representation in item:
+                data = base64.b64decode(representation['data'])
+                print(f"PASS private pasteboard item={index} type={representation['type']} bytes={len(data)} "
+                      f"sha256={hashlib.sha256(data).hexdigest()[:16]} identical")
+        print('PASS private pasteboard: save -> overwrite -> restore; 2 items, 3 types, all bytes identical; general untouched')
+    finally:
+        driver.command([fixture, name, 'release'])
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='markupr-l7-offscreen-') as temp:
         temp = Path(temp)
@@ -329,6 +413,7 @@ def main():
         clock_fixture(temp)
         helper = temp / 'mac'
         driver.command(['/usr/bin/swiftc', HERE / 'mac.swift', '-o', helper])
+        private_pasteboard_fixture(temp, helper)
         print('MIC:', driver.command([helper, 'mic']))
         print('SCREENS:', driver.command([helper, 'screens']))
     print('PASS display-free checks; no recorder, speech or desktop input started')
