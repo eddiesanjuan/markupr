@@ -190,6 +190,8 @@ fn redact_url(raw: &str) -> String {
     let Ok(mut url) = url::Url::parse(raw) else {
         return raw.to_owned();
     };
+    let _ = url.set_password(None);
+    let _ = url.set_username("");
     fn redact_pairs(raw: &str) -> String {
         let pairs = url::form_urlencoded::parse(raw.as_bytes()).map(|(key, value)| {
             let lower = key.to_ascii_lowercase();
@@ -220,6 +222,53 @@ fn redact_url(raw: &str) -> String {
         url.set_fragment(Some(&redacted));
     }
     url.into()
+}
+// URLs in prose end at whitespace or surrounding quotation/bracket punctuation.
+fn redact_text(text: &str) -> String {
+    let mut output = String::new();
+    let mut rest = text;
+    while let Some(start) = [rest.find("http://"), rest.find("https://")]
+        .into_iter()
+        .flatten()
+        .min()
+    {
+        output.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let end = rest
+            .char_indices()
+            .find(|(_, c)| c.is_whitespace() || "\"'<>`".contains(*c))
+            .map(|(i, _)| i)
+            .unwrap_or(rest.len());
+        let url = rest[..end].trim_end_matches(['.', ',', ';', '!', ':', ')', ']', '}']);
+        output.push_str(&redact_url(url));
+        rest = &rest[url.len()..];
+    }
+    output.push_str(rest);
+    output
+}
+fn stamp_line(line: &mut Value, clock: Clock, arrival: f64) {
+    let mut t = arrival;
+    if matches!(line["type"].as_str(), Some("console" | "exception")) {
+        if let Some(src) = line["src_ts"].as_f64() {
+            if clock.t0_unix_ms() as f64 + arrival * 1000.0 - src > 1000.0 {
+                t = clock.t_from_unix_ms(src as u64);
+                line["replayed"] = json!(true);
+            }
+        }
+    }
+    line["t"] = json!(round_t(t));
+}
+fn write_lines(
+    writer: &JsonlWriter,
+    lines: Vec<Value>,
+    clock: Clock,
+    arrival: f64,
+) -> io::Result<()> {
+    for mut line in lines {
+        stamp_line(&mut line, clock, arrival);
+        writer.write(&line)?;
+    }
+    Ok(())
 }
 fn cap(text: &str, n: usize) -> String {
     text.chars().take(n).collect()
@@ -256,7 +305,7 @@ fn tab_info(info: &Value) -> Value {
             break;
         }
     }
-    json!({"id":info["targetId"], "url":url, "title":title})
+    json!({"id":info["targetId"], "url":url, "title":redact_text(&title)})
 }
 fn stack(v: &Value) -> Vec<String> {
     v["callFrames"]
@@ -291,8 +340,9 @@ document.addEventListener('click', event => {
  }
  // Read visible text nodes only, never input values or editable content.
  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
- let text = '', nodeText;
- while ((nodeText = walker.nextNode()) && text.length < 320) {
+ let text = '', nodeText, visited = 0;
+ while (visited < 200 && text.length < 320 && (nodeText = walker.nextNode())) {
+   visited++;
    const parent = nodeText.parentElement;
    if (parent && !parent.closest('input,textarea,select,[contenteditable]') && parent.getClientRects().length && getComputedStyle(parent).visibility !== 'hidden') text += nodeText.textContent + ' ';
  }
@@ -305,6 +355,8 @@ struct Request {
     method: String,
     url: String,
     start: f64,
+    start_t: f64,
+    observed_at: Instant,
     status: Value,
     mime: Value,
 }
@@ -340,14 +392,29 @@ impl Capture {
     ) -> Option<Value> {
         let r = self.requests.remove(&(session.into(), id.into()))?;
         Some(
-            json!({"type":"network","method":r.method,"url":redact_url(&r.url),"status":r.status,"mime":r.mime,
+            json!({"type":"network","start_t":r.start_t,"method":r.method,"url":redact_url(&r.url),"status":r.status,"mime":r.mime,
             "dur_ms":round_t((timestamp.as_f64().unwrap_or(r.start)-r.start)*1000.0),"failed":failed,"error":error,"src_ts":timestamp}),
         )
+    }
+    fn pending(&mut self, session: Option<&str>) -> Vec<Value> {
+        let keys: Vec<_> = self
+            .requests
+            .keys()
+            .filter(|(s, _)| session.is_none_or(|session| s == session))
+            .cloned()
+            .collect();
+        keys.into_iter().map(|key| {
+            let r = self.requests.remove(&key).unwrap();
+            json!({"type":"network","start_t":r.start_t,"method":r.method,"url":redact_url(&r.url),"status":r.status,"mime":r.mime,
+                "dur_ms":round_t(r.observed_at.elapsed().as_secs_f64()*1000.0),"failed":false,"pending":true,"error":null,
+                "src_ts":null,"tab":self.sessions.get(&key.0).cloned().unwrap_or(Value::Null)})
+        }).collect()
     }
     fn event(
         &mut self,
         ws: &mut WebSocket<TcpStream>,
         v: &Value,
+        arrival: f64,
     ) -> tungstenite::Result<Vec<Value>> {
         if let Some(session) = v["id"]
             .as_u64()
@@ -355,7 +422,7 @@ impl Capture {
         {
             if let Some(title) = v["result"]["result"]["value"].as_str() {
                 if let Some(tab) = self.sessions.get_mut(&session) {
-                    tab["title"] = json!(title);
+                    tab["title"] = json!(redact_text(title));
                 }
             }
         }
@@ -411,8 +478,8 @@ impl Capture {
             }
             "Target.detachedFromTarget" => {
                 let s = p["sessionId"].as_str().unwrap_or("");
+                lines.extend(self.pending(Some(s)));
                 self.sessions.remove(s);
-                self.requests.retain(|(session, _), _| session != s);
             }
             _ if !self.sessions.contains_key(session) => return Ok(lines),
             "Runtime.consoleAPICalled" => {
@@ -425,12 +492,12 @@ impl Capture {
                     .map(remote_text)
                     .collect::<Vec<_>>()
                     .join(" ");
-                lines.push(json!({"type":"console","level":p["type"],"text":cap(&text,2000),"url":redact_url(&string(first,"url")),
+                lines.push(json!({"type":"console","level":p["type"],"text":cap(&redact_text(&text),2000),"url":redact_url(&string(first,"url")),
                     "line":first["lineNumber"].as_u64().map(|n|n+1),"stack":stack(frames),"src_ts":p["timestamp"]}));
             }
             "Log.entryAdded" => {
                 let e = &p["entry"];
-                lines.push(json!({"type":"console","level":e["level"],"text":cap(&string(e,"text"),2000),"url":redact_url(&string(e,"url")),
+                lines.push(json!({"type":"console","level":e["level"],"text":cap(&redact_text(&string(e,"text")),2000),"url":redact_url(&string(e,"url")),
                     "line":e["lineNumber"].as_u64().map(|n|n+1),"stack":stack(&e["stackTrace"]),"src_ts":e["timestamp"]}));
             }
             "Runtime.exceptionThrown" => {
@@ -441,7 +508,7 @@ impl Capture {
                 } else {
                     text
                 };
-                lines.push(json!({"type":"exception","text":cap(&text,2000),"url":redact_url(&string(e,"url")),"line":e["lineNumber"].as_u64().map(|n|n+1),
+                lines.push(json!({"type":"exception","text":cap(&redact_text(&text),2000),"url":redact_url(&string(e,"url")),"line":e["lineNumber"].as_u64().map(|n|n+1),
                     "col":e["columnNumber"].as_u64().map(|n|n+1),"stack":stack(&e["stackTrace"]),"src_ts":p["timestamp"]}));
             }
             "Network.requestWillBeSent" => {
@@ -466,6 +533,8 @@ impl Capture {
                             method: string(r, "method"),
                             url,
                             start: p["timestamp"].as_f64().unwrap_or(0.0),
+                            start_t: round_t(arrival),
+                            observed_at: Instant::now(),
                             status: Value::Null,
                             mime: Value::Null,
                         },
@@ -522,7 +591,9 @@ impl Capture {
             _ => {}
         }
         for line in &mut lines {
-            line["tab"] = self.sessions.get(session).cloned().unwrap_or(Value::Null);
+            if line.get("tab").is_none() {
+                line["tab"] = self.sessions.get(session).cloned().unwrap_or(Value::Null);
+            }
         }
         Ok(lines)
     }
@@ -560,7 +631,7 @@ fn run(cfg: BrowserConfig, clock: Clock, stop: Receiver<()>) -> BrowserReport {
                 report.attached = true;
                 capture.sessions.clear();
                 capture.title_queries.clear();
-                capture.requests.clear();
+
                 let setup = capture.command(&mut ws,None,"Target.setDiscoverTargets",json!({"discover":true}))
                     .and_then(|_|capture.command(&mut ws,None,"Target.setAutoAttach",json!({"autoAttach":true,"waitForDebuggerOnStart":true,"flatten":true,"filter":[{"type":"page","exclude":false},{"exclude":true}]})));
                 if let Err(e) = setup {
@@ -572,19 +643,16 @@ fn run(cfg: BrowserConfig, clock: Clock, stop: Receiver<()>) -> BrowserReport {
                         }
                         match ws.read() {
                             Ok(Message::Text(text)) => {
-                                let t = round_t(clock.now());
+                                let t = clock.now();
                                 if let Ok(v) = serde_json::from_str::<Value>(&text) {
                                     if let Some(error) = v.get("error") {
                                         warn(&mut report, format!("CDP: {error}"));
                                     }
-                                    match capture.event(&mut ws, &v) {
+                                    match capture.event(&mut ws, &v, t) {
                                         Ok(lines) => {
-                                            for mut line in lines {
-                                                line["t"] = json!(t);
-                                                if let Err(e) = writer.write(&line) {
-                                                    warn(&mut report, e.to_string());
-                                                    break 'retry;
-                                                }
+                                            if let Err(e) = write_lines(&writer, lines, clock, t) {
+                                                warn(&mut report, e.to_string());
+                                                break 'retry;
                                             }
                                         }
                                         Err(e) => {
@@ -608,12 +676,19 @@ fn run(cfg: BrowserConfig, clock: Clock, stop: Receiver<()>) -> BrowserReport {
                         }
                     }
                 }
+                if let Err(e) = write_lines(&writer, capture.pending(None), clock, clock.now()) {
+                    warn(&mut report, e.to_string());
+                    break;
+                }
             }
         }
         match stop.recv_timeout(Duration::from_secs(2)) {
             Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
+    }
+    if let Err(e) = write_lines(&writer, capture.pending(None), clock, clock.now()) {
+        warn(&mut report, e.to_string());
     }
     if let Err(e) = writer.flush() {
         warn(&mut report, e.to_string());
@@ -645,5 +720,30 @@ mod tests {
             redact_url("http://localhost/#section"),
             "http://localhost/#section"
         );
+        assert_eq!(
+            redact_url("https://user:password@example.com/?token=abc"),
+            "https://example.com/?token=REDACTED"
+        );
+        assert_eq!(
+            redact_text("See (https://user:password@example.com/?token=abc&code=123&q=shoes)."),
+            "See (https://example.com/?token=REDACTED&code=REDACTED&q=shoes)."
+        );
+    }
+    #[test]
+    fn old_timestamp_is_stamped_at_arrival() {
+        let clock = Clock::from_parts(0, 10_000);
+        for kind in ["console", "exception"] {
+            let mut old = json!({"type":kind,"src_ts":5_123.4});
+            stamp_line(&mut old, clock, 0.2);
+            assert_eq!(old["t"], json!(-4.877));
+            assert_eq!(old["replayed"], true);
+            let mut live = json!({"type":kind,"src_ts":10_150.0});
+            stamp_line(&mut live, clock, 0.2);
+            assert_eq!(live["t"], json!(0.2));
+            assert!(live.get("replayed").is_none());
+            let mut boundary = json!({"type":kind,"src_ts":9_200.0});
+            stamp_line(&mut boundary, clock, 0.2);
+            assert!(boundary.get("replayed").is_none());
+        }
     }
 }
