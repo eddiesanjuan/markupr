@@ -186,6 +186,43 @@ pub fn launch_debug_browser(port: u16, url: Option<&str>) -> Result<LaunchInfo, 
     })
 }
 
+fn secret_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    if [
+        "token",
+        "secret",
+        "passw",
+        "session",
+        "credential",
+        "apikey",
+        "signature",
+    ]
+    .iter()
+    .any(|part| lower.contains(part))
+    {
+        return true;
+    }
+    let chars: Vec<_> = key.chars().collect();
+    let mut words = String::new();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_uppercase()
+            && i > 0
+            && (chars[i - 1].is_lowercase()
+                || chars[i - 1].is_numeric()
+                || (chars[i - 1].is_uppercase()
+                    && chars.get(i + 1).is_some_and(|c| c.is_lowercase())))
+        {
+            words.push(' ');
+        }
+        words.extend(c.to_lowercase());
+    }
+    words.split(|c: char| !c.is_alphanumeric()).any(|segment| {
+        matches!(
+            segment,
+            "key" | "sig" | "code" | "auth" | "pwd" | "sid" | "otp" | "pin"
+        )
+    })
+}
 fn redact_url(raw: &str) -> String {
     let Ok(mut url) = url::Url::parse(raw) else {
         return raw.to_owned();
@@ -194,12 +231,7 @@ fn redact_url(raw: &str) -> String {
     let _ = url.set_username("");
     fn redact_pairs(raw: &str) -> String {
         let pairs = url::form_urlencoded::parse(raw.as_bytes()).map(|(key, value)| {
-            let lower = key.to_ascii_lowercase();
-            let secret = [
-                "token", "key", "secret", "password", "auth", "session", "sig", "code",
-            ]
-            .iter()
-            .any(|part| lower.contains(part));
+            let secret = secret_key(&key);
             (
                 key.into_owned(),
                 if secret {
@@ -227,10 +259,15 @@ fn redact_url(raw: &str) -> String {
 fn redact_text(text: &str) -> String {
     let mut output = String::new();
     let mut rest = text;
-    while let Some(start) = [rest.find("http://"), rest.find("https://")]
-        .into_iter()
-        .flatten()
-        .min()
+    while let Some(start) = [
+        rest.find("http://"),
+        rest.find("https://"),
+        rest.find("ws://"),
+        rest.find("wss://"),
+    ]
+    .into_iter()
+    .flatten()
+    .min()
     {
         output.push_str(&rest[..start]);
         rest = &rest[start..];
@@ -368,6 +405,7 @@ struct Capture {
     id: u64,
 }
 impl Capture {
+    #[allow(clippy::result_large_err)] // Keep the native tungstenite error on this private protocol helper.
     fn command(
         &mut self,
         ws: &mut WebSocket<TcpStream>,
@@ -410,6 +448,7 @@ impl Capture {
                 "src_ts":null,"tab":self.sessions.get(&key.0).cloned().unwrap_or(Value::Null)})
         }).collect()
     }
+    #[allow(clippy::result_large_err)] // Keep the native tungstenite error on this private protocol helper.
     fn event(
         &mut self,
         ws: &mut WebSocket<TcpStream>,
@@ -497,6 +536,9 @@ impl Capture {
             }
             "Log.entryAdded" => {
                 let e = &p["entry"];
+                if e["source"] == "network" {
+                    return Ok(lines);
+                }
                 lines.push(json!({"type":"console","level":e["level"],"text":cap(&redact_text(&string(e,"text")),2000),"url":redact_url(&string(e,"url")),
                     "line":e["lineNumber"].as_u64().map(|n|n+1),"stack":stack(&e["stackTrace"]),"src_ts":e["timestamp"]}));
             }
@@ -551,13 +593,20 @@ impl Capture {
                 }
             }
             "Network.loadingFinished" | "Network.loadingFailed" => {
-                if let Some(line) = self.finish(
+                let canceled = p["canceled"] == true;
+                if let Some(mut line) = self.finish(
                     session,
                     &string(p, "requestId"),
                     &p["timestamp"],
-                    method == "Network.loadingFailed",
+                    method == "Network.loadingFailed" && !canceled,
                     p["errorText"].clone(),
                 ) {
+                    if canceled {
+                        line["canceled"] = json!(true);
+                    }
+                    if let Some(blocked) = p.get("blockedReason") {
+                        line["blocked"] = blocked.clone();
+                    }
                     lines.push(line);
                 }
             }
@@ -727,6 +776,40 @@ mod tests {
         assert_eq!(
             redact_text("See (https://user:password@example.com/?token=abc&code=123&q=shoes)."),
             "See (https://example.com/?token=REDACTED&code=REDACTED&q=shoes)."
+        );
+        for key in [
+            "access_token",
+            "apiKey",
+            "api_key",
+            "sessionid",
+            "auth",
+            "code",
+            "X-Amz-Signature",
+            "clientSecret",
+            "password",
+            "credential",
+            "requestSig",
+            "resetCode",
+            "pwd",
+            "sid",
+            "otp",
+            "pin",
+        ] {
+            assert_eq!(
+                redact_url(&format!("https://example.com/?{key}=abc")),
+                format!("https://example.com/?{key}=REDACTED"),
+                "{key}"
+            );
+        }
+        for key in ["author", "barcode", "keyword", "design", "encode"] {
+            let url = format!("https://example.com/?{key}=abc");
+            assert_eq!(redact_url(&url), url, "{key}");
+        }
+        assert_eq!(
+            redact_text(
+                "Sockets ws://user:password@example.com/?api_key=abc wss://example.com/#code=123"
+            ),
+            "Sockets ws://example.com/?api_key=REDACTED wss://example.com/#code=REDACTED"
         );
     }
     #[test]
