@@ -1,0 +1,15 @@
+[package]
+name = "markupr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+global-hotkey = "0.7"
+libc = "0.2"
+markupr-core = { path = "../markupr-core" }
+serde_json = "1"
+signal-hook = "0.3"
+tao = "0.34"
