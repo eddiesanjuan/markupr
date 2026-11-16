@@ -151,7 +151,7 @@ def render_frame(pack, number, ring_point, color):
         (pack / f'frames/item-{number:02}{suffix}.jpg').write_bytes(path.read_bytes())
 
 
-def popup_fixture(pack, results, wrong_clipboard=False):
+def popup_fixture(pack, results, wrong_clipboard=False, restore_failure=False):
     stub = pack / 'stub.py'
     stub.write_text("""import sys
 print('popup: frame=80,100,400,200 copy=100,200,130,32 finder=240,200,140,32', file=sys.stderr, flush=True)
@@ -176,6 +176,8 @@ print(sys.argv[1], flush=True)
         def fake_save(path):
             path.write_text(json.dumps(clipboard[0]))
         def fake_restore(path):
+            if restore_failure:
+                raise sp.CalledProcessError(1, ['stub-restore'])
             clipboard[0] = json.loads(path.read_text())
             writes.append(dict(clipboard[0]))
         def fake_stop(argv, timeout):
@@ -183,9 +185,31 @@ print(sys.argv[1], flush=True)
             budgets.append(timeout)
             assert not stdout.read_text(), "Recorder must not print its final path before the panel closes"
             return str(pack)
+        if restore_failure:
+            import contextlib
+            import io
+            output = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(output):
+                    driver.finish_recording('stub-markupr', process, stdout, log, results,
+                        popup=True, stop_command=fake_stop, click_fn=fake_click,
+                        read_clipboard=lambda: clipboard[0]['text'], save_clipboard=fake_save,
+                        restore_clipboard=fake_restore)
+            except sp.CalledProcessError as error:
+                assert error.returncode == 1
+            else:
+                raise AssertionError('Restore failure was swallowed')
+            backup = pack / 'clipboard-backup.bin'
+            assert json.loads(backup.read_text()) == original
+            assert str(backup) in output.getvalue()
+            print(output.getvalue().strip())
+            print('PASS failed restore: backup bytes retained after temporary directory cleanup')
+            process.wait(timeout=3)
+            return
         actual = driver.finish_recording('stub-markupr', process, stdout, log, results,
                     popup=True, stop_command=fake_stop, click_fn=fake_click,
                     read_clipboard=lambda: clipboard[0]['text'], save_clipboard=fake_save, restore_clipboard=fake_restore)
+        assert not (pack / 'clipboard-backup.bin').exists(), 'Successful restore leaked clipboard into pack'
         assert actual == pack.resolve()
         assert budgets == [180], budgets
         assert clicks == [(165, 216)], clicks
@@ -284,6 +308,10 @@ def fixtures(temp):
     assert driver.button_rect(layout, 'add') == {'x': -1675.0, 'y': 601.71875, 'w': 196.9375, 'h': 77}
     assert driver.coords(-1675, -100) == '=-1675,=-100'
     print('PASS missing-input and negative-display coordinate fixtures')
+    failed_restore = temp / 'failed-restore'
+    shutil.copytree(pack, failed_restore)
+    popup_fixture(failed_restore, driver.Results(), restore_failure=True)
+    print('PASS successful restore: no clipboard backup file written into pack')
 
 
 
@@ -401,6 +429,14 @@ default: exit(2)
                 print(f"PASS private pasteboard item={index} type={representation['type']} bytes={len(data)} "
                       f"sha256={hashlib.sha256(data).hexdigest()[:16]} identical")
         print('PASS private pasteboard: save -> overwrite -> restore; 2 items, 3 types, all bytes identical; general untouched')
+        invalid = temp / 'invalid-clipboard.bin'
+        invalid.write_bytes(b'not a saved pasteboard')
+        failure = sp.run([str(helper), 'clipboard-restore', str(invalid), name], capture_output=True, text=True)
+        assert failure.returncode == 1, failure
+        assert str(invalid) in failure.stderr and 'Clipboard restore failed' in failure.stderr
+        assert json.loads(driver.command([fixture, name, 'snapshot'])) == before
+        print(f'EXPECTED RESTORE FAILURE exit={failure.returncode}: {failure.stderr.strip()}')
+        print('PASS invalid restore left private pasteboard unchanged')
     finally:
         driver.command([fixture, name, 'release'])
 

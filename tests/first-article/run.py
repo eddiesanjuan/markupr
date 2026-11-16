@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import shutil
 import socket
 import subprocess as sp
 import sys
@@ -262,7 +263,13 @@ def popup_checks(pack, recorder_log, results, click_fn=None, read_clipboard=None
             same = prompt.is_file() and read_clipboard() == prompt.read_bytes().decode('utf-8')
             results.add('clipboard equals PROMPT.md', same, 'exact match' if same else 'clipboard differs or PROMPT.md missing')
         finally:
-            restore_clipboard(saved)
+            try:
+                restore_clipboard(saved)
+            except (sp.SubprocessError, OSError):
+                backup = pack / 'clipboard-backup.bin'
+                shutil.copyfile(saved, backup)
+                print(f'CLIPBOARD RESTORE FAILED: saved clipboard preserved at {backup}', flush=True)
+                raise
     return bool(closed)
 
 

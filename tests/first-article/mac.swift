@@ -28,17 +28,31 @@ case "clipboard-save", "clipboard-restore":
         }
         try JSONEncoder().encode(items).write(to: file, options: .atomic)
     } else {
-        // Decode and materialize all representations before clearing anything.
-        let saved = try JSONDecoder().decode([[PasteboardRepresentation]].self, from: Data(contentsOf: file))
-        let items = saved.map { representations -> NSPasteboardItem in
-            let item = NSPasteboardItem()
-            for representation in representations {
-                precondition(item.setData(representation.data, forType: NSPasteboard.PasteboardType(representation.type)))
+        do {
+            // Decode and materialize everything before clearing anything.
+            let saved = try JSONDecoder().decode([[PasteboardRepresentation]].self, from: Data(contentsOf: file))
+            let items = try saved.map { representations -> NSPasteboardItem in
+                let item = NSPasteboardItem()
+                for representation in representations {
+                    guard item.setData(representation.data, forType: NSPasteboard.PasteboardType(representation.type)) else {
+                        throw NSError(domain: "markupr-first-article", code: 2,
+                            userInfo: [NSLocalizedDescriptionKey: "Cannot restore type \(representation.type)"])
+                    }
+                }
+                return item
             }
-            return item
+            pasteboard.clearContents()
+            if !items.isEmpty && !pasteboard.writeObjects(items) {
+                pasteboard.clearContents()
+                guard pasteboard.writeObjects(items) else {
+                    throw NSError(domain: "markupr-first-article", code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Pasteboard write failed twice"])
+                }
+            }
+        } catch {
+            fputs("Clipboard restore failed; saved file: \(file.path): \(error.localizedDescription)\n", stderr)
+            exit(1)
         }
-        pasteboard.clearContents()
-        if !items.isEmpty { precondition(pasteboard.writeObjects(items)) }
     }
 case "mic":
     var device = AudioDeviceID(0)
