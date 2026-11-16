@@ -1,5 +1,5 @@
-//! Mono 16-bit PCM WAV writer placed on the host clock: samples land at the index their
-//! timestamp says, gaps are filled with silence, overlaps from a clock that moved backward
+//! Mono 16-bit PCM WAV writer placed on the host clock: sample i is at
+//! `start_ns + i / sample_rate`. Gaps become silence, overlaps from a clock that moved backward
 //! are dropped, and buffers at another rate are resampled to the file's rate.
 
 use std::fs::File;
@@ -8,8 +8,6 @@ use std::path::Path;
 
 /// Gaps and overlaps shorter than this are timestamp jitter and are left alone.
 const GAP_TOLERANCE_S: f64 = 0.010;
-/// Longest silence written for one gap.
-const MAX_GAP_S: u64 = 60;
 
 pub(crate) struct WavWriter {
     out: BufWriter<File>,
@@ -18,9 +16,8 @@ pub(crate) struct WavWriter {
     pub written: u64,
     padded: u64,
     dropped: u64,
-    /// Samples of capped gaps not written; later timestamps are shifted back by this much.
-    skipped: u64,
     last_rate_in: u32,
+    resampler: Resampler,
     warnings: Vec<String>,
 }
 
@@ -35,8 +32,8 @@ impl WavWriter {
             written: 0,
             padded: 0,
             dropped: 0,
-            skipped: 0,
             last_rate_in: sample_rate,
+            resampler: Resampler::default(),
             warnings: Vec::new(),
         })
     }
@@ -49,12 +46,16 @@ impl WavWriter {
                 self.last_rate_in, rate_in, self.sample_rate
             ));
             self.last_rate_in = rate_in;
+            self.resampler = Resampler::default();
         }
-        let samples = resample(samples, rate_in, self.sample_rate);
+        let samples = if rate_in == self.sample_rate {
+            samples.to_vec()
+        } else {
+            self.resampler.run(samples, rate_in, self.sample_rate)
+        };
         let rate = self.sample_rate as u64;
         let tol = (GAP_TOLERANCE_S * rate as f64) as u64;
         let expected = (pts_ns.saturating_sub(self.start_ns) as u128 * rate as u128 / 1_000_000_000) as u64;
-        let expected = expected.saturating_sub(self.skipped);
         let mut s: &[i16] = &samples;
         if expected + tol < self.written {
             // Host time moved backward: drop what overlaps audio already written.
@@ -62,25 +63,12 @@ impl WavWriter {
             self.dropped += overlap as u64;
             s = &s[overlap..];
         } else if expected > self.written + tol {
+            // Silence for the whole gap, as a hole in the file: it reads back as zeros and
+            // costs neither memory nor time however long the gap is.
             let gap = expected - self.written;
-            let fill = gap.min(MAX_GAP_S * rate);
-            if fill < gap {
-                self.skipped += gap - fill;
-                self.warnings.push(format!(
-                    "mic: a {:.1} s gap was capped at {MAX_GAP_S} s of silence; later mic audio is {:.1} s early",
-                    gap as f64 / rate as f64,
-                    (gap - fill) as f64 / rate as f64
-                ));
-            }
-            let chunk = vec![0u8; rate as usize * 2];
-            let mut left = fill;
-            while left > 0 {
-                let n = left.min(rate);
-                self.out.write_all(&chunk[..n as usize * 2])?;
-                left -= n;
-            }
-            self.written += fill;
-            self.padded += fill;
+            self.out.seek(SeekFrom::Current(gap as i64 * 2))?;
+            self.written += gap;
+            self.padded += gap;
         }
         let mut bytes = Vec::with_capacity(s.len() * 2);
         for v in s {
@@ -113,23 +101,38 @@ impl WavWriter {
     }
 }
 
-/// Linear resampling; enough for speech.
-fn resample(x: &[i16], from: u32, to: u32) -> Vec<i16> {
-    if from == to || from == 0 || x.is_empty() {
-        return x.to_vec();
+/// Linear resampler that keeps its place across buffers, so no fraction of a sample is lost
+/// per buffer. Enough for speech.
+#[derive(Default)]
+struct Resampler {
+    /// Position of the next output sample, in input samples from the start of the next buffer
+    /// (between -1 and 0 once running).
+    pos: f64,
+    /// Last input sample of the previous buffer, used when `pos` is negative.
+    prev: Option<i16>,
+}
+
+impl Resampler {
+    fn run(&mut self, x: &[i16], from: u32, to: u32) -> Vec<i16> {
+        if x.is_empty() || from == 0 || to == 0 {
+            return Vec::new();
+        }
+        let step = from as f64 / to as f64;
+        let last = (x.len() - 1) as f64;
+        let at = |i: isize| if i < 0 { self.prev.unwrap_or(x[0]) } else { x[(i as usize).min(x.len() - 1)] };
+        let mut out = Vec::with_capacity((x.len() as f64 / step) as usize + 2);
+        let mut p = self.pos;
+        while p <= last {
+            let j = p.floor();
+            let f = p - j;
+            let (a, b) = (at(j as isize) as f64, at(j as isize + 1) as f64);
+            out.push((a + (b - a) * f).round() as i16);
+            p += step;
+        }
+        self.pos = p - x.len() as f64;
+        self.prev = Some(x[x.len() - 1]);
+        out
     }
-    let n = ((x.len() as u64 * to as u64 + from as u64 / 2) / from as u64) as usize;
-    let step = from as f64 / to as f64;
-    let last = x.len() - 1;
-    (0..n)
-        .map(|i| {
-            let p = i as f64 * step;
-            let j = (p as usize).min(last);
-            let f = p - j as f64;
-            let (a, b) = (x[j] as f64, x[(j + 1).min(last)] as f64);
-            (a + (b - a) * f).round() as i16
-        })
-        .collect()
 }
 
 fn header(rate: u32, data_len: u32) -> [u8; 44] {
@@ -154,11 +157,15 @@ fn header(rate: u32, data_len: u32) -> [u8; 44] {
 mod tests {
     use super::*;
 
-    /// Bug: a mid-recording rate change (Bluetooth headset), a backward timestamp or a long
-    /// gap pushes later narration off the host clock.
+    fn tmp(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("markupr-wav-{name}-{}.wav", std::process::id()))
+    }
+
+    /// Bug: a mid-recording rate change (Bluetooth headset) or a backward timestamp pushes
+    /// later narration off the host clock.
     #[test]
-    fn rate_change_backward_buffer_and_gap_stay_on_host_time() {
-        let path = std::env::temp_dir().join(format!("markupr-wav-test-{}.wav", std::process::id()));
+    fn rate_change_and_backward_buffer_stay_on_host_time() {
+        let path = tmp("rate");
         let start: u64 = 1_000_000_000;
         let mut w = WavWriter::create(&path, 48_000, start).unwrap();
         let mut t = start;
@@ -170,46 +177,61 @@ mod tests {
             }
         }
         // A buffer whose timestamp moved 50 ms backward.
-        w.push(t - 50_000_000, 48_000, &vec![7i16; 480]).unwrap();
-        // A 5 s gap, then 1 s more audio.
-        t += 5_000_000_000;
-        for _ in 0..100 {
-            w.push(t, 48_000, &vec![1000i16; 480]).unwrap();
-            t += 10_000_000;
-        }
+        w.push(t - 50_000_000, 48_000, &[7i16; 480]).unwrap();
         let span_s = (t - start) as f64 / 1e9;
         let file_s = w.written as f64 / 48_000.0;
         let notes = w.notes();
         w.finish().unwrap();
-        let len = std::fs::metadata(&path).unwrap().len();
         std::fs::remove_file(&path).unwrap();
-        println!("span {span_s:.4} s, file {file_s:.4} s, diff {:+.2} ms, bytes {len}", (file_s - span_s) * 1e3);
-        for n in &notes {
-            println!("{n}");
-        }
+        println!("span {span_s:.4} s, file {file_s:.4} s, diff {:+.2} ms; {notes:?}", (file_s - span_s) * 1e3);
         assert!((file_s - span_s).abs() < 0.010);
-        assert_eq!(len, 44 + w_samples(file_s) * 2);
         assert!(notes.iter().any(|n| n.contains("48000 -> 24000")));
         assert!(notes.iter().any(|n| n.contains("24000 -> 48000")));
         assert!(notes.iter().any(|n| n.contains("moved backward")));
     }
 
-    fn w_samples(s: f64) -> u64 {
-        (s * 48_000.0).round() as u64
-    }
-
+    /// Bug: a capped gap left every later word early by the skipped amount.
     #[test]
-    fn gap_longer_than_cap_is_capped_with_warning() {
-        let path = std::env::temp_dir().join(format!("markupr-wav-cap-{}.wav", std::process::id()));
+    fn audio_after_a_90_s_gap_lands_at_its_true_offset() {
+        let path = tmp("gap");
         let mut w = WavWriter::create(&path, 8_000, 0).unwrap();
         w.push(0, 8_000, &[1; 80]).unwrap();
-        w.push(90_000_000_000, 8_000, &[1; 80]).unwrap();
-        w.push(90_010_000_000, 8_000, &[1; 80]).unwrap(); // the next buffer must not reopen the gap
+        w.push(90_000_000_000, 8_000, &[2; 80]).unwrap();
+        w.push(90_010_000_000, 8_000, &[3; 80]).unwrap();
         let (written, notes) = (w.written, w.notes());
         w.finish().unwrap();
+        let bytes = std::fs::read(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
-        println!("written {written} samples; {notes:?}");
-        assert_eq!(written, 80 + 60 * 8_000 + 80 + 80);
-        assert!(notes.iter().any(|n| n.contains("capped at 60 s")));
+        let sample = |i: usize| i16::from_le_bytes([bytes[44 + 2 * i], bytes[45 + 2 * i]]);
+        println!("written {written} samples, file {} bytes; {notes:?}", bytes.len());
+        assert_eq!(written, 90 * 8_000 + 160);
+        assert_eq!(bytes.len() as u64, 44 + written * 2);
+        assert_eq!((sample(80), sample(719_999)), (0, 0));
+        assert_eq!((sample(720_000), sample(720_080)), (2, 3));
+        assert!(notes.iter().any(|n| n.contains("89990 ms of gaps filled with silence")));
+    }
+
+    /// Bug: per-buffer rounding in the resampler lost a fraction of a sample per buffer, which
+    /// the gap check then filled with silence (40 ms over 2000 buffers of 48 kHz into 16 kHz).
+    #[test]
+    fn resampling_many_buffers_inserts_no_silence() {
+        let path = tmp("drift");
+        let start: u64 = 5_000_000_000;
+        let mut w = WavWriter::create(&path, 16_000, start).unwrap();
+        w.push(start, 16_000, &[1; 160]).unwrap();
+        let mut t = start + 10_000_000;
+        let mut input: u64 = 0;
+        for _ in 0..2000 {
+            w.push(t, 48_000, &[1000; 1024]).unwrap();
+            input += 1024;
+            t = start + 10_000_000 + input * 1_000_000_000 / 48_000;
+        }
+        let span = (t - start) as f64 * 16_000.0 / 1e9;
+        let (written, padded, notes) = (w.written, w.padded, w.notes());
+        w.finish().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        println!("written {written}, span {span:.2} samples, padded {padded}; {notes:?}");
+        assert_eq!(padded, 0);
+        assert!((written as f64 - span).abs() <= 1.0);
     }
 }

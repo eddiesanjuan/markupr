@@ -266,15 +266,20 @@ fn on_screen(st: &mut State, sb: &CMSampleBuffer, now: u64) {
     let Some(pts) = cmtime_ns(unsafe { sb.presentation_time_stamp() }) else { return };
     let display = number(&info, unsafe { SCStreamFrameInfoDisplayTime })
         .map(|n| ticks_to_ns(n.unsignedLongLongValue()));
-    let superseded = if unsafe { st.video_in.isReadyForMoreMediaData() } {
-        let old = st.pending.take();
+    // A held frame goes first, at its own timestamp; the new one follows if there is room.
+    if let Some(p) = st.pending.take() {
+        if !unsafe { st.video_in.isReadyForMoreMediaData() } {
+            // Still busy: the newer frame replaces the held one.
+            st.pending = Some(Pending { sb: sb.retain().into(), pts, display });
+            st.frames_dropped_not_ready += 1;
+            return;
+        }
+        append_frame(st, &p.sb, p.pts, p.display, now);
+    }
+    if unsafe { st.video_in.isReadyForMoreMediaData() } {
         append_frame(st, sb, pts, display, now);
-        old
     } else {
-        st.pending.replace(Pending { sb: sb.retain().into(), pts, display })
-    };
-    if superseded.is_some() {
-        st.frames_dropped_not_ready += 1;
+        st.pending = Some(Pending { sb: sb.retain().into(), pts, display });
     }
 }
 
@@ -459,6 +464,8 @@ pub struct ScreenRecorder {
     cfg: ScreenConfig,
     width: u32,
     height: u32,
+    /// Frame rate after clamping to 1..=120.
+    fps: u32,
     warnings: Vec<String>,
 }
 
@@ -690,7 +697,7 @@ impl ScreenRecorder {
             return Err(ScreenError::Capture(e));
         }
 
-        Ok(ScreenRecorder { stream, _output: output, queue, state, display, cfg, width, height, warnings })
+        Ok(ScreenRecorder { stream, _output: output, queue, state, display, cfg, width, height, fps, warnings })
     }
 
     pub fn display(&self) -> DisplayInfo {
@@ -727,7 +734,7 @@ impl ScreenRecorder {
             ));
         }
 
-        let video_start = match finish_video(st, stop_ns, capture_stopped.is_none()) {
+        let video_start = match finish_video(st, stop_ns, capture_stopped.as_ref().map(|c| c.host_ns)) {
             Ok(v) => Some(v),
             Err(e) => {
                 warnings.push(format!("video: {e}"));
@@ -794,7 +801,7 @@ impl ScreenRecorder {
                 start_host_ns,
                 width: self.width,
                 height: self.height,
-                fps: self.cfg.fps,
+                fps: self.fps,
             }),
             mic,
             system_audio,
@@ -804,9 +811,11 @@ impl ScreenRecorder {
     }
 }
 
-/// Finish video.mp4 and return its time zero. `alive`: the stream was running at stop, so the
-/// last frame is repeated at the stop time to keep a still tail.
-fn finish_video(st: &mut State, stop_ns: u64, alive: bool) -> Result<u64, String> {
+/// Finish video.mp4 and return its time zero. `died_at`: host ns when the stream stopped by
+/// itself. While it was alive at stop, the last frame is repeated at the stop time to keep a
+/// still tail; otherwise the session ends at the time it died.
+fn finish_video(st: &mut State, stop_ns: u64, died_at: Option<u64>) -> Result<u64, String> {
+    let alive = died_at.is_none();
     // Audio first, so the writer does not hold video waiting to interleave with it.
     if let Some(a) = &st.audio_in {
         unsafe { a.markAsFinished() };
@@ -822,7 +831,7 @@ fn finish_video(st: &mut State, stop_ns: u64, alive: bool) -> Result<u64, String
         unsafe { st.writer.cancelWriting() };
         return Err("no frame arrived before stop".into());
     };
-    let end = stop_ns.max(st.last_frame_ns + 1);
+    let end = died_at.unwrap_or(stop_ns).max(st.last_frame_ns + 1);
     if alive && end > st.last_frame_ns + 1_000_000 {
         if let Some(last) = st.last_frame.take() {
             match append_copy_at(&st.video_in, &last, end) {
@@ -838,9 +847,7 @@ fn finish_video(st: &mut State, stop_ns: u64, alive: bool) -> Result<u64, String
     }
     unsafe {
         st.video_in.markAsFinished();
-        if alive {
-            st.writer.endSessionAtSourceTime(ns_cmtime(end));
-        }
+        st.writer.endSessionAtSourceTime(ns_cmtime(end));
     }
     let (tx, rx) = mpsc::channel::<()>();
     let done = RcBlock::new(move || {
