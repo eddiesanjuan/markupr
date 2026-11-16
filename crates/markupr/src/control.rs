@@ -37,7 +37,7 @@ impl ControlServer {
             .open(dir.join("control.lock"))?;
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
             bail!(
-                "another markupr record is already running ({})",
+                "another markupr recorder or app is already running ({})",
                 std::io::Error::last_os_error()
             );
         }
@@ -89,6 +89,7 @@ fn handle_request(stream: &mut UnixStream, proxy: &EventLoopProxy<UserEvent>) ->
     BufReader::new(stream).read_line(&mut line)?;
     let value: Value = serde_json::from_str(&line)?;
     let event = match value["cmd"].as_str() {
+        Some("start") => UserEvent::Start,
         Some("stop") => UserEvent::Stop,
         Some("mark") => {
             let note = match &value["note"] {

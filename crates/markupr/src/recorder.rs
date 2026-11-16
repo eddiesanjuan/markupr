@@ -10,8 +10,10 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-#[derive(Args, Debug)]
+#[derive(Args, Clone, Debug)]
 pub struct RecordOptions {
+    #[arg(long)]
+    pub popup: bool,
     #[arg(long)]
     pub out: Option<PathBuf>,
     #[arg(long, value_parser = positive_seconds)]
@@ -34,7 +36,7 @@ pub struct RecordOptions {
     pub processing: ProcessingOptions,
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Clone, Debug)]
 pub struct ProcessingOptions {
     #[arg(long)]
     pub fast: bool,
@@ -197,7 +199,7 @@ impl Recorder {
             round_t(self.clock.now())
         );
     }
-    pub fn stop(mut self) -> Result<Session> {
+    pub fn stop(mut self) -> Result<Option<markupr_pack::PackReport>> {
         let stop = Instant::now();
         self.session.duration = Some(round_t(self.clock.now()));
         self.session.timing.stop_unix_ms = Some(unix_ms()?);
@@ -289,15 +291,16 @@ impl Recorder {
                 .map(|s| ready.saturating_sub(s));
         }
         self.session.save(&self.pack)?;
+        let mut pack_report = None;
         if !self.no_pack {
             let report = build_pack(&self.pack, &self.config, &self.processing)?;
             for warning in &report.warnings {
                 eprintln!("warning: pack: {warning}");
             }
             eprintln!("pack: {}", serde_json::to_string(&report)?);
-            self.session = Session::load(&self.pack)?;
+            pack_report = Some(report);
         }
-        Ok(self.session)
+        Ok(pack_report)
     }
 }
 fn unix_ms() -> Result<u64> {
