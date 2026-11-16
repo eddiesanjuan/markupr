@@ -125,8 +125,17 @@ fn read_jsonl(
             Ok(mut value)
                 if value.is_object() && value["t"].as_f64().is_some_and(f64::is_finite) =>
             {
-                if duration.is_some_and(|end| t(&value) > end) {
-                    continue;
+                if let Some(end) = duration {
+                    if kind(&value) == "network" {
+                        if value["start_t"].as_f64().unwrap_or(t(&value)) > end {
+                            continue;
+                        }
+                        if t(&value) > end {
+                            value["t"] = serde_json::json!(end);
+                        }
+                    } else if t(&value) > end {
+                        continue;
+                    }
                 }
                 if value["self"] == true
                     && matches!(kind(&value), "mouse_down" | "mouse_up" | "scroll")
@@ -162,7 +171,7 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
             || (kind(v) == "network" && (failed || pending));
         let warning =
             kind(v) == "console" && matches!(v["level"].as_str(), Some("warn" | "warning"));
-        if !error && !warning && v["replayed"] != true {
+        if !error && !warning {
             continue;
         }
         let text = if kind(v) == "network" && pending {
@@ -429,5 +438,62 @@ mod tests {
         assert_eq!(item.logs[2].text, "system log: Audio buffer not ready");
         assert!(item.reasons.iter().all(|r| !r.starts_with("error at")));
         assert!(marked.other_errors.is_empty());
+    }
+    #[test]
+    fn a_pending_request_written_after_stop_survives_the_jsonl_duration_filter() {
+        let temp = tempfile::tempdir().unwrap();
+        let file = temp.path().join("browser.jsonl");
+        let lines = [
+            json!({"t":30.25,"type":"network","method":"POST","url":"http://localhost/save","pending":true,"status":null,"dur_ms":5200,"start_t":24.8}),
+            json!({"t":31.25,"type":"network","pending":true,"start_t":31.0}),
+            json!({"t":30.25,"type":"exception","text":"after recording"}),
+            json!({"t":25.0,"type":"mouse_down","self":true}),
+        ];
+        fs::write(
+            &file,
+            lines.iter().map(|v| format!("{v}\n")).collect::<String>(),
+        )
+        .unwrap();
+        let mut warnings = vec![];
+        let rows = read_jsonl(&file, Some(30.0), &mut warnings).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, 1);
+        assert_eq!(rows[0].1["t"], 30.0);
+        let logs = log_lines(&rows, &[]);
+        assert_eq!(logs[0].observed_t, Some(30.0));
+        let narration = moments::utterances(vec![moments::Word {
+            t0: 24.8,
+            t1: 25.5,
+            w: "Saving".into(),
+        }]);
+        let result = moments::detect(&narration, &[], &logs);
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.items[0].anchor_t, 24.8);
+        assert!(result.items[0].logs[0]
+            .text
+            .contains("no response after 5.2 s"));
+    }
+    #[test]
+    fn replayed_console_log_history_is_dropped_while_errors_and_warnings_are_kept() {
+        let rows = [
+            (
+                1,
+                json!({"t":-10.0,"type":"console","level":"log","text":"old chatter","replayed":true}),
+            ),
+            (
+                2,
+                json!({"t":-9.0,"type":"console","level":"warn","text":"old warning","replayed":true}),
+            ),
+            (
+                3,
+                json!({"t":-8.0,"type":"console","level":"error","text":"old error","replayed":true}),
+            ),
+        ];
+        let logs = log_lines(&rows, &[]);
+        assert_eq!(logs.len(), 2);
+        assert_eq!(logs[0].line, 2);
+        let result = moments::detect(&[], &[], &logs);
+        assert_eq!(result.other_errors.len(), 2);
+        assert!(result.items.is_empty());
     }
 }

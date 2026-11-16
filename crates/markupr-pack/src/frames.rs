@@ -23,7 +23,7 @@ pub fn cursor_at(time: f64, cursor: &[Value], events: &[Value]) -> Option<(f64, 
                 .iter()
                 .filter(|v| matches!(crate::moments::kind(v), "mouse_down" | "mark")),
         )
-        .filter(|v| v["self"] != true && t(v) <= time && v["x"].is_number() && v["y"].is_number())
+        .filter(|v| t(v) <= time && v["x"].is_number() && v["y"].is_number())
         .max_by(|a, b| t(a).total_cmp(&t(b)))
         .map(|v| (v["x"].as_f64().unwrap(), v["y"].as_f64().unwrap()))
 }
@@ -227,7 +227,10 @@ fn extract(
         );
     }
     if time < frame_t {
-        let first = format!("first video frame, {:.3} s after the mark", frame_t - time);
+        let first = format!(
+            "first video frame, {:.3} s after this moment",
+            frame_t - time
+        );
         note = Some(match note {
             Some(note) => format!("{first}; {note}"),
             None => first,
@@ -246,6 +249,7 @@ fn extract(
         frame_t,
         note,
         mark: None,
+        mark_note: None,
         said: String::new(),
     })
 }
@@ -297,6 +301,7 @@ pub fn make_frames(
             ) {
                 Ok(mut frame) => {
                     frame.mark = request.mark;
+                    frame.mark_note = request.note;
                     frame.said = request.said;
                     item.frames.push(frame);
                 }
@@ -320,6 +325,7 @@ struct FrameRequest {
     t: f64,
     name: String,
     mark: Option<u64>,
+    note: Option<String>,
     said: String,
 }
 fn words_around(item: &Item, time: f64) -> String {
@@ -340,6 +346,12 @@ fn selected_frames(item: &Item) -> Vec<FrameRequest> {
         t: item.anchor_t,
         name: format!("item-{:02}", item.id),
         mark: item.marks.first().and_then(|m| m["n"].as_u64()),
+        note: item
+            .marks
+            .first()
+            .and_then(|m| m["note"].as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned),
         said: words_around(item, item.anchor_t),
     }];
     for mark in item.marks.iter().skip(1) {
@@ -348,6 +360,10 @@ fn selected_frames(item: &Item) -> Vec<FrameRequest> {
             t: t(mark),
             name: format!("item-{:02}-mark-{n}", item.id),
             mark: Some(n),
+            note: mark["note"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned),
             said: words_around(item, t(mark)),
         });
     }
@@ -361,6 +377,7 @@ fn selected_frames(item: &Item) -> Vec<FrameRequest> {
             t: time,
             name: format!("item-{:02}-click", item.id),
             mark: None,
+            note: None,
             said: words_around(item, time),
         });
     }
@@ -406,8 +423,8 @@ mod tests {
         let result = detect(
             &utterances(words),
             &[
-                json!({"t":2.0,"type":"mark","n":1}),
-                json!({"t":5.0,"type":"mark","n":2}),
+                json!({"t":2.0,"type":"mark","n":1,"note":"first issue"}),
+                json!({"t":5.0,"type":"mark","n":2,"note":"second detail"}),
             ],
             &[],
         );
@@ -420,6 +437,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(2.0, "item-01"), (5.0, "item-01-mark-2")]
         );
+        assert_eq!(selected[0].note.as_deref(), Some("first issue"));
+        assert_eq!(selected[1].note.as_deref(), Some("second detail"));
         assert!(selected[0].said.contains("word5"));
         assert!(selected[1].said.contains("word12"));
         assert!(generated_frame("item-01-mark-2.jpg"));

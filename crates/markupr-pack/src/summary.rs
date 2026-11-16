@@ -87,26 +87,10 @@ fn browser_line<'a>(browser: &'a [Value], focus: &Value, anchor: f64) -> Option<
     if !browser_bundle(bundle) {
         return None;
     }
-    let app = focus["app"].as_str().unwrap_or("");
     let window = focus["window"].as_str().unwrap_or("");
-    let focused_app = |v: &&Value| {
-        v["bundle"].as_str().is_some_and(|b| b == bundle)
-            || v["app"]
-                .as_str()
-                .is_some_and(|a| !app.is_empty() && a == app)
-    };
-    let candidates: Vec<_> = browser
+    browser
         .iter()
         .filter(|v| t(v) <= anchor && v["replayed"] != true)
-        .filter(|v| v["tab"].is_object())
-        .filter(|v| {
-            v["bundle"].as_str().is_none_or(|b| b == bundle)
-                && v["app"].as_str().is_none_or(|a| a == app)
-        })
-        .collect();
-    candidates
-        .iter()
-        .copied()
         .filter(|v| {
             v["tab"]["title"]
                 .as_str()
@@ -119,13 +103,6 @@ fn browser_line<'a>(browser: &'a [Value], focus: &Value, anchor: f64) -> Option<
                 .len()
                 .cmp(&b["tab"]["title"].as_str().unwrap().len())
                 .then_with(|| t(a).total_cmp(&t(b)))
-        })
-        .or_else(|| {
-            candidates
-                .iter()
-                .copied()
-                .filter(focused_app)
-                .max_by(|a, b| t(a).total_cmp(&t(b)))
         })
 }
 pub(crate) fn frame_hint(file: &str, file_t: f64) -> String {
@@ -362,6 +339,9 @@ pub fn render(
             .unwrap();
             if let Some(mark) = frame.mark {
                 write!(out, "; mark {mark}").unwrap();
+            }
+            if let Some(note) = &frame.mark_note {
+                write!(out, "; note {:?}", one_line(note)).unwrap();
             }
             if !frame.said.is_empty() {
                 write!(out, "; said near this time: \"{}\"", one_line(&frame.said)).unwrap();

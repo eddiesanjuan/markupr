@@ -98,7 +98,10 @@ pub fn transcribe(
         Ok(segments) => {
             transcript.segments = segments;
             if transcript.segments.is_empty() {
-                warnings.push("No speech was recognized in the selected audio.".into());
+                warnings.push(format!(
+                    "No speech was detected in the {} audio.",
+                    transcript.source
+                ));
             }
         }
         Err(e) => warnings.push(format!("Speech could not be transcribed: {e}")),
@@ -139,9 +142,6 @@ fn aligned_stretches(
         .collect();
     let stretches = detect(&samples);
     if stretches.is_empty() {
-        if samples.iter().any(|sample| *sample != 0) {
-            return Err("No speech stretch found in non-silent audio".into());
-        }
         return Ok(vec![]);
     }
     let mut command = whisper(cfg, model);
@@ -238,7 +238,7 @@ fn read_words(output: &Value, start_t: f64) -> Vec<Word> {
                 .flatten()
                 .filter(|token| {
                     let text = token["text"].as_str().unwrap_or("").trim();
-                    !text.starts_with('[')
+                    !text.starts_with("[_")
                         && !text.starts_with("<|")
                         && text.chars().any(char::is_alphanumeric)
                 })
@@ -282,7 +282,7 @@ fn aligned_words(output: &Value, offset: f64, t0: f64, t1: f64) -> Result<Vec<Wo
             .flatten()
             .filter(|token| {
                 let text = token["text"].as_str().unwrap_or("").trim();
-                !text.starts_with('[')
+                !text.starts_with("[_")
                     && !text.starts_with("<|")
                     && text.chars().any(char::is_alphanumeric)
             })
@@ -325,41 +325,68 @@ fn aligned_words(output: &Value, offset: f64, t0: f64, t1: f64) -> Result<Vec<Wo
 }
 
 fn label_texts(segments: &[Value]) -> Vec<String> {
-    let mut closing = None;
-    segments
-        .iter()
-        .map(|segment| {
-            let text = segment["text"].as_str().unwrap_or("");
-            if text.trim_start().starts_with("<|") {
-                return String::new();
-            }
-            let mut kept = String::new();
-            let mut chars = text.chars().peekable();
-            while let Some(c) = chars.next() {
-                if c == '*' {
-                    while chars.peek() == Some(&'*') {
-                        chars.next();
-                    }
-                }
-                let music = |c| ['♪', '♫', '♬', '♩'].contains(&c);
-                if let Some(end) = closing {
-                    if c == end || (music(c) && music(end)) {
-                        closing = None;
-                    }
-                } else if let Some(end) = match c {
-                    '(' => Some(')'),
-                    '[' => Some(']'),
-                    '*' => Some('*'),
-                    c if music(c) => Some(c),
-                    _ => None,
-                } {
-                    closing = Some(end);
-                } else {
-                    kept.push(c);
+    let mut chars = vec![];
+    for (segment, value) in segments.iter().enumerate() {
+        let text = value["text"].as_str().unwrap_or("");
+        if text.trim_start().starts_with("<|") {
+            continue;
+        }
+        chars.extend(text.chars().map(|c| (segment, c)));
+        chars.push((segment, ' '));
+    }
+    let music = |c| ['♪', '♫', '♬', '♩'].contains(&c);
+    let mut result = vec![String::new(); segments.len()];
+    let mut i = 0;
+    while i < chars.len() {
+        let (segment, c) = chars[i];
+        let closing = match c {
+            '(' => Some(')'),
+            '[' => Some(']'),
+            '*' => Some('*'),
+            c if music(c) => Some(c),
+            _ => None,
+        };
+        if let Some(closing) = closing {
+            let mut start = i + 1;
+            if c == '*' {
+                while start < chars.len() && chars[start].1 == '*' {
+                    start += 1;
                 }
             }
-            if kept.chars().any(char::is_alphanumeric) {
-                kept.trim().to_owned()
+            let (mut words, mut in_word, mut end) = (0, false, None);
+            for (j, (_, next)) in chars.iter().enumerate().skip(start) {
+                if *next == closing || (music(closing) && music(*next)) {
+                    end = Some(j);
+                    break;
+                }
+                if next.is_whitespace() {
+                    in_word = false;
+                } else if next.is_alphanumeric() && !in_word {
+                    words += 1;
+                    in_word = true;
+                    if words > 4 {
+                        break;
+                    }
+                }
+            }
+            if let Some(end) = end {
+                i = end + 1;
+                if closing == '*' {
+                    while i < chars.len() && chars[i].1 == '*' {
+                        i += 1;
+                    }
+                }
+                continue;
+            }
+        }
+        result[segment].push(c);
+        i += 1;
+    }
+    result
+        .into_iter()
+        .map(|text| {
+            if text.chars().any(char::is_alphanumeric) {
+                text.trim().to_owned()
             } else {
                 String::new()
             }
@@ -394,6 +421,27 @@ mod tests {
                 .filter(|s| !s.is_empty())
                 .collect::<Vec<_>>(),
             vec!["Please", "save", "this."]
+        );
+    }
+    #[test]
+    fn an_unclosed_bracket_does_not_drop_the_rest_of_the_transcript() {
+        let words = [
+            "[Please", "save", "the", "cart", "and", "then", "close", "it.",
+        ];
+        let segments: Vec<_> = words.iter().map(|text| json!({"text":text})).collect();
+        assert_eq!(label_texts(&segments), words);
+        let distant: Vec<_> = [
+            "(Please", "save", "the", "cart", "and", "then", "close", "it.)",
+        ]
+        .iter()
+        .map(|text| json!({"text":text}))
+        .collect();
+        assert_eq!(
+            label_texts(&distant)
+                .iter()
+                .filter(|w| !w.is_empty())
+                .count(),
+            8
         );
     }
 }

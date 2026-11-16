@@ -41,6 +41,7 @@ pub struct Frame {
     pub frame_t: f64,
     pub note: Option<String>,
     pub mark: Option<u64>,
+    pub mark_note: Option<String>,
     pub said: String,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -125,6 +126,7 @@ fn pointing(u: &Utterance) -> (Vec<(f64, String)>, Option<f64>) {
     let mut strong = vec![];
     let phrases = [
         "that's wrong",
+        "this is wrong",
         "look at this",
         "right here",
         "doesn't work",
@@ -133,13 +135,8 @@ fn pointing(u: &Utterance) -> (Vec<(f64, String)>, Option<f64>) {
         "not working",
         "nothing happens",
         "fix this",
-        "needs to",
+        "needs to be",
         "broken",
-        "wrong",
-        "bug",
-        "weird",
-        "shouldn't",
-        "should",
     ];
     let mut i = 0;
     while i < words.len() {
@@ -165,10 +162,34 @@ fn pointing(u: &Utterance) -> (Vec<(f64, String)>, Option<f64>) {
     strong.sort_by(|a, b| a.0.total_cmp(&b.0));
     let weak = words
         .iter()
-        .position(|w| ["this", "here", "that"].contains(&w.as_str()))
+        .position(|w| {
+            [
+                "this",
+                "here",
+                "that",
+                "wrong",
+                "should",
+                "shouldn't",
+                "bug",
+                "weird",
+            ]
+            .contains(&w.as_str())
+        })
         .map(|i| u.words[i].t0);
     (strong, weak)
 }
+fn mark_reason(mark: &Value, fallback: u64) -> String {
+    let mut reason = format!(
+        "mark {} at {:.3}",
+        mark["n"].as_u64().unwrap_or(fallback),
+        t(mark)
+    );
+    if let Some(note) = mark["note"].as_str().filter(|note| !note.is_empty()) {
+        reason.push_str(&format!(" note {note:?}"));
+    }
+    reason
+}
+
 fn distance(t: f64, u: &Utterance) -> f64 {
     (u.t0 - t).max(t - u.t1).max(0.0)
 }
@@ -277,11 +298,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
         let mut score = 0;
         for (m, mark) in marks.iter().enumerate() {
             if mark_owners[m] == Some(i) {
-                item.reasons.push(format!(
-                    "mark {} at {:.3}",
-                    mark["n"].as_u64().unwrap_or(m as u64 + 1),
-                    t(mark)
-                ));
+                item.reasons.push(mark_reason(mark, m as u64 + 1));
                 item.anchors.push((0, t(mark)));
                 item.marks.push((*mark).clone());
             }
@@ -297,9 +314,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
         }
         item.clicks = events
             .iter()
-            .filter(|v| {
-                kind(v) == "mouse_down" && v["self"] != true && t(v) >= u.t0 && t(v) <= u.t1
-            })
+            .filter(|v| kind(v) == "mouse_down" && t(v) >= u.t0 && t(v) <= u.t1)
             .cloned()
             .collect();
         for click in &item.clicks {
@@ -341,6 +356,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
         if score >= 2 {
             candidates.push(item);
         } else {
+            other_errors.extend(attached[i].iter().map(|error| (*error).clone()));
             other_said.push(OtherSaid {
                 t0: u.t0,
                 t1: u.t1,
@@ -350,11 +366,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
         }
     }
     for (i, mark) in marks.iter().enumerate() {
-        let detail = format!(
-            "mark {} at {:.3}",
-            mark["n"].as_u64().unwrap_or(i as u64 + 1),
-            t(mark)
-        );
+        let detail = mark_reason(mark, i as u64 + 1);
         moments.push(Moment {
             t: t(mark),
             kind: "mark".into(),
@@ -421,7 +433,12 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
     }
     assign_logs(&mut items, logs);
     for item in &mut items {
-        if item.said.is_empty() {
+        if item.said.is_empty()
+            && !item
+                .marks
+                .iter()
+                .any(|m| m["note"].as_str().is_some_and(|note| !note.is_empty()))
+        {
             if let Some(error) = item
                 .logs
                 .iter()
@@ -701,7 +718,7 @@ mod tests {
         assert_eq!(strong.items[0].anchor_t, 10.0);
     }
     #[test]
-    fn an_ordinary_click_or_a_self_click_does_not_create_an_issue() {
+    fn an_ordinary_click_needs_a_weak_word_to_create_an_issue() {
         let result = detect(
             &[speech(10.0, "opening settings")],
             &[json!({"t":10.1,"type":"mouse_down","el":{"title":"Settings"}})],
@@ -710,13 +727,6 @@ mod tests {
         assert!(result.items.is_empty());
         assert_eq!(result.other_said.len(), 1);
         assert_eq!(result.other_said[0].clicks.len(), 1);
-        let own = detect(
-            &[speech(10.0, "this opens")],
-            &[json!({"t":10.1,"type":"mouse_down","self":true})],
-            &[],
-        );
-        assert!(own.items.is_empty());
-        assert!(own.other_said[0].clicks.is_empty());
         let weak = detect(
             &[speech(10.0, "this opens")],
             &[json!({"t":10.1,"type":"mouse_down"})],
@@ -791,5 +801,50 @@ mod tests {
         assert_eq!(result.items.len(), 2);
         assert_eq!(result.items[0].logs.len(), 1);
         assert!(result.items[1].logs.is_empty());
+    }
+    #[test]
+    fn ordinary_introductory_talk_about_whats_wrong_needs_a_click_to_be_an_item() {
+        let spoken = speech(
+            10.0,
+            "Okay, I'm testing this test page. Let me walk through what's wrong.",
+        );
+        let alone = detect(std::slice::from_ref(&spoken), &[], &[]);
+        assert!(alone.items.is_empty());
+        let clicked = detect(&[spoken], &[json!({"t":10.2,"type":"mouse_down"})], &[]);
+        assert_eq!(clicked.items.len(), 1);
+        let explicit = pointing(&speech(10.0, "this is wrong and needs to be fixed"));
+        assert_eq!(
+            explicit
+                .0
+                .iter()
+                .map(|(_, phrase)| phrase.as_str())
+                .collect::<Vec<_>>(),
+            vec!["this is wrong", "needs to be"]
+        );
+    }
+    #[test]
+    fn a_mark_note_survives_in_reasons_and_is_not_replaced_by_a_nearby_error_title() {
+        let result = detect(
+            &[],
+            &[json!({"t":10.0,"type":"mark","n":1,"note":"Fix the totals"})],
+            &[error(10.1)],
+        );
+        assert_eq!(result.items[0].title, "Fix the totals");
+        assert!(result.items[0].reasons[0].contains("Fix the totals"));
+    }
+    #[test]
+    fn an_error_attached_to_unflagged_speech_is_not_lost_from_other_errors() {
+        let result = detect(
+            &[
+                speech(10.0, "Opening preferences"),
+                speech(20.0, "Opening another panel"),
+            ],
+            &[],
+            &[error(10.1), error(20.1)],
+        );
+        assert_eq!(result.items.len(), 1);
+        assert_eq!(result.other_said.len(), 1);
+        assert_eq!(result.other_errors.len(), 1);
+        assert_eq!(result.other_errors[0].t, 20.1);
     }
 }
