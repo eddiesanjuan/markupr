@@ -28,6 +28,8 @@ pub struct Whisper {
     pub bin: PathBuf,
     pub model: Option<PathBuf>,
     pub fast_model: Option<PathBuf>,
+    /// Spoken language passed to whisper-cli (`-l`).
+    pub language: String,
 }
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -65,6 +67,7 @@ impl Default for Whisper {
             bin: "/opt/homebrew/bin/whisper-cli".into(),
             model: None,
             fast_model: None,
+            language: "en".into(),
         }
     }
 }

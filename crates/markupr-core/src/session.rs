@@ -20,6 +20,9 @@ pub struct Session {
     pub sources: Sources,
     pub permissions: Permissions,
     pub timing: Timing,
+    /// Capture and processing notes an agent should know about (dropped frames, mic gaps, a source that stopped early).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -112,7 +115,8 @@ impl Session {
             .join(format!(".session-{}.tmp", std::process::id()));
         let mut file = OpenOptions::new()
             .write(true)
-            .create_new(true)
+            .create(true)
+            .truncate(true)
             .open(&temporary)?;
         let result = (|| {
             file.write_all(&bytes)?;

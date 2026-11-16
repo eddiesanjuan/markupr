@@ -131,6 +131,7 @@ impl Recorder {
                 microphone: Some(permissions.microphone),
             },
             timing: Timing::default(),
+            warnings: vec![],
         };
         session.save(&pack)?;
         let events = match markupr_events::EventRecorder::start(
