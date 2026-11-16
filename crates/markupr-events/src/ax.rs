@@ -154,25 +154,34 @@ fn ancestors(el: AXUIElementRef) -> impl Iterator<Item = Ancestor> {
 #[derive(Clone, PartialEq, Debug)]
 pub struct Focus { pub pid: i32, pub app: Option<String>, pub bundle: Option<String>, pub window: Option<String> }
 
-/// Frontmost app and its focused window title, from Accessibility when `use_ax`, else from the
-/// window list (front-most layer-0 window).
-pub fn focus(use_ax: bool) -> Option<Focus> {
+/// Where a focus line's window title came from.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum TitleSource { AppElement, WindowList }
+
+/// Frontmost app from the window list (front-most layer-0 window), then its focused window title
+/// from that application's own accessibility element when `use_ax` and it answers in time, else
+/// the window list's title. (The system-wide AXFocusedApplication query returns "cannot complete"
+/// on this macOS from a plain process, so it is not used.)
+pub fn focus(use_ax: bool) -> Option<(Focus, TitleSource)> {
     objc2::rc::autoreleasepool(|_| {
-        let (pid, window) = if use_ax { focus_ax()? } else { focus_window_list()? };
+        let (pid, list_title) = focus_window_list()?;
+        let ax_title = if use_ax { app_focused_window_title(pid) } else { None };
+        let (window, src) = match ax_title {
+            Some(t) => (Some(t), TitleSource::AppElement),
+            None => (list_title, TitleSource::WindowList),
+        };
         let (app, bundle) = app_names(pid);
-        Some(Focus { pid, app, bundle, window: window.map(|w| cap(&w, 200)) })
+        Some((Focus { pid, app, bundle, window: window.map(|w| cap(&w, 200)) }, src))
     })
 }
 
-fn focus_ax() -> Option<(i32, Option<String>)> {
-    let sys = Cf(unsafe { AXUIElementCreateSystemWide() });
-    unsafe { AXUIElementSetMessagingTimeout(sys.0, FOCUS_TIMEOUT_S) };
-    let app = attr_element(sys.0, "AXFocusedApplication")?;
-    let mut pid = 0;
-    if unsafe { AXUIElementGetPid(app.0, &mut pid) } != 0 { return None; }
+fn app_focused_window_title(pid: i32) -> Option<String> {
+    let app = Cf(unsafe { AXUIElementCreateApplication(pid) });
+    if app.0.is_null() { return None; }
     unsafe { AXUIElementSetMessagingTimeout(app.0, FOCUS_TIMEOUT_S) };
-    let window = attr_element(app.0, "AXFocusedWindow").and_then(|w| attr_string(w.0, "AXTitle").ok().flatten());
-    Some((pid, window))
+    let w = attr_element(app.0, "AXFocusedWindow")?;
+    unsafe { AXUIElementSetMessagingTimeout(w.0, FOCUS_TIMEOUT_S) };
+    attr_string(w.0, "AXTitle").ok().flatten()
 }
 
 fn focus_window_list() -> Option<(i32, Option<String>)> {

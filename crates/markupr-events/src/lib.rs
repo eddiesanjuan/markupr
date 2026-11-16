@@ -30,6 +30,8 @@ pub struct EventsReport {
     pub cursor_samples: u64,
     pub marks: u32,
     pub system_log_lines: u64,
+    /// Non-error system-log lines dropped by the 50/s cap (errors and faults are never dropped).
+    pub system_log_dropped: u64,
     pub tap_active: bool,
     pub warnings: Vec<String>,
 }
@@ -37,7 +39,7 @@ pub struct EventsReport {
 impl EventsReport {
     pub fn to_json(&self) -> serde_json::Value {
         json!({ "events": self.events, "cursor_samples": self.cursor_samples, "marks": self.marks,
-                "system_log_lines": self.system_log_lines, "tap_active": self.tap_active, "warnings": self.warnings })
+                "system_log_lines": self.system_log_lines, "system_log_dropped": self.system_log_dropped, "tap_active": self.tap_active, "warnings": self.warnings })
     }
 }
 
@@ -149,10 +151,10 @@ impl EventRecorder {
         let mut warnings = std::mem::take(&mut *self.warnings.lock().unwrap());
         let fallbacks = self.ts_fallbacks.load(Ordering::Relaxed);
         if fallbacks > 0 { warnings.push(format!("{fallbacks} input events had no usable host timestamp; stamped on arrival")); }
-        let mut system_log_lines = 0;
+        let (mut system_log_lines, mut system_log_dropped) = (0, 0);
         if let Some((lines, st)) = sys {
             system_log_lines = lines;
-            if st.dropped > 0 { warnings.push(format!("system log: {} lines dropped by the 50/s cap", st.dropped)); }
+            system_log_dropped = st.dropped;
             if st.t_from_wall > 0 {
                 warnings.push(format!("system log: {} of {} lines stamped from wall time (mach timestamp missing or off by more than 0.5 s)", st.t_from_wall, st.t_from_wall + st.t_from_mach));
             }
@@ -162,6 +164,7 @@ impl EventRecorder {
             cursor_samples: self.cursor.lines_written(),
             marks: self.marks.load(Ordering::SeqCst),
             system_log_lines,
+            system_log_dropped,
             tap_active: self.tap_active,
             warnings,
         })
@@ -175,12 +178,19 @@ impl Drop for EventRecorder {
 
 // ---------- focus, secure input, system log ----------
 
+/// Process-wide count of focus polls whose window title came from [app element, window list].
+static TITLE_SOURCES: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
+
+/// Diagnostic: (app element, window list) counts for where focus window titles came from.
+#[doc(hidden)]
+pub fn focus_title_sources() -> (u64, u64) {
+    (TITLE_SOURCES[0].load(Ordering::Relaxed), TITLE_SOURCES[1].load(Ordering::Relaxed))
+}
+
 fn poll_focus(events: &JsonlWriter, clock: &Clock, stop: &AtomicBool, warnings: &Mutex<Vec<String>>, mut syslog: Option<&mut syslog::SysLog>) {
     let mut last: Option<ax::Focus> = None;
     let mut secure = false;
-    // Every poll yields a focus when a front window exists: Accessibility first, the window list
-    // in the same poll when it misses.
-    let (mut polls, mut ax_failed) = (0u32, 0u32);
+    let (mut polls, mut no_focus) = (0u32, 0u32);
     while !stop.load(Ordering::SeqCst) {
         let now_secure = unsafe { IsSecureEventInputEnabled() } != 0;
         if now_secure != secure {
@@ -188,12 +198,10 @@ fn poll_focus(events: &JsonlWriter, clock: &Clock, stop: &AtomicBool, warnings: 
             let _ = events.write(&json!({ "t": round_t(clock.now()), "type": "secure_input", "on": secure }));
         }
         polls += 1;
-        let trusted = unsafe { AXIsProcessTrusted() };
-        let mut found = if trusted { ax::focus(true) } else { None };
-        if found.is_none() {
-            if trusted { ax_failed += 1; }
-            found = ax::focus(false);
-        }
+        let found = ax::focus(unsafe { AXIsProcessTrusted() });
+        if found.is_none() { no_focus += 1; }
+        if let Some((_, src)) = &found { TITLE_SOURCES[*src as usize].fetch_add(1, Ordering::Relaxed); }
+        let found = found.map(|(f, _)| f);
         if let Some(f) = found {
             if last.as_ref() != Some(&f) {
                 let _ = events.write(&json!({ "t": round_t(clock.now()), "type": "focus", "app": f.app, "bundle": f.bundle, "pid": f.pid, "window": f.window }));
@@ -206,8 +214,8 @@ fn poll_focus(events: &JsonlWriter, clock: &Clock, stop: &AtomicBool, warnings: 
         thread::sleep(FOCUS_POLL);
     }
     let mut w = warnings.lock().unwrap();
-    if ax_failed > 0 {
-        w.push(format!("focus: Accessibility query failed on {ax_failed} of {polls} polls; window list used"));
+    if no_focus * 2 > polls {
+        w.push(format!("focus: no frontmost app could be determined on {no_focus} of {polls} polls"));
     }
 }
 

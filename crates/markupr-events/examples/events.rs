@@ -30,6 +30,7 @@ fn main() {
         "clock": { "t0_host_ns": clock.t0_host_ns(), "t0_unix_ms": clock.t0_unix_ms() },
         "report": report.to_json(),
         "permissions": permissions::check().to_json(),
+        "focus_title_polls": { "app_element": markupr_events::focus_title_sources().0, "window_list": markupr_events::focus_title_sources().1 },
     });
     println!("{}", serde_json::to_string_pretty(&out).unwrap());
 }
