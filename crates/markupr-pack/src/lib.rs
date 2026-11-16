@@ -216,14 +216,9 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
             file: "logs/system.jsonl".into(),
             line: *line,
             t: t(v),
-            text: format!(
-                "{} {}: {}",
-                v["process"].as_str().unwrap_or(""),
-                v["level"].as_str().unwrap_or(""),
-                v["msg"].as_str().unwrap_or("")
-            )
-            .trim()
-            .into(),
+            text: format!("system log: {}", v["msg"].as_str().unwrap_or(""))
+                .trim()
+                .into(),
             error: true,
             replayed: false,
             observed_t: None,
@@ -300,7 +295,7 @@ pub fn build_pack(
     fs::write(pack.moments(), serde_json::to_vec_pretty(&moments)?)?;
     fs::write(
         pack.summary(),
-        summary::render(pack, &session, &moments, &warnings, &events, &cursor),
+        summary::render(pack, &session, &moments, &warnings, &system),
     )?;
     fs::write(pack.prompt(), prompt_text(pack))?;
     stages.write = elapsed(start);
@@ -391,5 +386,48 @@ mod tests {
         }]);
         let result = moments::detect(&narration, &[], &logs);
         assert_eq!(result.items[0].anchor_t, 8.0);
+    }
+    #[test]
+    fn a_system_log_error_does_not_create_an_item_or_count_as_an_issue() {
+        let system = vec![
+            (
+                1,
+                json!({"t":10.1,"level":"error","process":"Google Chrome","msg":"Audio buffer not ready"}),
+            ),
+            (
+                2,
+                json!({"t":10.2,"level":"fault","process":"coreaudiod","msg":"Audio buffer not ready"}),
+            ),
+            (
+                3,
+                json!({"t":10.3,"level":"error","process":"Google Chrome","msg":"Audio route refresh"}),
+            ),
+        ];
+        let narration = moments::utterances(vec![moments::Word {
+            t0: 10.0,
+            t1: 11.0,
+            w: "Opening preferences".into(),
+        }]);
+        let only_system = moments::detect(&narration, &[], &log_lines(&[], &system));
+        assert!(only_system.items.is_empty());
+        assert!(only_system.other_errors.is_empty());
+        assert!(only_system.moments.is_empty());
+        let browser = [(
+            1,
+            json!({"t":1.0,"type":"console","level":"error","text":"Real browser failure"}),
+        )];
+        let marked = moments::detect(
+            &narration,
+            &[json!({"t":10.4,"type":"mark","n":1})],
+            &log_lines(&browser, &system),
+        );
+        let item = &marked.items[0];
+        assert_eq!(item.anchor_t, 10.4);
+        assert_eq!(item.logs.len(), 3);
+        assert_eq!(item.logs[0].file, "logs/browser.jsonl");
+        assert_eq!(item.logs[1].text, "system log: Audio route refresh");
+        assert_eq!(item.logs[2].text, "system log: Audio buffer not ready");
+        assert!(item.reasons.iter().all(|r| !r.starts_with("error at")));
+        assert!(marked.other_errors.is_empty());
     }
 }

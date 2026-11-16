@@ -213,10 +213,17 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
     let mut moments = vec![];
     // Ownership comes first: an earlier duplicate must not hide a later
     // occurrence which is close enough to attach to speech.
-    let mut errors: Vec<&LogLine> = logs.iter().filter(|l| l.error && !l.replayed).collect();
+    let mut errors: Vec<&LogLine> = logs
+        .iter()
+        .filter(|l| l.file == "logs/browser.jsonl" && l.error && !l.replayed)
+        .collect();
     errors.sort_by(|a, b| a.t.total_cmp(&b.t));
     let mut attached: Vec<Vec<&LogLine>> = vec![vec![]; utterances.len()];
-    let mut other_errors: Vec<_> = logs.iter().filter(|l| l.replayed).cloned().collect();
+    let mut other_errors: Vec<_> = logs
+        .iter()
+        .filter(|l| l.file == "logs/browser.jsonl" && l.replayed)
+        .cloned()
+        .collect();
     let mut scoring: Vec<Vec<&LogLine>> = vec![vec![]; utterances.len()];
     let mut scored_texts = std::collections::HashSet::new();
     for error in errors {
@@ -415,7 +422,11 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
     assign_logs(&mut items, logs);
     for item in &mut items {
         if item.said.is_empty() {
-            if let Some(error) = item.logs.iter().find(|l| l.error) {
+            if let Some(error) = item
+                .logs
+                .iter()
+                .find(|l| l.file == "logs/browser.jsonl" && l.error)
+            {
                 item.title = error.text.clone();
             }
         }
@@ -431,7 +442,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
     other_said.sort_by(|a, b| a.t0.total_cmp(&b.t0));
     let mut errors: Vec<_> = logs
         .iter()
-        .filter(|l| l.error && !l.replayed)
+        .filter(|l| l.file == "logs/browser.jsonl" && l.error && !l.replayed)
         .cloned()
         .collect();
     errors.sort_by(|a, b| a.t.total_cmp(&b.t));
@@ -507,21 +518,24 @@ fn assign_logs(items: &mut [Item], logs: &[LogLine]) {
                     .iter()
                     .any(|e| e.file == log.file && e.line == log.line)
             };
-            owned(b).cmp(&owned(a)).then_with(|| {
-                (a.t - item.anchor_t)
-                    .abs()
-                    .total_cmp(&(b.t - item.anchor_t).abs())
-            })
+            (a.file == "logs/system.jsonl")
+                .cmp(&(b.file == "logs/system.jsonl"))
+                .then_with(|| owned(b).cmp(&owned(a)))
+                .then_with(|| {
+                    (a.t - item.anchor_t)
+                        .abs()
+                        .total_cmp(&(b.t - item.anchor_t).abs())
+                })
         });
-        let (mut browser, mut system) = (0, 0);
+        let mut browser = 0;
+        let mut system_messages = std::collections::HashSet::new();
         item.logs.retain(|log| {
-            let (count, limit) = if log.file == "logs/browser.jsonl" {
-                (&mut browser, 8)
+            if log.file == "logs/system.jsonl" {
+                system_messages.len() < 2 && system_messages.insert(log.text.clone())
             } else {
-                (&mut system, 3)
-            };
-            *count += 1;
-            *count <= limit
+                browser += 1;
+                browser <= 8
+            }
         });
     }
 }

@@ -188,8 +188,7 @@ pub fn render(
     session: &Session,
     moments: &Moments,
     warnings: &[String],
-    events: &[Value],
-    cursor: &[Value],
+    system: &[(usize, Value)],
 ) -> String {
     let date = chrono::DateTime::from_timestamp_millis(session.clock.t0_unix_ms as i64)
         .map(|d| {
@@ -233,13 +232,7 @@ pub fn render(
             .is_some_and(|a| crate::has_data(&pack.root().join(&a.file))),
         "system audio".into(),
     );
-    let clicks = events.iter().any(|v| kind(v) == "mouse_down");
-    if !cursor.is_empty() && clicks {
-        source(true, "cursor and clicks".into());
-    } else {
-        source(!cursor.is_empty(), "cursor track".into());
-        source(clicks, "clicks".into());
-    }
+    source(session.sources.events, "cursor and clicks".into());
     source(
         session.sources.browser.as_ref().is_some_and(|b| b.attached),
         session
@@ -249,10 +242,7 @@ pub fn render(
             .map(|b| format!("browser logs (127.0.0.1:{})", b.port))
             .unwrap_or_else(|| "browser logs".into()),
     );
-    source(crate::has_data(&pack.system_log()), "system log".into());
-    if events.is_empty() {
-        missing.push("events".into());
-    }
+    source(session.sources.system_log, "system log".into());
     writeln!(
         out,
         "Captured: {}.",
@@ -280,6 +270,23 @@ pub fn render(
     out.push('\n');
     if session.video.is_some() {
         out.push_str("Video only has a frame when the screen changed. Use `markupr frame <pack dir> <t>` for the screen at any time.\n");
+    }
+    let system_errors: Vec<_> = system
+        .iter()
+        .filter(|(_, line)| matches!(line["level"].as_str(), Some("error" | "fault")))
+        .collect();
+    if !system_errors.is_empty() {
+        let processes: std::collections::BTreeSet<_> = system_errors
+            .iter()
+            .map(|(_, line)| one_line(line["process"].as_str().unwrap_or("unknown process")))
+            .collect();
+        writeln!(
+            out,
+            "System log: {} error/fault lines from {}; see logs/system.jsonl.",
+            system_errors.len(),
+            processes.into_iter().collect::<Vec<_>>().join(", ")
+        )
+        .unwrap();
     }
     out.push('\n');
     for warning in session.warnings.iter().chain(warnings) {
