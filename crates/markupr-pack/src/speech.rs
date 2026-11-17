@@ -78,18 +78,21 @@ pub fn transcribe(
         run(&mut ffmpeg)?;
         let samples = read_pcm(&wav, cfg)?;
         let found = crate::speech_stretches::detect(&samples);
-        let stretches: Vec<_> = found
-            .iter()
-            .filter_map(|stretch| {
-                crate::speech_stretches::speech_bounds(&samples[stretch.start..stretch.end]).map(
-                    |voice| crate::speech_stretches::Stretch {
-                        start: stretch.start + voice.start,
-                        end: stretch.start + voice.end,
-                    },
-                )
-            })
-            .collect();
-        ignored = found.len() - stretches.len();
+        let hops = if found.is_empty() {
+            vec![]
+        } else {
+            crate::speech_stretches::voicing(&samples)
+        };
+        // Whisper hears only voiced islands: never the typing between two
+        // remarks, nor a stretch of sound without a voice.
+        let mut stretches = vec![];
+        for stretch in &found {
+            let islands = crate::speech_stretches::islands(&hops, *stretch);
+            if islands.is_empty() {
+                ignored += 1;
+            }
+            stretches.extend(islands);
+        }
         if stretches.is_empty() {
             return Ok(vec![]);
         }
@@ -124,10 +127,12 @@ pub fn transcribe(
         ignored += stretches.len() - segments.len();
         Ok(segments)
     })();
-    if ignored > 0 {
-        warnings.push(format!(
-            "{ignored} stretches of non-speech sound were ignored"
-        ));
+    match ignored {
+        0 => {}
+        1 => warnings.push("1 stretch of sound without a voice was ignored".into()),
+        n => warnings.push(format!(
+            "{n} stretches of sound without a voice were ignored"
+        )),
     }
     match result {
         Ok(segments) => {

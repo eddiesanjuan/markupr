@@ -161,9 +161,13 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
         if network && v["canceled"] == true {
             continue;
         }
+        // How long it waited on the session clock: `t` is already clamped to the
+        // end of the recording, while `dur_ms` runs until the browser recorder
+        // shuts down, after the screen is finalized. No send time, no verdict.
+        let waited = v["start_t"].as_f64().map(|start| round_t(t(v) - start));
         let pending = v["pending"] == true
             && v["status"].is_null()
-            && v["dur_ms"].as_f64().unwrap_or(0.0) >= 3000.0;
+            && waited.is_some_and(|waited| waited >= 3.0);
         let failed =
             v["failed"].as_bool().unwrap_or(false) || v["status"].as_u64().unwrap_or(0) >= 400;
         let error = kind(v) == "exception"
@@ -179,7 +183,7 @@ fn log_lines(browser: &[(usize, Value)], system: &[(usize, Value)]) -> Vec<LogLi
                 "network: {} {} no response after {:.1} s",
                 v["method"].as_str().unwrap_or(""),
                 v["url"].as_str().unwrap_or(""),
-                v["dur_ms"].as_f64().unwrap() / 1000.0
+                waited.unwrap()
             )
         } else if kind(v) == "network" {
             format!(
@@ -344,7 +348,7 @@ mod tests {
                 ),
                 (
                     2,
-                    json!({"t":30.0,"type":"network","pending":true,"dur_ms":2999,"start_t":10.0}),
+                    json!({"t":30.0,"type":"network","pending":true,"dur_ms":2999,"start_t":27.001}),
                 ),
             ],
             &[],
@@ -353,7 +357,7 @@ mod tests {
         assert_eq!(logs[0].t, 10.0);
         assert_eq!(
             logs[0].text,
-            "network: POST http://localhost/save no response after 5.2 s"
+            "network: POST http://localhost/save no response after 20.0 s"
         );
         assert!(logs[0].error);
         let utterance = moments::utterances(vec![moments::Word {
@@ -364,6 +368,19 @@ mod tests {
         let result = moments::detect(&utterance, &[], &logs);
         assert_eq!(result.items.len(), 1);
         assert_eq!(result.items[0].anchor_t, 10.0);
+    }
+    #[test]
+    fn a_request_sent_two_seconds_before_stop_is_not_unanswered_because_the_browser_closed_late() {
+        // `t` is clamped to the end of the recording; `dur_ms` ran on until the
+        // browser recorder shut down after screen finalization.
+        let logs = log_lines(
+            &[(
+                1,
+                json!({"t":30.0,"type":"network","pending":true,"dur_ms":4800,"start_t":28.0,"method":"POST","url":"http://localhost/save"}),
+            )],
+            &[],
+        );
+        assert!(logs.is_empty());
     }
     #[test]
     fn canceled_or_completed_pending_requests_do_not_become_errors_and_failures_use_send_time() {
@@ -493,7 +510,12 @@ mod tests {
         assert_eq!(logs.len(), 2);
         assert_eq!(logs[0].line, 2);
         let result = moments::detect(&[], &[], &logs);
-        assert_eq!(result.other_errors.len(), 2);
+        assert_eq!(
+            result.other_errors.len(),
+            1,
+            "a replayed warning is not an error"
+        );
+        assert_eq!(result.other_errors[0].line, 3);
         assert!(result.items.is_empty());
     }
 }

@@ -243,7 +243,7 @@ pub fn detect(utterances: &[Utterance], events: &[Value], logs: &[LogLine]) -> M
     let mut attached: Vec<Vec<&LogLine>> = vec![vec![]; utterances.len()];
     let mut other_errors: Vec<_> = logs
         .iter()
-        .filter(|l| l.file == "logs/browser.jsonl" && l.replayed)
+        .filter(|l| l.file == "logs/browser.jsonl" && l.replayed && l.error)
         .cloned()
         .collect();
     let mut scoring: Vec<Vec<&LogLine>> = vec![vec![]; utterances.len()];
