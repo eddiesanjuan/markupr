@@ -26,9 +26,11 @@ use tao::{
         run_return::EventLoopExtRunReturn,
     },
 };
+use markupr_events::permissions::{self, Pane, PermissionState};
+use std::cell::Cell;
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
-    Icon, TrayIcon, TrayIconBuilder,
+    Icon, TrayIcon, TrayIconBuilder, TrayIconEvent,
 };
 
 enum RecorderCommand {
@@ -98,8 +100,50 @@ fn finish_start(
     });
 }
 
+/// The permissions line in the menu, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PermLine {
+    /// Something is missing: clicking asks again and opens this pane.
+    Grant(Pane),
+    /// Only Screen Recording is missing after the user went to Settings; it takes effect on restart.
+    Restart,
+}
+impl PermLine {
+    fn text(self) -> &'static str {
+        match self {
+            PermLine::Grant(_) => "Permissions needed: click to grant",
+            PermLine::Restart => "Restart markupR to finish: click to quit",
+        }
+    }
+}
+
+/// First missing permission, in the order the user is walked through them.
+fn first_missing(p: PermissionState) -> Option<Pane> {
+    [
+        (p.screen, Pane::ScreenRecording),
+        (p.accessibility, Pane::Accessibility),
+        (p.input_monitoring, Pane::InputMonitoring),
+        (p.microphone, Pane::Microphone),
+    ]
+    .into_iter()
+    .find(|(granted, _)| !granted)
+    .map(|(_, pane)| pane)
+}
+
+fn permission_line(p: PermissionState, visited_settings: bool) -> Option<PermLine> {
+    let pane = first_missing(p)?;
+    let only_screen = !p.screen && p.accessibility && p.input_monitoring && p.microphone;
+    Some(if only_screen && visited_settings { PermLine::Restart } else { PermLine::Grant(pane) })
+}
+
+const PERMISSION_RECHECK: Duration = Duration::from_secs(2);
+
 struct Tray {
     icon: TrayIcon,
+    menu: Menu,
+    perm_item: MenuItem,
+    perm_line: Cell<Option<PermLine>>,
+    visited_settings: Cell<bool>,
     toggle: MenuItem,
     mark: MenuItem,
     copy: MenuItem,
@@ -128,19 +172,19 @@ impl Tray {
             &PredefinedMenuItem::separator(),
             &MenuItem::with_id("quit", "Quit", true, None),
         ])?;
-        let p = markupr_events::permissions::check();
-        if !(p.screen && p.accessibility && p.input_monitoring && p.microphone) {
-            menu.append(&MenuItem::new(
-                "Permissions missing: run markupr doctor",
-                false,
-                None,
-            ))?;
-        }
+        let perm_item = MenuItem::with_id("permissions", "", true, None);
+        let menu_proxy = proxy.clone();
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
-            let _ = proxy.send_event(UserEvent::Menu(event.id.0));
+            let _ = menu_proxy.send_event(UserEvent::Menu(event.id.0));
+        }));
+        // Hovering the icon re-checks permissions, so the line is current when the menu opens.
+        TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+            if matches!(event, TrayIconEvent::Enter { .. }) {
+                let _ = proxy.send_event(UserEvent::Menu("permissions-recheck".into()));
+            }
         }));
         let icon = TrayIconBuilder::new()
-            .with_menu(Box::new(menu))
+            .with_menu(Box::new(menu.clone()))
             .with_icon(icon()?)
             .with_icon_as_template(true)
             .with_title("markupR · idle")
@@ -148,6 +192,10 @@ impl Tray {
             .build()?;
         let tray = Self {
             icon,
+            menu,
+            perm_item,
+            perm_line: Cell::new(None),
+            visited_settings: Cell::new(false),
             toggle,
             mark,
             copy,
@@ -156,6 +204,39 @@ impl Tray {
         };
         tray.update(State::Idle, has_last, has_last);
         Ok(tray)
+    }
+    /// Re-checks permissions and shows, updates or removes the menu line. Returns whether it shows.
+    fn refresh_permissions(&self) -> bool {
+        let line = permission_line(permissions::check(), self.visited_settings.get());
+        if line != self.perm_line.get() {
+            match (self.perm_line.get(), line) {
+                (_, Some(l)) => {
+                    self.perm_item.set_text(l.text());
+                    if self.perm_line.get().is_none() {
+                        let _ = self.menu.append(&self.perm_item);
+                    }
+                }
+                (Some(_), None) => {
+                    let _ = self.menu.remove(&self.perm_item);
+                }
+                (None, None) => {}
+            }
+            self.perm_line.set(line);
+        }
+        line.is_some()
+    }
+    /// The permissions line was clicked. Returns true when the app should quit to finish.
+    fn permissions_clicked(&self) -> bool {
+        match self.perm_line.get() {
+            Some(PermLine::Grant(pane)) => {
+                permissions::request_missing();
+                permissions::open_settings(pane);
+                self.visited_settings.set(true);
+                false
+            }
+            Some(PermLine::Restart) => true,
+            None => false,
+        }
     }
     fn update(&self, state: State, has_last: bool, copyable: bool) {
         self.icon.set_title(Some(format!(
@@ -254,7 +335,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                 }
             }
         })?;
-    let mut tray = None;
+    let mut tray: Option<Tray> = None;
     let mut state = State::Idle;
     let mut stop_requested = false;
     let mut pending_marks = Vec::new();
@@ -281,11 +362,27 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                 *flow = ControlFlow::WaitUntil(p.deadline);
             }
         }
+        // While a permissions line shows, re-check every few seconds so it clears once granted.
+        if tray.as_ref().is_some_and(|t| t.refresh_permissions()) {
+            let recheck = Instant::now() + PERMISSION_RECHECK;
+            match *flow {
+                ControlFlow::WaitUntil(d) if d <= recheck => {}
+                _ => *flow = ControlFlow::WaitUntil(recheck),
+            }
+        }
         let event = match event {
             Event::NewEvents(StartCause::Init) => {
                 if app {
                     match Tray::new(&config, proxy.clone(), last.is_some()) {
                         Ok(item) => {
+                            // The control-socket lock is held (ControlServer::start above), so this
+                            // is the one running instance: ask macOS once for whatever is missing.
+                            if first_missing(permissions::check()).is_some() {
+                                permissions::request_missing();
+                            }
+                            if item.refresh_permissions() {
+                                *flow = ControlFlow::WaitUntil(Instant::now() + PERMISSION_RECHECK);
+                            }
                             tray = Some(item);
                             ui_debug("tray: state=idle");
                         }
@@ -352,6 +449,16 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                     return;
                 }
                 "quit" => UserEvent::Quit,
+                // Hover re-check already ran at the top of this closure.
+                "permissions-recheck" => return,
+                "permissions" => {
+                    if tray.as_ref().is_some_and(|t| t.permissions_clicked()) {
+                        UserEvent::Quit
+                    } else {
+                        if let Some(t) = &tray { t.refresh_permissions(); }
+                        return;
+                    }
+                }
                 _ => return,
             },
             UserEvent::Toggle => match state {
@@ -561,6 +668,27 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Bug guarded: the app started at login without permissions told the user to run a terminal
+    /// command, and gave no way to grant them or to finish after granting.
+    #[test]
+    fn app_started_without_permissions_tells_the_user_to_run_a_terminal_command() {
+        let p = |screen, accessibility, input_monitoring, microphone| PermissionState { screen, accessibility, input_monitoring, microphone };
+        assert_eq!(permission_line(p(true, true, true, true), false), None);
+        assert_eq!(permission_line(p(true, true, true, true), true), None);
+        assert_eq!(permission_line(p(false, false, false, false), false), Some(PermLine::Grant(Pane::ScreenRecording)));
+        assert_eq!(permission_line(p(true, false, false, false), true), Some(PermLine::Grant(Pane::Accessibility)));
+        assert_eq!(permission_line(p(true, true, false, true), true), Some(PermLine::Grant(Pane::InputMonitoring)));
+        assert_eq!(permission_line(p(true, true, true, false), true), Some(PermLine::Grant(Pane::Microphone)));
+        // Screen Recording alone: grant until the user has been to Settings, then restart.
+        assert_eq!(permission_line(p(false, true, true, true), false), Some(PermLine::Grant(Pane::ScreenRecording)));
+        assert_eq!(permission_line(p(false, true, true, true), true), Some(PermLine::Restart));
+        assert_eq!(permission_line(p(false, true, false, true), true), Some(PermLine::Grant(Pane::ScreenRecording)));
+        for line in [PermLine::Grant(Pane::Microphone), PermLine::Restart] {
+            let text = line.text().to_lowercase();
+            assert!(!["doctor", "terminal", "run ", "command"].iter().any(|w| text.contains(w)), "{text}");
+        }
+    }
 
     #[test]
     fn startup_marks_are_applied_in_order_before_an_early_stop_or_duration_timeout() {

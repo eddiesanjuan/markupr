@@ -183,7 +183,7 @@ Sources without usable host timestamps are aligned by arrival or wall time, so t
 
 - One display per recording, selected under the cursor by default.
 - Browser logs require a Chrome-family browser through the debug profile.
-- No signed app bundle yet; run the binary from a terminal.
+- `scripts/make-app-bundle.sh` builds `markupR.app`, ad-hoc signed, so macOS asks for the permissions again after each rebuild.
 - A crash during recording loses the video because MP4 is finalized at stop; JSONL files survive.
 - Speech recognition defaults to English (`language` under `[whisper]` in the config).
 - Whispered speech is not transcribed: speech is found by its voicing, which keeps mouse and keyboard noise out of the transcript.
