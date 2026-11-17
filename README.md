@@ -186,7 +186,7 @@ Sources without usable host timestamps are aligned by arrival or wall time, so t
 - `scripts/make-app-bundle.sh` builds `markupR.app`, ad-hoc signed, so macOS asks for the permissions again after each rebuild.
 - A crash during recording loses the video because MP4 is finalized at stop; JSONL files survive.
 - Speech recognition defaults to English (`language` under `[whisper]` in the config).
-- Whispered speech is not transcribed: speech is found by its voicing, which keeps mouse and keyboard noise out of the transcript.
+- Whispered speech is not transcribed: speech is found by its voicing, which keeps mouse and keyboard noise out of the transcript. For the same reason, speech over music that the microphone picks up can be dropped along with the music.
 - Key moments are picked by rules, not a model. Everything said that did not become an item is still listed in SUMMARY.md.
 
 ## Credits and license

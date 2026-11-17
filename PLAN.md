@@ -208,5 +208,5 @@ Test packs are written to `~/markupr/packs/`, never into the repository. A pack 
 - No signed app bundle yet; permissions attach to the terminal app that launches the binary.
 - The microphone is captured through the screen stream, so without Screen Recording there is no microphone audio either.
 - A crash mid-recording loses the video, because MP4 is finalized at stop. The JSONL files survive.
-- Whispered speech is not transcribed. English is the default language (`whisper.language` in the config).
+- Whispered speech is not transcribed, and speech spoken over music that the microphone picks up can be dropped along with the music. English is the default language (`whisper.language` in the config).
 - Key moments come from rules, not a model. Everything said that did not become an item is still listed in SUMMARY.md, so nothing spoken is hidden.
