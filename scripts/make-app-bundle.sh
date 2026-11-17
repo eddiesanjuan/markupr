@@ -59,10 +59,23 @@ PLIST
 plutil -lint -s "$NEW/Contents/Info.plist"
 codesign --force --sign - --identifier com.eddiesanjuan.markupr "$NEW"
 
-# Swap into place: the new bundle is complete before the old one moves.
-OLD="$STAGE/markupR.app.old"
-if [ -e "$APP" ]; then mv "$APP" "$OLD"; fi
-mv "$NEW" "$APP"
+# Swap into place: the new bundle is complete before the old one moves. The old bundle waits
+# next to the destination, outside the staging directory the EXIT trap removes, and goes back
+# if the new one cannot be moved in. It is deleted only once the new bundle is in place.
+OLD=""
+if [ -e "$APP" ]; then
+  OLD="$(mktemp -d "$DEST_DIR/.markupR.app.old.XXXXXX")"
+  mv "$APP" "$OLD/markupR.app"
+fi
+if ! mv "$NEW" "$APP"; then
+  if [ -n "$OLD" ]; then
+    rm -rf "$APP"
+    mv "$OLD/markupR.app" "$APP" && rmdir "$OLD"
+  fi
+  echo "could not move the new bundle to $APP; the previous bundle is unchanged" >&2
+  exit 1
+fi
+[ -n "$OLD" ] && rm -rf "$OLD"
 rm -rf "$STAGE"
 trap - EXIT
 echo "$APP"

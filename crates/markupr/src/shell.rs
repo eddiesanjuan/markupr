@@ -105,7 +105,8 @@ fn finish_start(
 enum PermLine {
     /// Something is missing: clicking asks again and opens this pane.
     Grant(Pane),
-    /// Only Screen Recording is missing after the user went to Settings; it takes effect on restart.
+    /// Only Screen Recording is missing and the user has been sent to its pane. Its check stays
+    /// false for the life of the process even after it is switched on, so only a restart finishes.
     Restart,
 }
 impl PermLine {
@@ -117,23 +118,23 @@ impl PermLine {
     }
 }
 
-/// First missing permission, in the order the user is walked through them.
-fn first_missing(p: PermissionState) -> Option<Pane> {
-    [
-        (p.screen, Pane::ScreenRecording),
+fn all_granted(p: PermissionState) -> bool { p.screen && p.accessibility && p.input_monitoring && p.microphone }
+
+/// Walk order: the three permissions whose checks update live first, Screen Recording last.
+fn permission_line(p: PermissionState, sent_to_screen_pane: bool) -> Option<PermLine> {
+    let live = [
         (p.accessibility, Pane::Accessibility),
         (p.input_monitoring, Pane::InputMonitoring),
         (p.microphone, Pane::Microphone),
-    ]
-    .into_iter()
-    .find(|(granted, _)| !granted)
-    .map(|(_, pane)| pane)
-}
-
-fn permission_line(p: PermissionState, visited_settings: bool) -> Option<PermLine> {
-    let pane = first_missing(p)?;
-    let only_screen = !p.screen && p.accessibility && p.input_monitoring && p.microphone;
-    Some(if only_screen && visited_settings { PermLine::Restart } else { PermLine::Grant(pane) })
+    ];
+    if let Some((_, pane)) = live.into_iter().find(|(granted, _)| !granted) {
+        return Some(PermLine::Grant(pane));
+    }
+    match (p.screen, sent_to_screen_pane) {
+        (true, _) => None,
+        (false, false) => Some(PermLine::Grant(Pane::ScreenRecording)),
+        (false, true) => Some(PermLine::Restart),
+    }
 }
 
 const PERMISSION_RECHECK: Duration = Duration::from_secs(2);
@@ -143,7 +144,7 @@ struct Tray {
     menu: Menu,
     perm_item: MenuItem,
     perm_line: Cell<Option<PermLine>>,
-    visited_settings: Cell<bool>,
+    sent_to_screen_pane: Cell<bool>,
     toggle: MenuItem,
     mark: MenuItem,
     copy: MenuItem,
@@ -195,7 +196,7 @@ impl Tray {
             menu,
             perm_item,
             perm_line: Cell::new(None),
-            visited_settings: Cell::new(false),
+            sent_to_screen_pane: Cell::new(false),
             toggle,
             mark,
             copy,
@@ -207,7 +208,7 @@ impl Tray {
     }
     /// Re-checks permissions and shows, updates or removes the menu line. Returns whether it shows.
     fn refresh_permissions(&self) -> bool {
-        let line = permission_line(permissions::check(), self.visited_settings.get());
+        let line = permission_line(permissions::check(), self.sent_to_screen_pane.get());
         if line != self.perm_line.get() {
             match (self.perm_line.get(), line) {
                 (_, Some(l)) => {
@@ -231,7 +232,9 @@ impl Tray {
             Some(PermLine::Grant(pane)) => {
                 permissions::request_missing();
                 permissions::open_settings(pane);
-                self.visited_settings.set(true);
+                if pane == Pane::ScreenRecording {
+                    self.sent_to_screen_pane.set(true);
+                }
                 false
             }
             Some(PermLine::Restart) => true,
@@ -377,7 +380,7 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
                         Ok(item) => {
                             // The control-socket lock is held (ControlServer::start above), so this
                             // is the one running instance: ask macOS once for whatever is missing.
-                            if first_missing(permissions::check()).is_some() {
+                            if !all_granted(permissions::check()) {
                                 permissions::request_missing();
                             }
                             if item.refresh_permissions() {
@@ -669,25 +672,38 @@ pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) ->
 mod tests {
     use super::*;
 
+    fn perms(screen: bool, accessibility: bool, input_monitoring: bool, microphone: bool) -> PermissionState {
+        PermissionState { screen, accessibility, input_monitoring, microphone }
+    }
+
     /// Bug guarded: the app started at login without permissions told the user to run a terminal
     /// command, and gave no way to grant them or to finish after granting.
     #[test]
     fn app_started_without_permissions_tells_the_user_to_run_a_terminal_command() {
-        let p = |screen, accessibility, input_monitoring, microphone| PermissionState { screen, accessibility, input_monitoring, microphone };
-        assert_eq!(permission_line(p(true, true, true, true), false), None);
-        assert_eq!(permission_line(p(true, true, true, true), true), None);
-        assert_eq!(permission_line(p(false, false, false, false), false), Some(PermLine::Grant(Pane::ScreenRecording)));
-        assert_eq!(permission_line(p(true, false, false, false), true), Some(PermLine::Grant(Pane::Accessibility)));
-        assert_eq!(permission_line(p(true, true, false, true), true), Some(PermLine::Grant(Pane::InputMonitoring)));
-        assert_eq!(permission_line(p(true, true, true, false), true), Some(PermLine::Grant(Pane::Microphone)));
-        // Screen Recording alone: grant until the user has been to Settings, then restart.
-        assert_eq!(permission_line(p(false, true, true, true), false), Some(PermLine::Grant(Pane::ScreenRecording)));
-        assert_eq!(permission_line(p(false, true, true, true), true), Some(PermLine::Restart));
-        assert_eq!(permission_line(p(false, true, false, true), true), Some(PermLine::Grant(Pane::ScreenRecording)));
+        assert_eq!(permission_line(perms(true, true, true, true), false), None);
+        assert_eq!(permission_line(perms(true, true, true, true), true), None);
+        assert!(permission_line(perms(false, false, false, false), false).is_some());
         for line in [PermLine::Grant(Pane::Microphone), PermLine::Restart] {
             let text = line.text().to_lowercase();
             assert!(!["doctor", "terminal", "run ", "command"].iter().any(|w| text.contains(w)), "{text}");
         }
+    }
+
+    /// Bug guarded: Screen Recording's check stays false until restart, so with it first the walk
+    /// reopened its pane on every click and never reached the other three.
+    #[test]
+    fn the_walk_never_leaves_screen_recording() {
+        // Screen Recording missing (and stuck false) never blocks the live ones, in order.
+        for sent in [false, true] {
+            assert_eq!(permission_line(perms(false, false, false, false), sent), Some(PermLine::Grant(Pane::Accessibility)));
+            assert_eq!(permission_line(perms(false, true, false, false), sent), Some(PermLine::Grant(Pane::InputMonitoring)));
+            assert_eq!(permission_line(perms(false, true, true, false), sent), Some(PermLine::Grant(Pane::Microphone)));
+        }
+        // Then Screen Recording: its pane once, then restart.
+        assert_eq!(permission_line(perms(false, true, true, true), false), Some(PermLine::Grant(Pane::ScreenRecording)));
+        assert_eq!(permission_line(perms(false, true, true, true), true), Some(PermLine::Restart));
+        // Screen Recording already granted: the live ones still walk normally.
+        assert_eq!(permission_line(perms(true, false, true, true), false), Some(PermLine::Grant(Pane::Accessibility)));
     }
 
     #[test]
