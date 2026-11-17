@@ -61,7 +61,7 @@ pub fn transcribe(
         return transcript;
     };
     transcript.model = model.file_stem().map(|s| s.to_string_lossy().into_owned());
-    let mut ignored = 0;
+    let (mut ignored, mut wordless) = (0, 0);
     let result = (|| -> Result<Vec<Utterance>, PackError> {
         let temp = tempfile::tempdir()?;
         let wav = temp.path().join("speech.wav");
@@ -124,7 +124,7 @@ pub fn transcribe(
                 )?
             }
         };
-        ignored += stretches.len() - segments.len();
+        wordless = stretches.len() - segments.len();
         Ok(segments)
     })();
     match ignored {
@@ -134,10 +134,20 @@ pub fn transcribe(
             "{n} stretches of sound without a voice were ignored"
         )),
     }
+    // Transcribed, then dropped by the word-rate floor: a pitch, but almost no words.
+    match wordless {
+        0 => {}
+        1 => warnings.push(
+            "1 stretch of sound with a voice-like pitch but almost no words was ignored (music or a tone)".into(),
+        ),
+        n => warnings.push(format!(
+            "{n} stretches of sound with a voice-like pitch but almost no words were ignored (music or a tone)"
+        )),
+    }
     match result {
         Ok(segments) => {
             transcript.segments = segments;
-            if transcript.segments.is_empty() && ignored == 0 {
+            if transcript.segments.is_empty() && ignored + wordless == 0 {
                 warnings.push(format!(
                     "No speech was detected in the {} audio.",
                     transcript.source

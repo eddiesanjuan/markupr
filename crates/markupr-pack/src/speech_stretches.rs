@@ -22,7 +22,10 @@ pub fn detect(samples: &[i16]) -> Vec<Stretch> {
     sorted.sort_by(f64::total_cmp);
     let floor = sorted[sorted.len() / 5];
     let peak = *sorted.last().unwrap();
-    if peak == 0.0 || peak < floor * 2.0 {
+    // True silence has no stretches. Sound that never rises far above its own
+    // floor (speech with no pause, an even fan or hum) still forms stretches;
+    // the voicing guard decides what they are.
+    if peak == 0.0 {
         return vec![];
     }
     // Relative to the measured room noise, with bounds relative to this recording's
@@ -95,11 +98,13 @@ const MIN_LAG: usize = 18;
 const MAX_LAG: usize = 114;
 const HOPS_PER_SECOND: usize = RATE / DOWN / HOP;
 
-/// One 15 ms analysis step: loudness above the recording's steady background,
-/// and the pitch period (in 8 kHz samples) when the step is voiced.
+/// One 15 ms analysis step: loudness above the recording's steady background
+/// (`level` below 2 kHz, where pitch lives; `sound` across the full band, which
+/// also hears an `s` or `f`), and the pitch period (in 8 kHz samples) when voiced.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Hop {
     pub level: f64,
+    pub sound: f64,
     pub lag: Option<f64>,
 }
 
@@ -156,6 +161,14 @@ pub fn voicing(samples: &[i16]) -> Vec<Hop> {
     let mut order: Vec<usize> = (0..count).collect();
     order.sort_by(|a, b| energy[*a].total_cmp(&energy[*b]));
     let quiet = &order[..(count / 5).max(1)];
+    let wide: Vec<f64> = (0..count)
+        .map(|h| {
+            let s = &samples[h * HOP * DOWN..(h * HOP + WINDOW) * DOWN];
+            let mean = s.iter().map(|v| *v as f64).sum::<f64>() / s.len() as f64;
+            s.iter().map(|v| (*v as f64 - mean).powi(2)).sum()
+        })
+        .collect();
+    let wide_background = quiet.iter().map(|h| wide[*h]).sum::<f64>() / quiet.len() as f64;
     let mut background = Correlation {
         energy: 0.0,
         dot: vec![0.0; MAX_LAG + 2],
@@ -186,10 +199,20 @@ pub fn voicing(samples: &[i16]) -> Vec<Hop> {
         .map(|h| {
             let excess = energy[h] - background.energy;
             let level = (excess.max(0.0) / WINDOW as f64).sqrt();
+            let wide_excess = wide[h] - wide_background;
+            let sound = if wide_excess > 0.0 && wide_excess >= wide_background * 0.5 {
+                (wide_excess / (WINDOW * DOWN) as f64).sqrt()
+            } else {
+                0.0
+            };
             // Voicing needs new sound of at least half the background's power;
             // below that, the background's own wobble could look periodic.
             if excess <= 0.0 || excess < background.energy * 0.5 {
-                return Hop { level, lag: None };
+                return Hop {
+                    level,
+                    sound,
+                    lag: None,
+                };
             }
             let c = correlation(&frame(h));
             let r: Vec<f64> = (0..=MAX_LAG + 1)
@@ -205,6 +228,7 @@ pub fn voicing(samples: &[i16]) -> Vec<Hop> {
                 .collect();
             Hop {
                 level,
+                sound,
                 lag: pitch(&r).filter(|lag| hum.is_none_or(|hum| (lag / hum - 1.0).abs() > 0.03)),
             }
         })
@@ -285,20 +309,25 @@ pub fn islands(hops: &[Hop], stretch: Stretch) -> Vec<Stretch> {
             voiced_count >= 4 && voiced_count * 10 >= active_count
         })
         .map(|(first, last)| {
-            let (first, last) = (to_sample(first), to_sample(last) + WINDOW * DOWN);
-            // Keep the stretch's own energy edge when voicing starts or ends close
-            // to it; otherwise pad into the surrounding sound for consonants.
+            // The first word is pinned to the island's start. Start where the sound
+            // leading into the voice begins (a consonant), at most 0.2 s before it,
+            // so an energy edge a click made earlier never decides. End 0.4 s after
+            // the voice for a trailing consonant.
+            // A dip of up to 30 ms between words is crossed; the quiet between a
+            // click and the words is not.
+            let (mut onset, mut quiet) = (first, 0);
+            for h in (first.saturating_sub(HOPS_PER_SECOND / 5).max(lo)..first).rev() {
+                if hops[h].sound > 0.0 {
+                    (onset, quiet) = (h, 0);
+                } else if quiet == 2 {
+                    break;
+                } else {
+                    quiet += 1;
+                }
+            }
             Stretch {
-                start: if first > stretch.start + RATE / 2 {
-                    first - RATE / 5
-                } else {
-                    stretch.start
-                },
-                end: if last + RATE / 2 < stretch.end {
-                    last + RATE * 2 / 5
-                } else {
-                    stretch.end
-                },
+                start: to_sample(onset).max(stretch.start),
+                end: (to_sample(last) + WINDOW * DOWN + RATE * 2 / 5).min(stretch.end),
             }
         })
         .collect()
@@ -500,6 +529,52 @@ mod tests {
             let (start, end) = seconds(&found[0]);
             assert!((2.0..=3.0).contains(&start) && (4.5..5.5).contains(&end));
         }
+    }
+    #[test]
+    fn a_click_just_before_speech_does_not_make_the_first_word_early() {
+        let (mut samples, mut random) = room(4.0, 29);
+        for sample in &mut samples[RATE * 7 / 10..RATE * 7 / 10 + 160] {
+            *sample += (random() * 9000.0) as i16;
+        }
+        // A quiet unvoiced consonant from 0.90 s, then the voice from 1.05 s.
+        for sample in &mut samples[RATE * 9 / 10..RATE * 21 / 20] {
+            *sample += (random() * 100.0) as i16;
+        }
+        talk(&mut samples, 1.05, 2.5, 160.0, 3000.0);
+        let ranges = detect(&samples);
+        assert!(seconds(&ranges[0]).0 < 0.75, "the click starts the stretch");
+        let found = islands(&voicing(&samples), ranges[0]);
+        assert_eq!(found.len(), 1);
+        let start = seconds(&found[0]).0;
+        assert!((0.85..=0.92).contains(&start), "island starts at {start}");
+    }
+    #[test]
+    fn speech_with_no_pause_is_not_reported_as_no_speech() {
+        // Voiced from the first sample to the last, loudness within 2x: the
+        // loudest frame never reaches twice the quietest fifth.
+        let mut phase = 0.0;
+        let speech: Vec<i16> = (0..3 * RATE)
+            .map(|i| {
+                let t = i as f64 / RATE as f64;
+                phase +=
+                    2.0 * std::f64::consts::PI * (170.0 + 30.0 * (5.0 * t).sin()) / RATE as f64;
+                let wave: f64 = (1..12).map(|k| (k as f64 * phase).sin() / k as f64).sum();
+                (1800.0 * (0.8 + 0.2 * (25.0 * t).sin()) * wave) as i16
+            })
+            .collect();
+        let ranges = detect(&speech);
+        let hops = voicing(&speech);
+        assert!(ranges.iter().flat_map(|s| islands(&hops, *s)).count() >= 1);
+        // An even fan with no pause either is still not a voice.
+        let (mut fan, mut random) = room(3.0, 31);
+        let mut y = 0.0;
+        for sample in &mut fan {
+            y = 0.96 * y + random();
+            *sample += (y * 400.0) as i16;
+        }
+        let hops = voicing(&fan);
+        assert!(detect(&fan).iter().all(|s| islands(&hops, *s).is_empty()));
+        assert!(detect(&[0; RATE]).is_empty());
     }
     #[test]
     fn very_low_and_very_high_voices_are_not_rejected() {
