@@ -1,6 +1,6 @@
 # markupR v3
 
-markupR records feedback for an AI coding agent across your Mac.
+markupR v3 is a complete Rust rewrite that simplifies recording feedback for an AI coding agent on your Mac.
 Press a hotkey, use the computer while talking, then press it again.
 It lines up screen video, your voice, cursor and clicks, browser logs, and the system log on one clock, picks out key moments, and writes a context pack folder an agent can read.
 A small pop-up offers “Copy prompt” when the pack is ready; capture and processing stay on your Mac.
@@ -19,13 +19,12 @@ cargo build --release -p markupr
 4. A small panel appears at the top right when the pack is ready. Click **Copy prompt** and paste it into your coding agent.
 
 For browser console and network logs, use "Open debug browser" in the menu first and reproduce the problem in that window.
-The first run needs a config file with your Whisper model path; see Requirements.
+To transcribe speech, set your Whisper model path in the config file. See [Requirements](#requirements).
 
 ## Status
 
-This is the early Rust rebuild: v3, in development, on `rust-v3`.
-The TypeScript/Electron v2 is on the [main branch](https://github.com/eddiesanjuan/markupr/tree/main).
-Requires macOS 15 or later. Apple silicon has been tested.
+The `main` branch tracks v3 development. It requires macOS 15 or later and has been tested on Apple silicon.
+The previous Electron release, v2.6.8, is archived at [legacy-v2](https://github.com/eddiesanjuan/markupr/tree/legacy-v2).
 
 ## Requirements
 
@@ -191,5 +190,5 @@ Sources without usable host timestamps are aligned by arrival or wall time, so t
 
 ## Credits and license
 
-MIT licensed. Built on the [v2 markupR](https://github.com/eddiesanjuan/markupr) idea.
+MIT licensed.
 [kieranklaassen/riffrec](https://github.com/kieranklaassen/riffrec) and [dundas/thinkrun](https://github.com/dundas/thinkrun) explore the same space for the browser.
