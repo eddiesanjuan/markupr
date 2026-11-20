@@ -1,0 +1,24 @@
+[package]
+name = "markupr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+global-hotkey = "0.7"
+libc = "0.2"
+markupr-core = { path = "../markupr-core" }
+markupr-browser = { path = "../markupr-browser" }
+markupr-pack = { path = "../markupr-pack" }
+markupr-screen = { path = "../markupr-screen" }
+markupr-events = { path = "../markupr-events" }
+serde_json = "1"
+signal-hook = "0.3"
+tao = "0.34"
+tray-icon = "0.21"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSGraphicsContext", "NSButton", "NSButtonCell", "NSColor", "NSControl", "NSEvent", "NSFont", "NSGraphics", "NSPanel", "NSResponder", "NSScreen", "NSTextField", "NSView", "NSVisualEffectView", "NSWindow", "objc2-quartz-core"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSString", "NSArray", "NSProcessInfo"] }
+objc2-quartz-core = { version = "0.3", default-features = false, features = ["std", "CALayer", "objc2-core-foundation"] }

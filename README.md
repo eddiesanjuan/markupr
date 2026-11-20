@@ -1,304 +1,194 @@
-<p align="center">
-  <img src="src/renderer/assets/logo.svg" alt="markupR" width="80" height="80">
-</p>
+# markupR v3
 
-<h1 align="center">markupR</h1>
+markupR v3 is a complete Rust rewrite that simplifies recording feedback for an AI coding agent on your Mac.
+Press a hotkey, use the computer while talking, then press it again.
+It lines up screen video, your voice, cursor and clicks, browser logs, and the system log on one clock, picks out key moments, and writes a context pack folder an agent can read.
+A small pop-up offers “Copy prompt” when the pack is ready; capture and processing stay on your Mac.
 
-<p align="center">
-  <strong>Record your screen. Say what's wrong. Your AI agent fixes it.</strong>
-</p>
+## Try it
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/markupr"><img src="https://img.shields.io/npm/v/markupr?style=flat-square" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/markupr"><img src="https://img.shields.io/npm/dm/markupr?style=flat-square" alt="npm downloads"></a>
-  <a href="https://github.com/eddiesanjuan/markupr/actions/workflows/ci.yml"><img src="https://github.com/eddiesanjuan/markupr/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
-  <a href="https://github.com/eddiesanjuan/markupr/stargazers"><img src="https://img.shields.io/github/stars/eddiesanjuan/markupr?style=flat-square" alt="GitHub stars"></a>
-</p>
-
-<p align="center">
-  <a href="#quick-start">Quick Start</a> &middot;
-  <a href="#context-aware-capture-what-your-agent-actually-gets">Context-Aware Capture</a> &middot;
-  <a href="#why-markupr">Why markupR</a> &middot;
-  <a href="#mcp-server">MCP Server</a> &middot;
-  <a href="#cli">CLI</a> &middot;
-  <a href="#integrations">Integrations</a> &middot;
-  <a href="#contributing">Contributing</a>
-</p>
-
----
-
-<p align="center">
-  <img src="assets/demo-cli.gif" alt="markupR desktop-to-report workflow demo" width="800">
-</p>
-
-Desktop app workflow is the default: record + narrate + stop, then ship context-rich markdown (frames + cursor/window/focus hints when available) directly to your agent.
-
-## The Problem
-
-AI coding agents can't see your screen. When you find a bug, you context-switch into writing mode -- describing the layout issue in text, manually screenshotting, cropping, and dragging images into the right spot. You speak at 150 words per minute but type at 60. The context is lost in translation.
-
-## The Solution
-
-markupR is a desktop capture app first. You hit a hotkey, narrate what you see, and stop. Then it runs a post-session pipeline that aligns transcript timestamps with the recording, extracts the right frames, and outputs structured Markdown your agent can execute against immediately.
-
-- **Record** -- press a hotkey, talk through what you see
-- **Process** -- Whisper transcribes, ffmpeg extracts frames at the exact moments you described
-- **Enrich** -- capture context is attached to shot markers (cursor position, active window/app, focused element hints when available)
-- **Output** -- structured Markdown with screenshots and context your agent can trust
-
-```
-Cmd+Shift+F  -->  talk  -->  Cmd+Shift+F  -->  Cmd+V into your agent
+```sh
+cargo build --release -p markupr
+./target/release/markupr doctor   # permissions, ffmpeg, whisper-cli, model paths
+./target/release/markupr          # starts the menu bar app
 ```
 
-## Quick Start
+1. Press **Control+Option+R**. The menu bar item shows that it is recording.
+2. Use the computer and say what is wrong as you go. Press **Control+Option+X** whenever you want to say "look at this".
+3. Press **Control+Option+R** again.
+4. A small panel appears at the top right when the pack is ready. Click **Copy prompt** and paste it into your coding agent.
 
-### Desktop App (recommended)
+For browser console and network logs, use "Open debug browser" in the menu first and reproduce the problem in that window.
+To transcribe speech, set your Whisper model path in the config file. See [Requirements](#requirements).
 
-Download from [markupr.com](https://markupr.com) or [GitHub Releases](https://github.com/eddiesanjuan/markupr/releases).
+## Status
 
-> **macOS install note:** Apple notarization is currently rolling out. If macOS warns on first launch, use **Right-click -> Open** once to trust the app. If needed, run: `xattr -dr com.apple.quarantine /Applications/markupR.app`
+The `main` branch tracks v3 development. It requires macOS 15 or later and has been tested on Apple silicon.
+The previous Electron release, v2.6.8, is archived at [legacy-v2](https://github.com/eddiesanjuan/markupr/tree/legacy-v2).
 
-1. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows) to start
-2. Narrate what you see and mark shots when needed
-3. Press the hotkey again to stop
-4. Paste the generated report path into Claude Code, Cursor, Windsurf, or any coding agent
+## Requirements
 
-### MCP Server (for AI coding agents)
+- Rust 1.85 or later, with the macOS command line developer tools.
+- `ffmpeg` for audio conversion and frame extraction.
+- `whisper-cli` from whisper.cpp for local speech recognition.
+- A local Whisper model file. markupR never downloads one.
+- A supported Chrome-family browser if you want browser logs.
 
-```bash
-npx --package markupr markupr-mcp
+Create `~/Library/Application Support/markupr/config.toml`. Use absolute paths to your installed tools and model files; replace the example model path.
+
+```toml
+ffmpeg_bin = "ffmpeg"
+
+[whisper]
+bin = "/opt/homebrew/bin/whisper-cli"
+model = "/absolute/path/to/ggml-large-v3-turbo.bin"   # accurate, the default
+fast_model = "/absolute/path/to/ggml-small.bin"       # optional, used by --fast
+
+[hotkeys]
+toggle = "ctrl+alt+KeyR"
+mark = "ctrl+alt+KeyX"
 ```
 
-### CLI (for existing recordings / CI / automation)
+Without a configured model, the pack is still written, but speech is skipped.
+The default pack location is `~/markupr/packs/`.
+Video defaults to 30 frames per second. The browser debug port defaults to 9222.
 
-```bash
-npx markupr analyze ./recording.mov
+## Build and first run
+
+From the repository root (then add `target/release` to your PATH for the examples below):
+
+```sh
+cargo build --release -p markupr
+./target/release/markupr doctor
 ```
 
-Use this when you already have a video file. The desktop app remains the primary capture workflow.
+Doctor checks permissions, tools, model paths, and the browser debug endpoint; missing core permissions make it exit with an error.
+Run `markupr doctor --request` to request missing permissions.
 
-## Context-Aware Capture: What Your Agent Actually Gets
+In System Settings > Privacy & Security, grant:
 
-Every important frame can carry extra machine-usable context, not just pixels.
+- Screen Recording for screen video and system audio.
+- Accessibility for focused windows and the element under the cursor.
+- Microphone for your narration.
 
-- **Cursor coordinates** at capture time
-- **Active app + window title** (best-effort from OS context)
-- **Focused element hints** (role/text/title hints when available)
-- **Trigger metadata** (`manual`, `pause`, or `voice-command`)
+Doctor also checks Input Monitoring, which the event tap may need for cursor, clicks, and keys.
+When launched from a terminal, grants normally attach to the terminal host, such as Terminal, iTerm, or T3 Code.
+Use the process macOS shows in its permission list, then restart that host if macOS asks.
 
-This makes the report a high-signal liaison between you and your agent: what you said, what you saw, and where your attention was.
+## Using it
 
-## Why markupR?
+Run `markupr app`, or just `markupr`, to start the menu bar app in an idle state.
+The menu also offers “Open debug browser”, “Copy last prompt”, and “Show last pack in Finder”.
+Press **Control+Option+R** to start recording. Press it again to stop and build the pack.
+Press **Control+Option+X** to mark the moment at your cursor while recording.
+When processing finishes, use “Copy prompt” in the pop-up and paste into your agent.
 
-**Local-first.** Whisper runs on your device. Your recordings, transcripts, and screenshots never leave your machine. No cloud dependency, no account required.
+Start a recording in one terminal:
 
-**AI-native output.** The Markdown output is structured for LLM consumption -- headings, categories, severity levels, inline screenshots, and capture-context hints. Not a raw transcript with random images.
+```sh
+markupr record --popup
+```
 
-**Works everywhere.** Desktop app for daily flow. CLI for scripts and CI/CD. MCP server for agent integration. GitHub Action for PR feedback. Same pipeline, four interfaces.
+While it runs, use another terminal to mark and stop:
 
-**Open source.** MIT licensed. No telemetry, no tracking, no analytics. Read the source, fork it, ship it.
+```sh
+markupr mark --note "This button did not respond"
+markupr status
+markupr stop
+```
 
-## What the Output Looks Like
+`record` starts immediately. `--popup` shows the panel after processing.
+`stop` waits for processing and prints the pack path; `stop --no-wait` only requests the stop.
+`status` prints JSON with the current state and latest pack path, including when no recorder is running.
+
+### Browser logs and the agent prompt
+
+Before recording a browser issue, open the debug browser:
+
+```sh
+markupr browser --url http://localhost:3000
+```
+
+It uses `~/Library/Application Support/markupr/browser-profile/`, separate from your everyday profile.
+The separate profile enables remote debugging without using your normal browsing session.
+Sign in there if needed and reproduce the issue in that window.
+Browser capture includes console messages, exceptions, network metadata, navigation, and clicked elements.
+
+Copy the local pack prompt for your agent with:
+
+```sh
+markupr prompt --copy
+```
+
+## What is in a context pack
+
+Each recording gets a dated folder with raw files and processed results. Missing sources are called out in the summary.
+The video only has a frame when the screen changed; `markupr frame <pack dir> <seconds>` writes the screen at any moment, with the cursor ringed.
+
+```text
+2026-11-16_14-30-00/
+├── SUMMARY.md          # Key moments, speech, frames, log references, and missing sources.
+├── PROMPT.md           # Agent prompt pointing to this local pack.
+├── session.json        # Source availability, timing offsets, geometry, and processing status.
+├── video.mp4           # Screen video with system audio when captured.
+├── audio/mic.wav       # Microphone narration when captured.
+├── events.jsonl        # Clicks, scroll, key activity, focus, and numbered marks.
+├── cursor.jsonl        # Cursor positions on the session clock.
+├── logs/browser.jsonl  # Browser console, exceptions, network metadata, and page events.
+├── logs/system.jsonl   # Unified log from the frontmost app as focus changes.
+├── transcript.json     # Recognized speech with word times.
+├── transcript.md       # Readable transcript.
+├── moments.json        # Selected moments and links to supporting evidence.
+└── frames/             # Key-frame JPEGs with cursor rings and optional zoom crops.
+```
+
+An invented excerpt from `SUMMARY.md`:
 
 ```markdown
-# Feedback Session -- Feb 5, 2026
+## 1. Save button does not respond (t 8.000 to 12.000)
 
-## FB-001: Button sizing issue
-The submit button is way too small on mobile. I'm trying to tap it
-and keep hitting the cancel link underneath. Needs more vertical
-padding, maybe 12px minimum tap target.
-
-![Screenshot at 0:34](screenshots/fb-001.png)
-
-## FB-002: Loading state feels janky
-After the spinner disappears, the content pops in with no transition.
-There's a visible layout shift -- the sidebar jumps left by about
-20 pixels.
-
-![Screenshot at 1:12](screenshots/fb-002.png)
+- Why flagged: mark 1 at 10.000; click at 9.500
+- Said: "I clicked Save, but the page stayed the same."
+- Looking at: Google Chrome; clicked #save "Save"; cursor at (420.0, 310.0)
+- Frame: ![item 1](frames/item-01.jpg) at t 10.000
+- Logs: no matching errors or warnings captured.
+- Dive deeper: t 8.000 to 12.000 in events.jsonl and logs/
 ```
 
-Each screenshot is extracted from the exact video frame matching your narration timestamp, with context hints attached when available. See full examples in [`examples/`](examples/).
+## Privacy
 
-## MCP Server
+Capture and processing are local. markupR does not upload packs.
+Typed characters are never stored by the key recorder; it records only typing counts and timing.
+Named keys and shortcuts are recorded by name, such as Enter or Command+C.
+While a password field has secure input enabled, nothing about keys is recorded.
+Browser request headers and bodies are not recorded.
+Browser URLs have credentials removed and secret-looking query and fragment values redacted by parameter name.
+Screen video, audio, window titles, element labels, and log text can still contain private information.
+Packs can contain whatever was on screen. Review a pack before sharing it or giving an agent access.
 
-Give your AI coding agent eyes and ears. Add markupR as an MCP server and it can capture screenshots, record your screen with voice, and receive structured reports -- all mid-conversation.
+## How it works
 
-### Setup
+- `markupr`: CLI, menu bar, hotkeys, recording control, and the native pop-up.
+- `markupr-core`: shared clock, config, session manifest, pack paths, and JSONL writing.
+- `markupr-screen`: ScreenCaptureKit capture, MP4 video/system audio, and microphone WAV.
+- `markupr-events`: cursor, clicks, key policy, focus, marks, permissions, and unified log.
+- `markupr-browser`: local browser debugging connection and browser event capture.
+- `markupr-pack`: local transcription, rule-based moment selection, frames, summary, and prompt.
 
-**Claude Code** (`~/.claude/settings.json`):
+Sources use the Mac's monotonic host clock, expressed as seconds since recording began.
+Sources without usable host timestamps are aligned by arrival or wall time, so the agent can follow one timeline.
 
-```json
-{
-  "mcpServers": {
-    "markupR": {
-      "command": "npx",
-      "args": ["--yes", "--package", "markupr", "markupr-mcp"]
-    }
-  }
-}
-```
+## Limits today
 
-**Cursor / Windsurf** -- same config in your MCP settings.
+- One display per recording, selected under the cursor by default.
+- Browser logs require a Chrome-family browser through the debug profile.
+- `scripts/make-app-bundle.sh` builds `markupR.app`, ad-hoc signed, so macOS asks for the permissions again after each rebuild.
+- A crash during recording loses the video because MP4 is finalized at stop; JSONL files survive.
+- Speech recognition defaults to English (`language` under `[whisper]` in the config).
+- Whispered speech is not transcribed: speech is found by its voicing, which keeps mouse and keyboard noise out of the transcript. For the same reason, speech over music that the microphone picks up can be dropped along with the music.
+- Key moments are picked by rules, not a model. Everything said that did not become an item is still listed in SUMMARY.md.
 
-### Tools
+## Credits and license
 
-| Tool | Description |
-|------|-------------|
-| `capture_screenshot` | Grab the current screen and attach context metadata (cursor + active app/window + focus hints when available). |
-| `capture_with_voice` | Record screen + mic for a set duration. Returns a structured report. |
-| `analyze_video` | Process any existing `.mov` or `.mp4` into Markdown with extracted frames (fallback path for externally captured recordings). |
-| `analyze_screenshot` | Run a screenshot through the AI analysis pipeline. |
-| `start_recording` | Begin an interactive recording session. |
-| `stop_recording` | End the session and run the full pipeline. |
-
-### Example
-
-```
-You: "The sidebar is overlapping the main content on mobile. Can you see it?"
-
-Agent: [calls capture_screenshot]
-       "I can see the issue -- the sidebar has position: fixed but no z-index,
-        and it's 280px wide with no responsive breakpoint. Let me fix the CSS..."
-
-       [fixes the code]
-```
-
-No copy-pasting screenshots. No rewriting what you already know. The agent gets structured report context and acts.
-
-Full MCP documentation: [README-MCP.md](README-MCP.md)
-
-## CLI
-
-### Installation
-
-```bash
-# Run without installing
-npx markupr analyze ./recording.mov
-
-# Or install globally
-npm install -g markupr
-```
-
-### Commands
-
-**`markupr analyze <video>`** -- Process an existing screen recording into structured Markdown.
-
-```bash
-markupr analyze ./bug-demo.mov
-markupr analyze ./recording.mov --output ./reports
-markupr analyze ./recording.mov --template github-issue
-markupr analyze ./recording.mov --no-frames  # transcript only
-```
-
-**`markupr watch [directory]`** -- Watch for new recordings and auto-process them.
-
-```bash
-markupr watch ~/Desktop --output ./reports
-```
-
-**`markupr push github <report>`** -- Create GitHub issues from a feedback report.
-
-```bash
-markupr push github ./report.md --repo myorg/myapp
-markupr push github ./report.md --repo myorg/myapp --dry-run
-```
-
-**`markupr push linear <report>`** -- Create Linear issues from a feedback report.
-
-```bash
-markupr push linear ./report.md --team ENG
-```
-
-### Output Templates
-
-`markdown` (default) | `json` | `github-issue` | `linear` | `jira` | `html`
-
-### Requirements
-
-- Node.js 18+
-- [ffmpeg](https://ffmpeg.org/) on your PATH (`brew install ffmpeg` / `apt install ffmpeg` / `choco install ffmpeg`)
-
-## Integrations
-
-### GitHub Action
-
-Run markupR in CI to get visual feedback on pull requests:
-
-```yaml
-- uses: eddiesanjuan/markupr-action@v1
-  with:
-    video-path: ./recordings/
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-```
-
-### Desktop App Workflow (Primary)
-
-1. Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows)
-2. Narrate what you see and mark shots as needed
-3. Press the hotkey again to stop
-4. Paste the file path from your clipboard into Claude Code, Cursor, or any AI agent
-
-## How It Works
-
-```
-                    +-----------+
-  Screen + Voice -> | Whisper   | -> Timestamped transcript
-                    +-----------+
-                         |
-                    +-----------+
-                    | Analyzer  | -> Key moments identified
-                    +-----------+
-                         |
-                    +-----------+
-                    | ffmpeg    | -> Frames extracted at exact timestamps
-                    +-----------+
-                         |
-                    +-----------+
-                    | Generator | -> Structured Markdown with inline screenshots
-                    +-----------+
-```
-
-The pipeline degrades gracefully. No ffmpeg? Transcript-only output. No Whisper model? Timer-based screenshots. No API keys? Everything runs locally.
-
-Desktop app capture remains the default path. CLI/MCP `analyze_video` remains available when you need to process an existing recording.
-
-For architecture details, see [CLAUDE.md](CLAUDE.md).
-
-## Development
-
-```bash
-git clone https://github.com/eddiesanjuan/markupr.git
-cd markupR
-npm install
-npm run dev
-```
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Development mode with hot reload |
-| `npm run build` | Build everything (desktop + CLI + MCP) |
-| `npm test` | Run all tests |
-| `npm run lint` | Lint |
-| `npm run typecheck` | Type check |
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Run tests: `npm test && npm run lint && npm run typecheck`
-4. Open a Pull Request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
-
-## License
-
-MIT -- see [LICENSE](LICENSE).
-
----
-
-<p align="center">
-  Built by <a href="https://github.com/eddiesanjuan">Eddie San Juan</a><br>
-  <a href="https://markupr.com">markupr.com</a>
-</p>
+MIT licensed.
+[kieranklaassen/riffrec](https://github.com/kieranklaassen/riffrec) and [dundas/thinkrun](https://github.com/dundas/thinkrun) explore the same space for the browser.

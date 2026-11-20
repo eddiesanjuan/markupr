@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "3.0.0-dev"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/eddiesanjuan/markupr"
+rust-version = "1.85"
+
+[profile.release]
+debug = "line-tables-only"
+
+# Dependencies (image codecs and so on) are optimized even in dev builds.
+[profile.dev.package."*"]
+opt-level = 2

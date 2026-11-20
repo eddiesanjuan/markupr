@@ -1,0 +1,744 @@
+use crate::{
+    control::{self, Command, State},
+    copy_prompt,
+    popup::{Action, Popup},
+    recorder::{RecordOptions, Recorder},
+    reveal, ui_debug, UserEvent,
+};
+use anyhow::{anyhow, Result};
+use global_hotkey::{hotkey::HotKey, GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
+use markupr_core::{Clock, Config, PackDir};
+use signal_hook::{
+    consts::{SIGINT, SIGTERM},
+    iterator::Signals,
+};
+use std::{
+    path::PathBuf,
+    sync::mpsc,
+    thread::{self, JoinHandle},
+    time::{Duration, Instant},
+};
+use tao::{
+    event::{Event, StartCause},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
+    platform::{
+        macos::{ActivationPolicy, EventLoopExtMacOS},
+        run_return::EventLoopExtRunReturn,
+    },
+};
+use markupr_events::permissions::{self, Pane, PermissionState};
+use std::cell::Cell;
+use tray_icon::{
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    Icon, TrayIcon, TrayIconBuilder, TrayIconEvent,
+};
+
+enum RecorderCommand {
+    Begin,
+    Stop,
+    Mark {
+        source: &'static str,
+        note: Option<String>,
+    },
+}
+struct Active {
+    commands: mpsc::Sender<RecorderCommand>,
+    worker: JoinHandle<()>,
+}
+fn start(opts: RecordOptions, proxy: EventLoopProxy<UserEvent>) -> Result<Active> {
+    let (commands, receiver) = mpsc::channel();
+    let worker = thread::Builder::new()
+        .name("recorder".into())
+        .spawn(move || {
+            let mut root = None;
+            let result = (|| {
+                let config = Config::load()?;
+                let pack = PackDir::create_new(opts.out.as_deref().unwrap_or(&config.packs_dir))?;
+                root = Some(pack.root().to_path_buf());
+                let deadline = opts
+                    .duration
+                    .map(|s| Instant::now() + Duration::from_secs_f64(s));
+                let recorder = Recorder::start(opts, Clock::start(), pack, config)?;
+                let _ = proxy.send_event(UserEvent::Started(root.as_ref().unwrap().clone()));
+                eprintln!("recording {}", root.as_ref().unwrap().display());
+                let mut began = false;
+                loop {
+                    // Wait for the main loop to flush startup marks before the duration timer.
+                    let command = match deadline.filter(|_| began) {
+                        Some(deadline) => receiver
+                            .recv_timeout(deadline.saturating_duration_since(Instant::now())),
+                        None => receiver
+                            .recv()
+                            .map_err(|_| mpsc::RecvTimeoutError::Disconnected),
+                    };
+                    match command {
+                        Ok(RecorderCommand::Begin) => began = true,
+                        Ok(RecorderCommand::Mark { source, note }) => recorder.mark(source, note),
+                        Ok(RecorderCommand::Stop) | Err(_) => break,
+                    }
+                }
+                let _ = proxy.send_event(UserEvent::Processing);
+                recorder.stop()
+            })()
+            .map_err(|e: anyhow::Error| format!("{e:#}"));
+            let _ = proxy.send_event(UserEvent::Finished { root, result });
+        })?;
+    Ok(Active { commands, worker })
+}
+fn finish_start(
+    commands: &mpsc::Sender<RecorderCommand>,
+    pending_marks: &mut Vec<RecorderCommand>,
+    stop_requested: bool,
+) {
+    for mark in pending_marks.drain(..) {
+        let _ = commands.send(mark);
+    }
+    let _ = commands.send(if stop_requested {
+        RecorderCommand::Stop
+    } else {
+        RecorderCommand::Begin
+    });
+}
+
+/// The permissions line in the menu, if any.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PermLine {
+    /// Something is missing: clicking asks again and opens this pane.
+    Grant(Pane),
+    /// Only Screen Recording is missing and the user has been sent to its pane. Its check stays
+    /// false for the life of the process even after it is switched on, so only a restart finishes.
+    Restart,
+}
+impl PermLine {
+    fn text(self) -> &'static str {
+        match self {
+            PermLine::Grant(_) => "Permissions needed: click to grant",
+            PermLine::Restart => "Restart markupR to finish: click to quit",
+        }
+    }
+}
+
+fn all_granted(p: PermissionState) -> bool { p.screen && p.accessibility && p.input_monitoring && p.microphone }
+
+/// Walk order: the three permissions whose checks update live first, Screen Recording last.
+fn permission_line(p: PermissionState, sent_to_screen_pane: bool) -> Option<PermLine> {
+    let live = [
+        (p.accessibility, Pane::Accessibility),
+        (p.input_monitoring, Pane::InputMonitoring),
+        (p.microphone, Pane::Microphone),
+    ];
+    if let Some((_, pane)) = live.into_iter().find(|(granted, _)| !granted) {
+        return Some(PermLine::Grant(pane));
+    }
+    match (p.screen, sent_to_screen_pane) {
+        (true, _) => None,
+        (false, false) => Some(PermLine::Grant(Pane::ScreenRecording)),
+        (false, true) => Some(PermLine::Restart),
+    }
+}
+
+const PERMISSION_RECHECK: Duration = Duration::from_secs(2);
+
+struct Tray {
+    icon: TrayIcon,
+    menu: Menu,
+    perm_item: MenuItem,
+    perm_line: Cell<Option<PermLine>>,
+    sent_to_screen_pane: Cell<bool>,
+    toggle: MenuItem,
+    mark: MenuItem,
+    copy: MenuItem,
+    finder: MenuItem,
+    toggle_key: String,
+}
+impl Tray {
+    fn new(config: &Config, proxy: EventLoopProxy<UserEvent>, has_last: bool) -> Result<Self> {
+        let menu = Menu::new();
+        let toggle = MenuItem::with_id("toggle", "Start recording", true, None);
+        let mark = MenuItem::with_id(
+            "mark",
+            format!("Mark ({})", config.hotkeys.mark),
+            false,
+            None,
+        );
+        let copy = MenuItem::with_id("copy", "Copy last prompt", has_last, None);
+        let finder = MenuItem::with_id("finder", "Show last pack in Finder", has_last, None);
+        menu.append_items(&[
+            &toggle,
+            &mark,
+            &PredefinedMenuItem::separator(),
+            &copy,
+            &finder,
+            &MenuItem::with_id("browser", "Open debug browser", true, None),
+            &PredefinedMenuItem::separator(),
+            &MenuItem::with_id("quit", "Quit", true, None),
+        ])?;
+        let perm_item = MenuItem::with_id("permissions", "", true, None);
+        let menu_proxy = proxy.clone();
+        MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+            let _ = menu_proxy.send_event(UserEvent::Menu(event.id.0));
+        }));
+        // Hovering the icon re-checks permissions, so the line is current when the menu opens.
+        TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+            if matches!(event, TrayIconEvent::Enter { .. }) {
+                let _ = proxy.send_event(UserEvent::Menu("permissions-recheck".into()));
+            }
+        }));
+        let icon = TrayIconBuilder::new()
+            .with_menu(Box::new(menu.clone()))
+            .with_icon(icon()?)
+            .with_icon_as_template(true)
+            .with_title("markupR · idle")
+            .with_tooltip("markupR: idle")
+            .build()?;
+        let tray = Self {
+            icon,
+            menu,
+            perm_item,
+            perm_line: Cell::new(None),
+            sent_to_screen_pane: Cell::new(false),
+            toggle,
+            mark,
+            copy,
+            finder,
+            toggle_key: config.hotkeys.toggle.clone(),
+        };
+        tray.update(State::Idle, has_last, has_last);
+        Ok(tray)
+    }
+    /// Re-checks permissions and shows, updates or removes the menu line. Returns whether it shows.
+    fn refresh_permissions(&self) -> bool {
+        let line = permission_line(permissions::check(), self.sent_to_screen_pane.get());
+        if line != self.perm_line.get() {
+            match (self.perm_line.get(), line) {
+                (_, Some(l)) => {
+                    self.perm_item.set_text(l.text());
+                    if self.perm_line.get().is_none() {
+                        let _ = self.menu.append(&self.perm_item);
+                    }
+                }
+                (Some(_), None) => {
+                    let _ = self.menu.remove(&self.perm_item);
+                }
+                (None, None) => {}
+            }
+            self.perm_line.set(line);
+        }
+        line.is_some()
+    }
+    /// The permissions line was clicked. Returns true when the app should quit to finish.
+    fn permissions_clicked(&self) -> bool {
+        match self.perm_line.get() {
+            Some(PermLine::Grant(pane)) => {
+                permissions::request_missing();
+                permissions::open_settings(pane);
+                if pane == Pane::ScreenRecording {
+                    self.sent_to_screen_pane.set(true);
+                }
+                false
+            }
+            Some(PermLine::Restart) => true,
+            None => false,
+        }
+    }
+    fn update(&self, state: State, has_last: bool, copyable: bool) {
+        self.icon.set_title(Some(format!(
+            "markupR {} {}",
+            match state {
+                State::Idle => "·",
+                State::Starting => "◌",
+                State::Recording => "●",
+                State::Processing => "◌",
+            },
+            state.name()
+        )));
+        self.icon
+            .set_tooltip(Some(format!("markupR: {}", state.name())))
+            .ok();
+        self.toggle.set_text(format!(
+            "{} ({})",
+            match state {
+                State::Idle => "Start recording",
+                State::Starting => "Stop recording",
+                State::Recording => "Stop recording",
+                State::Processing => "Processing…",
+            },
+            self.toggle_key
+        ));
+        self.toggle.set_enabled(state != State::Processing);
+        self.mark
+            .set_enabled(matches!(state, State::Starting | State::Recording));
+        self.copy.set_enabled(copyable);
+        self.finder.set_enabled(has_last);
+    }
+}
+fn icon() -> Result<Icon> {
+    let mut rgba = vec![0; 18 * 18 * 4];
+    for y in 0..18_i32 {
+        for x in 0..18_i32 {
+            let radius = (x - 9).pow(2) + (y - 9).pow(2);
+            if (20..=56).contains(&radius) {
+                rgba[((y * 18 + x) * 4 + 3) as usize] = 255;
+            }
+        }
+    }
+    Ok(Icon::from_rgba(rgba, 18, 18)?)
+}
+
+pub fn run(opts: Option<RecordOptions>, app: bool, existing: Option<PathBuf>) -> Result<()> {
+    let config = Config::load()?;
+    let popup_only = existing.is_some();
+    let wants_popup = app || opts.as_ref().is_some_and(|o| o.popup && !o.no_pack) || popup_only;
+    let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    event_loop.set_activation_policy(ActivationPolicy::Accessory);
+    event_loop.set_dock_visibility(false);
+    event_loop.set_activate_ignoring_other_apps(false);
+    let proxy = event_loop.create_proxy();
+    let control = if popup_only {
+        None
+    } else {
+        Some(control::ControlServer::start(proxy.clone())?)
+    };
+    let hotkeys = if popup_only {
+        None
+    } else {
+        let manager = GlobalHotKeyManager::new()?;
+        let toggle: HotKey = config.hotkeys.toggle.parse()?;
+        let mark: HotKey = config.hotkeys.mark.parse()?;
+        manager.register(toggle)?;
+        manager.register(mark)?;
+        let hotkey_proxy = proxy.clone();
+        GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
+            if event.state != HotKeyState::Pressed {
+                return;
+            }
+            let event = if event.id == toggle.id() {
+                UserEvent::Toggle
+            } else if event.id == mark.id() {
+                UserEvent::Mark {
+                    source: "hotkey",
+                    note: None,
+                }
+            } else {
+                return;
+            };
+            let _ = hotkey_proxy.send_event(event);
+        }));
+        Some(manager)
+    };
+    let mut signals = Signals::new([SIGINT, SIGTERM])?;
+    let signal_handle = signals.handle();
+    let signal_proxy = proxy.clone();
+    let signal_worker = thread::Builder::new()
+        .name("signals".into())
+        .spawn(move || {
+            for _ in signals.forever() {
+                if signal_proxy.send_event(UserEvent::Signal).is_err() {
+                    break;
+                }
+            }
+        })?;
+    let mut tray: Option<Tray> = None;
+    let mut state = State::Idle;
+    let mut stop_requested = false;
+    let mut pending_marks = Vec::new();
+    let mut current_root = None;
+    let mut active: Option<Active> = None;
+    let mut stop_waiters = Vec::new();
+    let mut panel: Option<Popup> = None;
+    let mut last = control::last_pack(&config);
+    let mut copyable = last.is_some();
+    let mut quitting = false;
+    let mut signal_received = false;
+    let mut outcome: Result<()> = Ok(());
+    let mut printed_root = None;
+    event_loop.run_return(|event, _, flow| {
+        *flow = ControlFlow::Wait;
+        if let Some(p) = &panel {
+            if Instant::now() >= p.deadline {
+                panel.take();
+                if !app {
+                    *flow = ControlFlow::Exit;
+                    return;
+                }
+            } else {
+                *flow = ControlFlow::WaitUntil(p.deadline);
+            }
+        }
+        // While a permissions line shows, re-check every few seconds so it clears once granted.
+        if tray.as_ref().is_some_and(|t| t.refresh_permissions()) {
+            let recheck = Instant::now() + PERMISSION_RECHECK;
+            match *flow {
+                ControlFlow::WaitUntil(d) if d <= recheck => {}
+                _ => *flow = ControlFlow::WaitUntil(recheck),
+            }
+        }
+        let event = match event {
+            Event::NewEvents(StartCause::Init) => {
+                if app {
+                    match Tray::new(&config, proxy.clone(), last.is_some()) {
+                        Ok(item) => {
+                            // The control-socket lock is held (ControlServer::start above), so this
+                            // is the one running instance: ask macOS once for whatever is missing.
+                            if !all_granted(permissions::check()) {
+                                permissions::request_missing();
+                            }
+                            if item.refresh_permissions() {
+                                *flow = ControlFlow::WaitUntil(Instant::now() + PERMISSION_RECHECK);
+                            }
+                            tray = Some(item);
+                            ui_debug("tray: state=idle");
+                        }
+                        Err(error) => {
+                            outcome = Err(error);
+                            *flow = ControlFlow::Exit;
+                            return;
+                        }
+                    }
+                }
+                if let Some(dir) = &existing {
+                    match Popup::show(dir.clone(), None, proxy.clone()) {
+                        Ok(p) => {
+                            *flow = ControlFlow::WaitUntil(p.deadline);
+                            let _ = proxy.send_event(UserEvent::SelfClick);
+                            panel = Some(p);
+                        }
+                        Err(error) => {
+                            outcome = Err(error);
+                            *flow = ControlFlow::Exit;
+                        }
+                    }
+                    return;
+                }
+                if app {
+                    return;
+                }
+                UserEvent::Start
+            }
+            Event::UserEvent(event) => event,
+            _ => return,
+        };
+        let event = match event {
+            UserEvent::Menu(id) => match id.as_str() {
+                "toggle" => UserEvent::Toggle,
+                "mark" => UserEvent::Mark {
+                    source: "menu",
+                    note: None,
+                },
+                "copy" => {
+                    if let Some(dir) = &last {
+                        if let Err(e) = copy_prompt(dir) {
+                            eprintln!("copy: {e:#}");
+                        }
+                    }
+                    return;
+                }
+                "finder" => {
+                    if let Some(dir) = &last {
+                        if let Err(e) = reveal(dir) {
+                            eprintln!("Finder: {e:#}");
+                        }
+                    }
+                    return;
+                }
+                "browser" => {
+                    let port = config.browser.port;
+                    // Launch can wait for Chrome; keep the main-thread panel and tray responsive.
+                    thread::spawn(move || {
+                        if let Err(e) = markupr_browser::launch_debug_browser(port, None) {
+                            eprintln!("browser: {e}");
+                        }
+                    });
+                    return;
+                }
+                "quit" => UserEvent::Quit,
+                // Hover re-check already ran at the top of this closure.
+                "permissions-recheck" => return,
+                "permissions" => {
+                    if tray.as_ref().is_some_and(|t| t.permissions_clicked()) {
+                        UserEvent::Quit
+                    } else {
+                        if let Some(t) = &tray { t.refresh_permissions(); }
+                        return;
+                    }
+                }
+                _ => return,
+            },
+            UserEvent::Toggle => match state {
+                State::Idle if app => UserEvent::Start,
+                State::Starting | State::Recording => UserEvent::Stop,
+                _ => return,
+            },
+            UserEvent::Signal if signal_received && state == State::Processing => {
+                if let Some(root) = &current_root {
+                    if let Ok(pack) = PackDir::open(root) {
+                        if let Ok(mut session) = markupr_core::Session::load(&pack) {
+                            session.status = markupr_core::session::Status::Failed;
+                            session.warnings.push("Processing interrupted by a second signal.".into());
+                            let _ = session.save(&pack);
+                        }
+                    }
+                }
+                std::process::exit(130);
+            }
+            UserEvent::Signal => { signal_received = true; UserEvent::Quit },
+            event => event,
+        };
+        let mut ack = None;
+        let mut ack_ok = true;
+        let event = match event {
+            UserEvent::Control { command, mut stream } => {
+                if !state.accepts(&command) || quitting && !matches!(command, Command::Status) {
+                    let mut reply = state.reply(false);
+                    reply["error"] = format!("cannot {} while {}", command.name(), state.name()).into();
+                    control::reply_to(&mut stream, &reply);
+                    return;
+                }
+                match command {
+                    Command::Status => {
+                        control::reply_to(&mut stream, &serde_json::json!({"state":state.name(),"last_pack":control::last_pack(&config)}));
+                        return;
+                    }
+                    Command::Stop { wait: true } => { stop_waiters.push(stream); UserEvent::Stop }
+                    Command::Stop { wait: false } => { ack = Some(stream); UserEvent::Stop }
+                    Command::Start => { ack = Some(stream); UserEvent::Start }
+                    Command::Mark { note } => { ack = Some(stream); UserEvent::Mark { source: "cli", note } }
+                }
+            }
+            event => event,
+        };
+        let previous = state;
+        match event {
+            UserEvent::Start if state == State::Idle && !popup_only && !quitting => {
+                if let Some(mut p) = panel.take() {
+                    p.close("close");
+                }
+                match start(opts.as_ref().unwrap().clone(), proxy.clone()) {
+                    Ok(worker) => {
+                        active = Some(worker);
+                        state = State::Starting;
+                        stop_requested = false;
+                        pending_marks.clear();
+                    }
+                    Err(e) => {
+                        ack_ok = false;
+                        eprintln!("recording: {e:#}");
+                        if !app {
+                            outcome = Err(e);
+                            *flow = ControlFlow::Exit;
+                        }
+                    }
+                }
+            }
+            UserEvent::Stop if matches!(state, State::Starting | State::Recording) => {
+                stop_requested = true;
+                if state == State::Recording { state = State::Processing; }
+                if state == State::Processing {
+                    if let Some(active) = &active {
+                        let _ = active.commands.send(RecorderCommand::Stop);
+                    }
+                }
+            }
+            UserEvent::Started(root) => {
+                current_root = Some(root);
+                if let Some(active) = &active {
+                    finish_start(&active.commands, &mut pending_marks, stop_requested);
+                }
+                state = State::started(stop_requested);
+            }
+            UserEvent::Mark { source, note } if matches!(state, State::Starting | State::Recording) => {
+                let command = RecorderCommand::Mark { source, note };
+                if state == State::Starting {
+                    pending_marks.push(command);
+                } else if let Some(active) = &active {
+                    let _ = active.commands.send(command);
+                }
+            }
+            UserEvent::Processing => state = State::Processing,
+            UserEvent::Finished { root, result } => {
+                if let Some(active) = active.take() {
+                    let _ = active.worker.join();
+                }
+                state = State::Idle;
+                // Recorder::stop saves session.json before the worker sends Finished.
+                let reply = control::stop_reply(root.as_deref(), result.as_ref().err().map(String::as_str));
+                for mut stream in stop_waiters.drain(..) {
+                    control::reply_to(&mut stream, &reply);
+                }
+                let report = match result {
+                    Ok(report) => report,
+                    Err(error) => {
+                        eprintln!("recording: {error}");
+                        if !app {
+                            outcome = Err(anyhow!(error));
+                        }
+                        None
+                    }
+                };
+                if let Some(root) = root {
+                    copyable = control::ready_pack(&root).is_ok();
+                    last = Some(root.clone());
+                    printed_root = Some(root.clone());
+                    if app {
+                        println!("{}", root.display());
+                    }
+                    if wants_popup && !quitting && (report.is_some() || outcome.is_err() || app) {
+                        match Popup::show(root, report.as_ref(), proxy.clone()) {
+                            Ok(p) => panel = Some(p),
+                            Err(e) => {
+                                eprintln!("popup: {e:#}");
+                                if !app {
+                                    outcome = Err(e);
+                                }
+                            }
+                        }
+                    }
+                }
+                if quitting || (!app && panel.is_none()) {
+                    *flow = ControlFlow::Exit;
+                }
+            }
+            UserEvent::Popup(action) => {
+                if let Some(p) = &mut panel {
+                    match action {
+                        Action::Copy if p.can_copy() => match if p.selftest_copy { Ok(()) } else { copy_prompt(&p.dir) } {
+                            Ok(()) => p.copied(),
+                            Err(e) => eprintln!("copy: {e:#}"),
+                        },
+                        Action::Finder => match reveal(&p.dir) {
+                            Ok(()) => {
+                                p.close("finder");
+                                panel.take();
+                            }
+                            Err(e) => eprintln!("Finder: {e:#}"),
+                        },
+                        Action::Close => {
+                            p.close("close");
+                            panel.take();
+                        }
+                        _ => {}
+                    }
+                }
+                if !app && panel.is_none() {
+                    *flow = ControlFlow::Exit;
+                }
+            }
+            UserEvent::SelfClick => {
+                if let Some(panel) = &panel { panel.self_click_copy(); }
+            }
+            UserEvent::Quit => {
+                quitting = true;
+                if let Some(mut p) = panel.take() {
+                    p.close("close");
+                }
+                if let Some(active) = &active {
+                    stop_requested = true;
+                    if state != State::Starting {
+                        state = State::Processing;
+                        let _ = active.commands.send(RecorderCommand::Stop);
+                    }
+                } else {
+                    *flow = ControlFlow::Exit;
+                }
+            }
+            _ => {}
+        }
+        if let Some(mut stream) = ack { control::reply_to(&mut stream, &state.reply(ack_ok)); }
+        if previous != state && app {
+            ui_debug(format!("tray: state={}", state.name()));
+        }
+        if let Some(tray) = &tray {
+            tray.update(state, last.is_some(), copyable);
+        }
+        if let Some(p) = &panel {
+            *flow = ControlFlow::WaitUntil(p.deadline);
+        }
+    });
+    signal_handle.close();
+    let _ = signal_worker.join();
+    drop(panel);
+    drop(tray);
+    drop(control);
+    drop(hotkeys);
+    if !app && outcome.is_ok() {
+        if let Some(root) = printed_root {
+            println!("{}", root.display());
+        }
+    }
+    outcome
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn perms(screen: bool, accessibility: bool, input_monitoring: bool, microphone: bool) -> PermissionState {
+        PermissionState { screen, accessibility, input_monitoring, microphone }
+    }
+
+    /// Bug guarded: the app started at login without permissions told the user to run a terminal
+    /// command, and gave no way to grant them or to finish after granting.
+    #[test]
+    fn app_started_without_permissions_tells_the_user_to_run_a_terminal_command() {
+        assert_eq!(permission_line(perms(true, true, true, true), false), None);
+        assert_eq!(permission_line(perms(true, true, true, true), true), None);
+        assert!(permission_line(perms(false, false, false, false), false).is_some());
+        for line in [PermLine::Grant(Pane::Microphone), PermLine::Restart] {
+            let text = line.text().to_lowercase();
+            assert!(!["doctor", "terminal", "run ", "command"].iter().any(|w| text.contains(w)), "{text}");
+        }
+    }
+
+    /// Bug guarded: Screen Recording's check stays false until restart, so with it first the walk
+    /// reopened its pane on every click and never reached the other three.
+    #[test]
+    fn the_walk_never_leaves_screen_recording() {
+        // Screen Recording missing (and stuck false) never blocks the live ones, in order.
+        for sent in [false, true] {
+            assert_eq!(permission_line(perms(false, false, false, false), sent), Some(PermLine::Grant(Pane::Accessibility)));
+            assert_eq!(permission_line(perms(false, true, false, false), sent), Some(PermLine::Grant(Pane::InputMonitoring)));
+            assert_eq!(permission_line(perms(false, true, true, false), sent), Some(PermLine::Grant(Pane::Microphone)));
+        }
+        // Then Screen Recording: its pane once, then restart.
+        assert_eq!(permission_line(perms(false, true, true, true), false), Some(PermLine::Grant(Pane::ScreenRecording)));
+        assert_eq!(permission_line(perms(false, true, true, true), true), Some(PermLine::Restart));
+        // Screen Recording already granted: the live ones still walk normally.
+        assert_eq!(permission_line(perms(true, false, true, true), false), Some(PermLine::Grant(Pane::Accessibility)));
+    }
+
+    #[test]
+    fn startup_marks_are_applied_in_order_before_an_early_stop_or_duration_timeout() {
+        for stop_requested in [false, true] {
+            let (sender, receiver) = mpsc::channel();
+            let mut marks = vec![
+                RecorderCommand::Mark {
+                    source: "hotkey",
+                    note: Some("first".into()),
+                },
+                RecorderCommand::Mark {
+                    source: "cli",
+                    note: Some("second".into()),
+                },
+            ];
+            finish_start(&sender, &mut marks, stop_requested);
+            for (source, note) in [("hotkey", "first"), ("cli", "second")] {
+                let RecorderCommand::Mark {
+                    source: actual_source,
+                    note: actual_note,
+                } = receiver.try_recv().unwrap()
+                else {
+                    panic!("startup mark lost or reordered")
+                };
+                assert_eq!(
+                    (actual_source, actual_note.as_deref()),
+                    (source, Some(note))
+                );
+            }
+            assert!(matches!(
+                (receiver.try_recv().unwrap(), stop_requested),
+                (RecorderCommand::Stop, true) | (RecorderCommand::Begin, false)
+            ));
+            assert!(receiver.try_recv().is_err());
+        }
+    }
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>markupR test page (automated)</title>
+<style>
+  :root { font: 28px system-ui, sans-serif; color: #101010; background: #fff0c0; }
+  body { margin: 0; min-height: 100vh; }
+  header { padding: 40px 5vw; }
+  h1 { margin: 0; font-size: 52px; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 8vw; padding: 30px 5vw; }
+  section { border: 3px solid #111; padding: 32px; background: #ffffff; }
+  button { font: inherit; padding: 20px 30px; cursor: pointer; }
+</style>
+<header><h1>markupR test page (automated)</h1><p>Two problems to walk through.</p></header>
+<main>
+  <section><h2>Your cart</h2><p>Cart total: $0.00</p><button id="add" type="button">Add to cart</button></section>
+  <section><h2>Your changes</h2><p>Changes have not been saved.</p><button id="save" type="button">Save</button></section>
+</main>
+<script>
+  const post = (path, value) => fetch(path, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(value)
+  });
+  let flipped = false;
+  document.addEventListener('mousedown', event => {
+    const unix_ms = Date.now();
+    flipped = !flipped;
+    document.documentElement.style.backgroundColor = flipped ? '#2050e0' : '#fff0c0';
+    post('/api/flip', {unix_ms, flipped, screenX: event.screenX, screenY: event.screenY,
+      clientX: event.clientX, clientY: event.clientY, target: event.target.id});
+  }, true);
+  document.getElementById('add').onclick = () => {
+    const cart = undefined;
+    document.getElementById('add').textContent = cart.total;
+  };
+  document.getElementById('save').onclick = async () => {
+    const response = await post('/api/save', {});
+    if (response.status === 500) console.error('Save failed: 500');
+  };
+  function layout() {
+    post('/api/layout', {unix_ms: Date.now(), screenX, screenY, outerWidth, outerHeight,
+      innerWidth, innerHeight, devicePixelRatio,
+      buttons: Object.fromEntries(['add', 'save'].map(id => [id,
+        document.getElementById(id).getBoundingClientRect().toJSON()]))});
+  }
+  addEventListener('load', layout);
+  addEventListener('resize', layout);
+</script>
+</html>
