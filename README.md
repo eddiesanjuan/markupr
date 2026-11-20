@@ -1,20 +1,29 @@
 # markupR v3
 
-markupR v3 is a complete Rust rewrite that simplifies recording feedback for an AI coding agent on your Mac.
-Press a hotkey, use the computer while talking, then press it again.
-It lines up screen video, your voice, cursor and clicks, browser logs, and the system log on one clock, picks out key moments, and writes a context pack folder an agent can read.
-A small pop-up offers “Copy prompt” when the pack is ready; capture and processing stay on your Mac.
+markupR v3 is a complete Rust rewrite for giving an AI coding agent feedback from your Mac.
+**Just record, talk, and point or click. Marking is optional.** When you stop, markupR writes a local pack. Open `SUMMARY.md` to see what you said alongside key frames, zoomed click crops, and UI element details where available. With ffmpeg and a local Whisper model configured, the pack includes a timestamped transcript.
 
-## Try it
+## Install & Configure With Your Agent
 
-```sh
-cargo build --release -p markupr
-./target/release/markupr doctor   # permissions, ffmpeg, whisper-cli, model paths
-./target/release/markupr          # starts the menu bar app
+Paste this into Claude Code, Codex, Cursor, or Antigravity on your Mac:
+
+```text
+Install markupR v3.0.0 on my Mac from https://github.com/eddiesanjuan/markupr/releases/tag/v3.0.0.
+Check that I have macOS 15 or later. On Apple silicon, download and unzip the app.
+For a source build, use scripts/make-app-bundle.sh from that tag. Install in ~/Applications.
+Set up ffmpeg and whisper-cli. Reuse my local Whisper model, or help me choose one for transcription.
+Open markupR and walk me through its macOS permission prompts so I can approve them myself.
+
+Ask which recording hotkey, optional mark hotkey, and pack folder I want. Keep my other settings.
+Help me choose a display and whether I want the ready pop-up. Use the supported launch options
+for those choices. Tell me which settings will apply next time I open the app.
+Then walk me through a short recording and show me its SUMMARY.md and timestamped transcript.
 ```
 
+## Make your first pack
+
 1. Press **Control+Option+R**. The menu bar item shows that it is recording.
-2. Use the computer and say what is wrong as you go. Press **Control+Option+X** whenever you want to say "look at this".
+2. Point at or click what you want changed and describe it. If you want to flag a particular instant, press **Control+Option+X**.
 3. Press **Control+Option+R** again.
 4. A small panel appears at the top right when the pack is ready. Click **Copy prompt** and paste it into your coding agent.
 
@@ -28,30 +37,38 @@ The previous Electron release, v2.6.8, is archived at [legacy-v2](https://github
 
 ## Requirements
 
-- Rust 1.85 or later, with the macOS command line developer tools.
+- For source builds, Rust 1.85 or later and the macOS command line developer tools.
 - `ffmpeg` for audio conversion and frame extraction.
 - `whisper-cli` from whisper.cpp for local speech recognition.
 - A local Whisper model file. markupR never downloads one.
 - A supported Chrome-family browser if you want browser logs.
 
-Create `~/Library/Application Support/markupr/config.toml`. Use absolute paths to your installed tools and model files; replace the example model path.
+Settings live in `~/Library/Application Support/markupr/config.toml`. Quit and reopen the app after editing it. Use absolute paths for tools, models, and custom pack folders.
 
 ```toml
-ffmpeg_bin = "ffmpeg"
+ffmpeg_bin = "ffmpeg"  # default; set the full path for a Finder-launched app
+# packs_dir = "/absolute/path/to/packs"  # default: ~/markupr/packs/
 
 [whisper]
 bin = "/opt/homebrew/bin/whisper-cli"
-model = "/absolute/path/to/ggml-large-v3-turbo.bin"   # accurate, the default
+model = "/absolute/path/to/ggml-large-v3-turbo.bin"   # replace with your model
 fast_model = "/absolute/path/to/ggml-small.bin"       # optional, used by --fast
+language = "en"
 
 [hotkeys]
 toggle = "ctrl+alt+KeyR"
 mark = "ctrl+alt+KeyX"
+
+[video]
+fps = 30
+
+[browser]
+port = 9222
 ```
 
 Without a configured model, the pack is still written, but speech is skipped.
-The default pack location is `~/markupr/packs/`.
-Video defaults to 30 frames per second. The browser debug port defaults to 9222.
+
+**Display and pop-up behavior.** Recording uses one display, chosen under the cursor when recording starts. Use `markupr displays` to list IDs, then pass `--display <ID>` to `markupr app` or `markupr record` to choose one for that launch. The menu bar app shows the ready panel at the top right of the screen under the cursor. For a one-off recording, `markupr record` finishes quietly and `markupr record --popup` shows the panel. Its placement and appearance are fixed in v3.0.0.
 
 ## Build and first run
 
